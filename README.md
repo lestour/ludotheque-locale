@@ -4,9 +4,9 @@ Le point d’entrée est `index.html` à la racine.
 
 ## Lancement multiplateforme
 
-- macOS : double-cliquer sur `Lancer le Hub.command` ; le navigateur par défaut est utilisé.
+- macOS : double-cliquer sur `Lancer le Hub.command` ; le navigateur par défaut est utilisé. Garder la fenêtre Terminal du serveur ouverte pendant la partie.
 - Windows : double-cliquer sur `Lancer le Hub Windows.bat` ; Python est utilisé s’il est installé, sinon le serveur PowerShell inclus prend le relais.
-- Linux : lancer `sh "Lancer le Hub Linux.sh"`.
+- Linux : lancer `sh "Lancer le Hub Linux.sh"` et garder ce terminal ouvert pendant la partie.
 
 Un petit serveur HTTP local est nécessaire pour les modules audio, les AudioWorklets et le chargement de `games/rhythm/assets/MS-Basic.sf3`. Il ne faut pas ouvrir directement `index.html` avec une adresse `file://`. Les lanceurs cherchent Python 3, puis une solution locale de repli selon le système.
 

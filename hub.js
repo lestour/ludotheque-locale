@@ -312,6 +312,20 @@ function renderCatalog() {
     presetSelect.addEventListener('change', updateLink);
     updateLink();
   });
+  catalog.querySelectorAll('[data-game-link]').forEach(link => {
+    link.addEventListener('click', async event => {
+      if (!['127.0.0.1', 'localhost'].includes(location.hostname)) return;
+      event.preventDefault();
+      try {
+        const response = await fetch(link.href, { method: 'HEAD', cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        location.href = link.href;
+      } catch {
+        recentGame.textContent = 'Le serveur local s’est arrêté. Relancez « Lancer le Hub » et gardez sa fenêtre ouverte pendant la partie.';
+        recentGame.classList.add('server-error');
+      }
+    });
+  });
 }
 
 document.addEventListener('click', () => {

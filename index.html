@@ -44,6 +44,7 @@
     .open { display: inline-block; border-radius: 10px; padding: 9px 12px; background: #1f4aa8; color: #fff; text-decoration: none; font-weight: 700; }
     .open:hover { background: #173c8e; }
     .muted { color: #64748b; font-size: 14px; }
+    .server-error { padding: 10px 12px; border: 1px solid #dc2626; border-radius: 10px; color: #991b1b; background: #fee2e2; font-weight: 700; }
     .empty { padding: 30px; border: 1px dashed #aebbd0; border-radius: 14px; color: #64748b; text-align: center; }
     @media (prefers-color-scheme: dark) {
       :root { background: #101827; color: #e6edf8; }
@@ -61,6 +62,7 @@
       .variant-menu label { color: #d5deeb; }
       .variant-menu label:hover { background: #293a52; }
       .game p, .muted, .empty { color: #afbdd2; }
+      .server-error { color: #fecaca; background: #7f1d1d; border-color: #f87171; }
       .planned .tag { background: #29364a; color: #c0cadd; }
       .empty { border-color: #536681; }
     }
@@ -84,6 +86,6 @@
     <section id="gameCatalog" class="catalog" aria-live="polite"></section>
     <p class="muted" style="margin-top:28px">Projet indépendant, non affilié aux éditeurs des jeux ayant inspiré certains mécanismes. <a href="LEGAL.md">Informations juridiques</a> · <a href="THIRD_PARTY_NOTICES.md">Composants tiers</a> · <a href="LICENSE">Licence du code</a></p>
   </main>
-  <script src="hub.js?v=22"></script>
+  <script src="hub.js?v=23"></script>
 </body>
 </html>
