@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Symbole Unique</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Arial, sans-serif; background: #f3f6fb; color: #152238; }
+    body { margin: 0; min-height: 100vh; }
+    main { max-width: 1040px; margin: auto; padding: 24px; }
+    .panel { background: #fff; border: 1px solid #d7e0ed; border-radius: 16px; padding: 18px; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+    .toolbar, .scores { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+    h1 { margin: 0 auto 0 0; }
+    h2 { margin: 0 0 8px; font-size: 16px; text-align: center; }
+    button, a, select { border: 1px solid #9baac0; border-radius: 10px; padding: 8px 12px; background: #fff; color: #152238; font: inherit; text-decoration: none; cursor: pointer; }
+    .scores { justify-content: center; }
+    .score { padding: 10px 18px; min-width: 100px; border: 1px solid #d7e0ed; border-radius: 12px; background: #f8fafc; text-align: center; }
+    .score strong { display: block; font-size: 26px; }
+    .cards { display: grid; grid-template-columns: repeat(3, minmax(250px, 1fr)); gap: 24px; align-items: start; justify-content: center; }
+    .cards.potato-mode { grid-template-columns: repeat(2, minmax(250px, 1fr)); }
+    .player-area, .center-area { display: grid; justify-items: center; }
+    .center-area { border-inline: 1px solid #d7e0ed; padding-inline: 18px; }
+    .card { width: 250px; height: 250px; border-radius: 50%; box-sizing: border-box; }
+    .card { position: relative; border: 6px solid #efab24; background: #fff; box-shadow: 0 6px 0 rgba(32,48,72,.16); overflow: hidden; }
+    .card.empty { display: grid; place-items: center; border-style: dashed; border-color: #b6c4d8; color: #61718a; font-weight: 700; }
+    .card.back { display: grid; place-items: center; border-color: #294c9c; background: repeating-linear-gradient(45deg, #294c9c, #294c9c 8px, #e7efff 8px, #e7efff 16px); color: #fff; font-size: 62px; cursor: pointer; }
+    .card.revealing { animation: turn-card .48s ease-in-out; }
+    .card.source-hidden { visibility: hidden; }
+    .symbol { position: absolute; z-index: 1; border: 0; background: transparent; padding: 2px; border-radius: 50%; line-height: 1; transform: translate(-50%, -50%) rotate(var(--angle)); transition: filter .15s ease, scale .15s ease; }
+    .symbol:hover { filter: drop-shadow(0 0 6px #efab24); scale: 1.13; }
+    .symbol.bot-card { cursor: default; }
+    .symbol.bot-card:hover { filter: none; scale: 1; }
+    .round-stack { position: relative; width: 250px; height: var(--stack-height, 0px); margin: 8px auto 28px; transition: height .25s ease; }
+    .round-stack.empty { margin-block: 0; }
+    .pile-layer { position: absolute; width: 250px; height: 250px; border: 5px solid #294c9c; border-radius: 50%; box-sizing: border-box; background: repeating-linear-gradient(45deg, #294c9c, #294c9c 7px, #e7efff 7px, #e7efff 14px); transform: translate(calc(var(--layer) * .16px), calc(var(--layer) * .72px)); box-shadow: 0 1px 0 rgba(32,48,72,.16); }
+    .round-stack .pile-layer:last-of-type::after { content: '🂠'; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 64px; }
+    .pile-count { position: absolute; right: 12px; bottom: 4px; z-index: 60; min-width: 30px; padding: 3px 7px; border-radius: 99px; background: #fff; color: #203048; text-align: center; }
+    .center-pile { position: relative; width: 250px; height: var(--center-height, 250px); margin: 4px auto 8px; transition: height .25s ease; }
+    .center-pile.empty { height: 0; margin: 0; }
+    .center-pile.empty .card { display: none; }
+    .center-pile .pile-layer { left: 0; z-index: var(--layer); }
+    .center-pile .pile-layer.next-card { border-color: #efab24; background: #fff; overflow: hidden; }
+    .center-pile .pile-layer.next-card span { position: absolute; line-height: 1; transform: translate(-50%, -50%) rotate(var(--angle)); }
+    .center-pile .card { position: relative; left: 0; z-index: 50; transform: translate(var(--top-x, 0px), var(--top-y, 0px)); }
+    .player-area > .card { z-index: 2; }
+    .player-area > .card + .round-stack { z-index: 1; margin: -250px auto 14px; }
+    .stack-label { text-align: center; font-weight: 700; }
+    .card-animation { position: fixed; z-index: 30; width: 250px; height: 250px; perspective: 700px; pointer-events: none; transition: transform .58s ease-in-out; }
+    .card-animation .flip-inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .27s ease-in-out; }
+    .card-animation .face { position: absolute; inset: 0; display: grid; place-items: center; box-sizing: border-box; border: 6px solid #efab24; border-radius: 50%; background: #fff; box-shadow: 0 6px 0 rgba(32,48,72,.2); backface-visibility: hidden; overflow: hidden; }
+    .card-animation .back { border-color: #294c9c; background: repeating-linear-gradient(45deg, #294c9c, #294c9c 7px, #e7efff 7px, #e7efff 14px); }
+    .card-animation .front { padding: 0; }
+    .card-animation .front span { position: absolute; line-height: 1; transform: translate(-50%, -50%) rotate(var(--angle)); }
+    .card-animation .flip-horizontal .front { transform: rotateY(180deg); }
+    .card-animation .flip-horizontal.revealed { transform: rotateY(180deg); }
+    .card-animation .flip-vertical .front { transform: rotateX(180deg); }
+    .card-animation .flip-vertical.revealed { transform: rotateX(180deg); }
+    @keyframes turn-card { 0% { transform: translate(var(--top-x, 0px), var(--top-y, 0px)) scaleX(1); } 49% { transform: translate(var(--top-x, 0px), var(--top-y, 0px)) scaleX(.03); } 100% { transform: translate(var(--top-x, 0px), var(--top-y, 0px)) scaleX(1); } }
+    #status { min-height: 26px; text-align: center; font-weight: 700; margin: 14px; }
+    .muted { color: #61718a; font-size: 14px; }
+    @media (prefers-color-scheme: dark) { :root { background: #101827; color: #e8eef8; } .panel { background: #172235; border-color: #34445e; } button, a, select { background: #263447; border-color: #60718a; color: #f1f5fb; } .score { background: #1f2c3e; border-color: #40516a; } .card { background: #eef4fd; } .center-area { border-color: #40516a; } .muted { color: #b5c1d1; } .round-stack strong { background: #172235; color: #e8eef8; } }
+    @media (max-width: 860px) { .cards { grid-template-columns: 1fr; } .center-area { border: 0; border-block: 1px solid #d7e0ed; padding-block: 18px; } }
+  </style>
+</head>
+<body>
+  <main><section class="panel">
+    <div class="toolbar"><h1>Symbole Unique</h1><a href="../../../index.html">Hub de jeux</a><button id="newGame">Nouvelle partie</button><button id="startButton" hidden>Retourner les cartes</button><label class="muted">Mode <select id="gameMode"><option value="tower">Pile conquérante</option><option value="well">Défausse centrale</option><option value="gift">Transfert</option><option value="potato">Relais</option></select></label><label class="muted">Adversaire <select id="opponent"><option value="human">Humain local</option><option value="easy">Bot facile</option><option value="normal" selected>Bot moyen</option><option value="hard">Bot difficile</option></select></label></div>
+    <p class="muted">Cliquez la pile centrale pour commencer. Tour infernale : la carte gagnée devient votre nouvelle carte active. Le Puits : posez votre carte au centre et révélez la suivante.</p>
+    <div class="scores"><div class="score">Tas Joueur 1<strong id="scoreOne">0</strong></div><div class="score">Tas Joueur 2<strong id="scoreTwo">0</strong></div><div class="score"><span id="roundLabel">Cartes centrales</span><strong id="round">0</strong></div></div>
+    <div id="status" class="muted"></div>
+    <div id="cardsBoard" class="cards">
+      <section class="player-area"><h2>Joueur 1</h2><div id="cardOne" class="card"></div><div class="muted">Cartes sous la carte active</div><div id="stackOne" class="round-stack"></div></section>
+      <section id="centerArea" class="center-area"><h2>Tour centrale</h2><div id="centerPile" class="center-pile"><div id="cardCenter" class="card"></div></div><div class="muted">Carte du dessus à récupérer</div></section>
+      <section class="player-area"><h2 id="opponentTitle">Bot</h2><div id="cardTwo" class="card"></div><div class="muted">Cartes sous la carte active</div><div id="stackTwo" class="round-stack"></div></section>
+    </div>
+  </section></main>
+  <script src="../../../shared/cards.js?v=17"></script><script src="symbole-unique.js?v=15"></script><script src="../../../shared/records.js?v=1"></script>
+</body>
+</html>

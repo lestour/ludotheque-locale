@@ -1,0 +1,911 @@
+const board = document.getElementById('nonogram');
+const sizeSelect = document.getElementById('size');
+const generateButton = document.getElementById('generate');
+const resetButton = document.getElementById('reset');
+const solveStepButton = document.getElementById('solveStep');
+const solveAllButton = document.getElementById('solveAll');
+const showErrors = document.getElementById('showErrors');
+const status = document.getElementById('status');
+const errorCount = document.getElementById('errorCount');
+const traceModeToggle = document.getElementById('traceModeToggle');
+const previousTrace = document.getElementById('previousTrace');
+const nextTrace = document.getElementById('nextTrace');
+const traceSlider = document.getElementById('traceSlider');
+const traceLabel = document.getElementById('traceLabel');
+const modeSelect = document.getElementById('mode');
+const imageInput = document.getElementById('imageInput');
+const paletteElement = document.getElementById('palette');
+const imageTools = document.createElement('div');
+imageTools.className = 'toolbar';
+paletteElement.after(imageTools);
+const imageOverview = document.createElement('div');
+imageOverview.id = 'imageOverview';
+imageOverview.hidden = true;
+board.after(imageOverview);
+
+let size = Number(sizeSelect.value);
+let solution = [];
+let player = [];
+let paintValue = 0;
+let paintMode = '';
+let isPainting = false;
+let solverMessage = '';
+let solverTrace = [];
+let traceMessages = [];
+let traceIndex = 0;
+let isViewingTrace = false;
+let isColorMode = false;
+let colorSolution = [];
+let colorPlayer = [];
+let paletteColors = ['#e53e3e', '#dd8b16', '#e5c823', '#38a169', '#3182ce', '#805ad5'];
+let selectedColor = paletteColors[0];
+let importedImage = null;
+let importedCrop = null;
+let imageBlocks = new Map();
+let imageSplit = 2;
+let traceIsColor = false;
+let paletteLimit = 8;
+
+function resizeBoardContainer(columns, rows) {
+  const requiredWidth = Math.max(1180, columns * 30 + 74);
+  document.querySelector('main').style.maxWidth = `${requiredWidth}px`;
+  document.querySelector('.panel').style.minWidth = `${Math.min(requiredWidth, 1720)}px`;
+}
+
+function renderImageTools() {
+  imageTools.hidden = !importedImage;
+  if (!importedImage) return;
+  imageTools.innerHTML = `<span class="muted">Image importée :</span><button id="removeImage">Supprimer l’image</button><label class="muted">Couleurs <select id="paletteLimit"><option value="3">3 · facile</option><option value="5">5 · normal</option><option value="8" selected>8 · précis</option></select></label><span class="muted">Sous-grilles</span><button data-split="2">2 × 2</button><button data-split="3">3 × 3</button><button data-split="0">Image entière</button>`;
+  document.getElementById('removeImage').onclick = removeImportedImage;
+  const limitSelect = document.getElementById('paletteLimit');
+  limitSelect.value = String(paletteLimit);
+  limitSelect.onchange = () => { paletteLimit = Number(limitSelect.value); if (importedImage) quantizeImage(importedImage, importedCrop); };
+  imageTools.querySelectorAll('[data-split]').forEach(button => button.onclick = () => showImageSubgrids(Number(button.dataset.split)));
+}
+
+function removeImportedImage() {
+  importedImage = null;
+  importedCrop = null;
+  imageBlocks = new Map();
+  imageOverview.hidden = true;
+  board.hidden = false;
+  imageInput.value = '';
+  imageTools.hidden = true;
+  isColorMode = false;
+  modeSelect.value = 'mono';
+  paletteColors = ['#e53e3e', '#dd8b16', '#e5c823', '#38a169', '#3182ce', '#805ad5'];
+  createSolution();
+  clearTrace();
+  render();
+}
+
+function cropKey(crop = importedCrop) {
+  return crop ? `${crop.parts}:${crop.row}:${crop.column}` : 'full';
+}
+
+function saveCurrentImageBlock() {
+  if (!importedImage || !isColorMode) return;
+  imageBlocks.set(cropKey(), { size, palette: paletteColors.slice(), solution: colorSolution.slice(), player: colorPlayer.slice() });
+}
+
+function paintOverviewCanvas(canvas, state, crop) {
+  const context = canvas.getContext('2d');
+  const resolution = state?.size || suggestedSizeForCrop(crop.row, crop.column, crop.parts);
+  const padding = 5;
+  const pixel = Math.max(2, Math.floor((canvas.width - padding * 2) / resolution));
+  context.fillStyle = '#f8fafc';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  for (let row = 0; row < resolution; row += 1) for (let column = 0; column < resolution; column += 1) {
+    const value = state?.player?.[row * resolution + column];
+    context.fillStyle = value && value !== -1 ? value : '#ffffff';
+    context.fillRect(padding + column * pixel, padding + row * pixel, pixel - 1, pixel - 1);
+    if (value === -1) {
+      context.strokeStyle = '#94a3b8';
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(padding + column * pixel + 2, padding + row * pixel + 2);
+      context.lineTo(padding + (column + 1) * pixel - 3, padding + (row + 1) * pixel - 3);
+      context.moveTo(padding + (column + 1) * pixel - 3, padding + row * pixel + 2);
+      context.lineTo(padding + column * pixel + 2, padding + (row + 1) * pixel - 3);
+      context.stroke();
+    }
+  }
+  context.strokeStyle = '#334155';
+  context.lineWidth = 2;
+  context.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+}
+
+function showImageOverview(parts = imageSplit) {
+  saveCurrentImageBlock();
+  imageSplit = parts;
+  board.hidden = true;
+  imageOverview.hidden = false;
+  imageOverview.innerHTML = `<div class="overview-title"><strong>Image entière · ${parts} × ${parts} blocs</strong><span class="muted">Survolez un bloc puis cliquez pour continuer sa grille. Les blocs blancs ne sont pas encore commencés.</span></div><div class="image-mosaic" style="--parts:${parts}"></div>`;
+  const mosaic = imageOverview.querySelector('.image-mosaic');
+  for (let row = 0; row < parts; row += 1) for (let column = 0; column < parts; column += 1) {
+    const crop = { row, column, parts };
+    const button = document.createElement('button');
+    button.className = 'image-block';
+    button.title = `Ouvrir le bloc ${row + 1}, ${column + 1}`;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 160;
+    paintOverviewCanvas(canvas, imageBlocks.get(cropKey(crop)), crop);
+    button.append(canvas);
+    button.onclick = () => openImageCrop(crop);
+    mosaic.append(button);
+  }
+}
+
+function openImageCrop(crop) {
+  saveCurrentImageBlock();
+  importedCrop = crop;
+  const saved = imageBlocks.get(cropKey(crop));
+  board.hidden = false;
+  imageOverview.hidden = true;
+  if (saved) {
+    size = saved.size;
+    sizeSelect.value = String(size);
+    paletteColors = saved.palette.slice();
+    colorSolution = saved.solution.slice();
+    colorPlayer = saved.player.slice();
+    selectedColor = paletteColors[0] || null;
+    clearTrace();
+    renderColor();
+    return;
+  }
+  const recommended = suggestedSizeForCrop(crop.row, crop.column, crop.parts);
+  size = recommended;
+  sizeSelect.value = String(recommended);
+  quantizeImage(importedImage, crop);
+}
+
+function suggestedSizeForCrop(row, column, parts) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 20;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  const width = importedImage.width / parts;
+  const height = importedImage.height / parts;
+  context.drawImage(importedImage, column * width, row * height, width, height, 0, 0, 20, 20);
+  const data = context.getImageData(0, 0, 20, 20).data;
+  let variation = 0;
+  for (let index = 4; index < data.length; index += 4) variation += Math.abs(data[index] - data[index - 4]) + Math.abs(data[index + 1] - data[index - 3]) + Math.abs(data[index + 2] - data[index - 2]);
+  return variation > 29000 ? 25 : variation > 16000 ? 20 : variation > 7000 ? 15 : 10;
+}
+
+function showImageSubgrids(parts) {
+  showImageOverview(parts || imageSplit);
+}
+
+function updateTraceControls() {
+  const hasTrace = solverTrace.length > 1;
+  const lastIndex = Math.max(0, solverTrace.length - 1);
+  previousTrace.disabled = !hasTrace || traceIndex === 0;
+  nextTrace.disabled = !hasTrace || traceIndex === lastIndex;
+  traceSlider.disabled = !hasTrace;
+  traceModeToggle.disabled = false;
+  traceModeToggle.textContent = !hasTrace ? 'Préparer la trace' : (isViewingTrace ? 'Revenir au résultat' : 'Voir la trace');
+  traceSlider.max = lastIndex;
+  traceSlider.value = traceIndex;
+  traceLabel.textContent = hasTrace ? `Étape ${traceIndex} / ${lastIndex}` : 'Prépare une trace à partir de la grille actuelle.';
+}
+
+function clearTrace() {
+  solverTrace = [];
+  traceMessages = [];
+  traceIndex = 0;
+  isViewingTrace = false;
+  traceIsColor = false;
+  updateTraceControls();
+}
+
+function showTrace(index) {
+  if (!solverTrace.length) return;
+  traceIndex = Math.max(0, Math.min(index, solverTrace.length - 1));
+  if (traceIsColor) colorPlayer = solverTrace[traceIndex].slice();
+  else player = solverTrace[traceIndex].slice();
+  isViewingTrace = true;
+  solverMessage = traceMessages[traceIndex] || `Trace de résolution : étape ${traceIndex} sur ${solverTrace.length - 1}.`;
+  updateTraceControls();
+  if (traceIsColor) renderColor(); else render();
+}
+
+function toggleTraceMode() {
+  if (solverTrace.length < 2) {
+    prepareTrace();
+    showTrace(0);
+    return;
+  }
+  if (isViewingTrace) {
+    traceIndex = solverTrace.length - 1;
+    if (traceIsColor) colorPlayer = solverTrace[traceIndex].slice();
+    else player = solverTrace[traceIndex].slice();
+    isViewingTrace = false;
+    solverMessage = 'Résultat de la résolution automatique.';
+    updateTraceControls();
+    if (traceIsColor) renderColor(); else render();
+    return;
+  }
+  showTrace(0);
+}
+
+function indexOf(row, col) {
+  return row * size + col;
+}
+
+function cluesFor(values) {
+  const clues = [];
+  let run = 0;
+  values.forEach(value => {
+    if (value) run += 1;
+    else if (run) { clues.push(run); run = 0; }
+  });
+  if (run) clues.push(run);
+  return clues.length ? clues : [0];
+}
+
+function runsFor(values) {
+  const runs = [];
+  let start = -1;
+  values.forEach((value, index) => {
+    if (value && start === -1) start = index;
+    if (!value && start !== -1) {
+      runs.push({ start, end: index - 1, length: index - start });
+      start = -1;
+    }
+  });
+  if (start !== -1) runs.push({ start, end: values.length - 1, length: values.length - start });
+  return runs;
+}
+
+function normalizedClues(clues) {
+  return clues.length === 1 && clues[0] === 0 ? [] : clues;
+}
+
+function completedClueStates(clues, values) {
+  const targets = normalizedClues(clues);
+  const runs = runsFor(values.map(value => value === 1));
+  if (!targets.length) return [values.every(value => value !== 1)];
+  return targets.map((target, index) => {
+    const run = runs[index];
+    if (!run || run.length !== target) return false;
+    const beforeClear = run.start === 0 || values[run.start - 1] !== 1;
+    const afterClear = run.end === values.length - 1 || values[run.end + 1] !== 1;
+    return beforeClear && afterClear;
+  });
+}
+
+function rowLine(row) {
+  return Array.from({ length: size }, (_, col) => indexOf(row, col));
+}
+
+function columnLine(col) {
+  return Array.from({ length: size }, (_, row) => indexOf(row, col));
+}
+
+function lineState(indexes) {
+  return indexes.map(index => solution[index]);
+}
+
+function playerLine(indexes) {
+  return indexes.map(index => player[index]);
+}
+
+function applyAutomaticCrosses() {
+  let changes = 0;
+  const lines = [...Array.from({ length: size }, (_, row) => rowLine(row)), ...Array.from({ length: size }, (_, col) => columnLine(col))];
+  lines.forEach(indexes => {
+    const values = playerLine(indexes);
+    const clues = cluesFor(lineState(indexes));
+    const completed = completedClueStates(clues, values);
+    if (!completed.every(Boolean)) return;
+    indexes.forEach(index => {
+      if (player[index] === 0) {
+        player[index] = -1;
+        changes += 1;
+      }
+    });
+  });
+  return changes;
+}
+
+function linePatterns(clues, known) {
+  const blocks = normalizedClues(clues);
+  const patterns = [];
+  const compatible = pattern => pattern.every((filled, index) => (known[index] !== 1 || filled) && (known[index] !== -1 || !filled));
+  function place(blockIndex, minimumStart, pattern) {
+    if (blockIndex === blocks.length) {
+      if (compatible(pattern)) patterns.push(pattern);
+      return;
+    }
+    const remainingBlocks = blocks.slice(blockIndex + 1);
+    const remainingSpace = remainingBlocks.reduce((total, block) => total + block, 0) + remainingBlocks.length;
+    const blockLength = blocks[blockIndex];
+    const maximumStart = size - blockLength - remainingSpace;
+    for (let start = minimumStart; start <= maximumStart; start += 1) {
+      const next = pattern.slice();
+      for (let offset = 0; offset < blockLength; offset += 1) next[start + offset] = true;
+      place(blockIndex + 1, start + blockLength + 1, next);
+    }
+  }
+  place(0, 0, Array(size).fill(false));
+  return patterns;
+}
+
+function solveLine(indexes) {
+  const clues = cluesFor(lineState(indexes));
+  const known = playerLine(indexes);
+  const patterns = linePatterns(clues, known);
+  if (!patterns.length) return { changes: 0, contradiction: true };
+  let changes = 0;
+  indexes.forEach((index, position) => {
+    const alwaysFilled = patterns.every(pattern => pattern[position]);
+    const alwaysEmpty = patterns.every(pattern => !pattern[position]);
+    const value = alwaysFilled ? 1 : (alwaysEmpty ? -1 : 0);
+    if (value && player[index] !== value) {
+      player[index] = value;
+      changes += 1;
+    }
+  });
+  return { changes, contradiction: false };
+}
+
+function solveLogicalStep() {
+  let changes = 0;
+  let contradictions = 0;
+  const lines = [...Array.from({ length: size }, (_, row) => rowLine(row)), ...Array.from({ length: size }, (_, col) => columnLine(col))];
+  lines.forEach(indexes => {
+    const result = solveLine(indexes);
+    changes += result.changes;
+    contradictions += result.contradiction ? 1 : 0;
+  });
+  changes += applyAutomaticCrosses();
+  return { changes, contradictions };
+}
+
+function isLogicallySolvable() {
+  const savedPlayer = player;
+  player = Array(size * size).fill(0);
+  let contradiction = false;
+  for (let iteration = 0; iteration < size * size * 2; iteration += 1) {
+    const result = solveLogicalStep();
+    contradiction ||= result.contradictions > 0;
+    if (!result.changes) break;
+  }
+  const solved = !contradiction && player.every((value, index) => (value === 1) === solution[index]);
+  player = savedPlayer;
+  return solved;
+}
+
+function buildLogicalTrace(startState) {
+  const savedPlayer = player;
+  player = startState.slice();
+  const snapshots = [player.slice()];
+  const messages = ['État de départ.'];
+  let totalChanges = 0;
+  let contradictions = 0;
+  let progress = true;
+  while (progress) {
+    progress = false;
+    for (let row = 0; row < size; row += 1) {
+      const result = solveLine(rowLine(row));
+      contradictions += Number(result.contradiction);
+      if (!result.changes) continue;
+      totalChanges += result.changes;
+      progress = true;
+      snapshots.push(player.slice());
+      messages.push(`Ligne ${row + 1} : ${result.changes} déduction${result.changes > 1 ? 's' : ''}.`);
+    }
+    for (let col = 0; col < size; col += 1) {
+      const result = solveLine(columnLine(col));
+      contradictions += Number(result.contradiction);
+      if (!result.changes) continue;
+      totalChanges += result.changes;
+      progress = true;
+      snapshots.push(player.slice());
+      messages.push(`Colonne ${col + 1} : ${result.changes} déduction${result.changes > 1 ? 's' : ''}.`);
+    }
+    const crosses = applyAutomaticCrosses();
+    if (crosses) {
+      totalChanges += crosses;
+      progress = true;
+      snapshots.push(player.slice());
+      messages.push(`${crosses} croix ajoutée${crosses > 1 ? 's' : ''} sur des lignes ou colonnes terminées.`);
+    }
+  }
+  const finalState = player.slice();
+  player = savedPlayer;
+  return { snapshots, messages, finalState, totalChanges, contradictions };
+}
+
+function prepareTrace() {
+  const result = isColorMode ? buildColorTrace(colorPlayer) : buildLogicalTrace(player);
+  traceIsColor = isColorMode;
+  solverTrace = result.snapshots;
+  traceMessages = result.messages;
+  traceIndex = 0;
+  isViewingTrace = false;
+  solverMessage = result.snapshots.length > 1 ? 'Trace prête : utilisez les flèches pour suivre chaque ligne et colonne.' : 'Aucune déduction logique supplémentaire.';
+  updateTraceControls();
+}
+
+function solveLogically() {
+  const result = buildLogicalTrace(player);
+  solverTrace = result.snapshots;
+  traceMessages = result.messages;
+  player = result.finalState;
+  traceIndex = Math.max(0, solverTrace.length - 1);
+  isViewingTrace = false;
+  solverMessage = result.contradictions
+    ? 'Contradiction détectée : vérifie les cases déjà posées.'
+    : (result.totalChanges ? `${result.totalChanges} déduction${result.totalChanges > 1 ? 's' : ''} logique${result.totalChanges > 1 ? 's' : ''} appliquée${result.totalChanges > 1 ? 's' : ''}.` : 'Aucune déduction logique supplémentaire.');
+  updateTraceControls();
+  render();
+}
+
+function createRandomSolution() {
+  solution = Array(size * size).fill(false);
+  const seedCount = Math.max(5, Math.floor(size * 0.7));
+  for (let seed = 0; seed < seedCount; seed += 1) {
+    const centerRow = Math.floor(Math.random() * size);
+    const centerCol = Math.floor(Math.random() * size);
+    const radius = 1 + Math.floor(Math.random() * Math.max(2, size / 5));
+    for (let row = 0; row < size; row += 1) {
+      for (let col = 0; col < size; col += 1) {
+        if (Math.abs(row - centerRow) + Math.abs(col - centerCol) <= radius && Math.random() > .18) solution[indexOf(row, col)] = true;
+      }
+    }
+  }
+}
+
+function createSolution() {
+  const attempts = size > 20 ? 8 : 24;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    createRandomSolution();
+    player = Array(size * size).fill(0);
+    if (isLogicallySolvable()) return;
+  }
+  player = Array(size * size).fill(0);
+  solverMessage = 'Cette grille peut nécessiter une déduction avancée ou une supposition.';
+}
+
+function render() {
+  if (isColorMode) {
+    renderColor();
+    return;
+  }
+  if (!isViewingTrace) applyAutomaticCrosses();
+  const rowIndexes = Array.from({ length: size }, (_, row) => rowLine(row));
+  const columnIndexes = Array.from({ length: size }, (_, col) => columnLine(col));
+  const rowClues = rowIndexes.map(indexes => cluesFor(lineState(indexes)));
+  const columnClues = columnIndexes.map(indexes => cluesFor(lineState(indexes)));
+  const rowStates = rowIndexes.map((indexes, row) => completedClueStates(rowClues[row], playerLine(indexes)));
+  const columnStates = columnIndexes.map((indexes, col) => completedClueStates(columnClues[col], playerLine(indexes)));
+  const maxRowClues = Math.max(...rowClues.map(clues => clues.length));
+  const maxColumnClues = Math.max(...columnClues.map(clues => clues.length));
+  board.style.gridTemplateColumns = `repeat(${maxRowClues}, 29px) repeat(${size}, 29px)`;
+  board.style.gridTemplateRows = `repeat(${maxColumnClues}, 29px) repeat(${size}, 29px)`;
+  board.innerHTML = '';
+  for (let row = 0; row < maxColumnClues + size; row += 1) {
+    for (let col = 0; col < maxRowClues + size; col += 1) {
+      const element = document.createElement('div');
+      if (row < maxColumnClues && col < maxRowClues) element.className = 'corner';
+      else if (row < maxColumnClues) {
+        const clueColumn = col - maxRowClues;
+        const clues = columnClues[clueColumn];
+        const clueIndex = row - (maxColumnClues - clues.length);
+        element.className = 'clue top-clue';
+        if ((clueColumn + 1) % 5 === 0) element.classList.add('major-right');
+        const clue = clues[clueIndex];
+        if (clue && columnStates[clueColumn][clueIndex]) element.classList.add('done');
+        element.textContent = clue || '';
+      } else if (col < maxRowClues) {
+        const clueRow = row - maxColumnClues;
+        const clues = rowClues[clueRow];
+        const clueIndex = col - (maxRowClues - clues.length);
+        element.className = 'clue';
+        if ((clueRow + 1) % 5 === 0) element.classList.add('major-bottom');
+        const clue = clues[clueIndex];
+        if (clue && rowStates[clueRow][clueIndex]) element.classList.add('done');
+        element.textContent = clue || '';
+      } else {
+        const gridRow = row - maxColumnClues;
+        const gridCol = col - maxRowClues;
+        const cellIndex = indexOf(gridRow, gridCol);
+        const error = showErrors.checked && ((player[cellIndex] === 1 && !solution[cellIndex]) || (player[cellIndex] === -1 && solution[cellIndex]));
+        element.className = `cell${player[cellIndex] === 1 ? ' filled' : (player[cellIndex] === -1 ? ' marked' : '')}${error ? ' error' : ''}`;
+        if ((gridCol + 1) % 5 === 0) element.classList.add('major-right');
+        if ((gridRow + 1) % 5 === 0) element.classList.add('major-bottom');
+        element.dataset.index = cellIndex;
+        element.addEventListener('pointerdown', event => {
+          if (event.button !== 0 && event.button !== 2) return;
+          event.preventDefault();
+          const currentValue = player[cellIndex];
+          if (event.button === 0) {
+            paintMode = currentValue === 1 ? 'erase-filled' : 'fill-empty';
+            paintValue = currentValue === 1 ? 0 : 1;
+          } else {
+            if (currentValue === 1) return;
+            paintMode = currentValue === -1 ? 'erase-marked' : 'mark-empty';
+            paintValue = currentValue === -1 ? 0 : -1;
+          }
+          isPainting = true;
+          clearTrace();
+          solverMessage = '';
+          player[cellIndex] = paintValue;
+          render();
+        });
+        element.addEventListener('pointerenter', event => {
+          if (!isPainting || (event.buttons & 3) === 0) return;
+          const currentValue = player[cellIndex];
+          if ((paintMode === 'fill-empty' || paintMode === 'mark-empty') && currentValue !== 0) return;
+          if (paintMode === 'erase-filled' && currentValue !== 1) return;
+          if (paintMode === 'erase-marked' && currentValue !== -1) return;
+          player[cellIndex] = paintValue;
+          render();
+        });
+        element.addEventListener('contextmenu', event => event.preventDefault());
+      }
+      if (row === maxColumnClues - 1) element.classList.add('grid-divider-bottom');
+      if (col === maxRowClues - 1) element.classList.add('grid-divider-right');
+      board.appendChild(element);
+    }
+  }
+  const totalColumns = maxRowClues + size;
+  const totalRows = maxColumnClues + size;
+  const addSeparator = (orientation, position) => {
+    const separator = document.createElement('div');
+    separator.className = `separator ${orientation}`;
+    if (orientation === 'vertical') {
+      separator.style.left = `${position * 30 - 1}px`;
+      separator.style.height = `${totalRows * 30 - 1}px`;
+    } else {
+      separator.style.top = `${position * 30 - 1}px`;
+      separator.style.width = `${totalColumns * 30 - 1}px`;
+    }
+    board.appendChild(separator);
+  };
+  new Set([maxRowClues, ...Array.from({ length: Math.floor((size - 1) / 5) }, (_, index) => maxRowClues + (index + 1) * 5)]).forEach(position => addSeparator('vertical', position));
+  new Set([maxColumnClues, ...Array.from({ length: Math.floor((size - 1) / 5) }, (_, index) => maxColumnClues + (index + 1) * 5)]).forEach(position => addSeparator('horizontal', position));
+  const complete = player.every((value, index) => (value === 1) === solution[index]);
+  const mistakes = player.reduce((total, value, index) => total + Number((value === 1 && !solution[index]) || (value === -1 && solution[index])), 0);
+  errorCount.textContent = `Erreurs : ${mistakes}`;
+  status.textContent = complete ? 'Grille terminée !' : (solverMessage || 'Complète les groupes indiqués par les nombres de chaque ligne et colonne.');
+}
+
+function colorRuns(values) {
+  const runs = [];
+  let color = null;
+  let length = 0;
+  values.forEach(value => {
+    if (value && value !== -1 && value === color) length += 1;
+    else {
+      if (color) runs.push({ color, length });
+      color = value && value !== -1 ? value : null;
+      length = color ? 1 : 0;
+    }
+  });
+  if (color) runs.push({ color, length });
+  return runs;
+}
+
+function colorClueStates(clues, values) {
+  const runs = colorRuns(values);
+  return clues.map((clue, index) => Boolean(runs[index] && runs[index].color === clue.color && runs[index].length === clue.length));
+}
+
+function colorLine(row, column) {
+  return row === null
+    ? Array.from({ length: size }, (_, currentRow) => colorSolution[indexOf(currentRow, column)])
+    : Array.from({ length: size }, (_, currentColumn) => colorSolution[indexOf(row, currentColumn)]);
+}
+
+function colorPlayerLine(row, column) {
+  return row === null
+    ? Array.from({ length: size }, (_, currentRow) => colorPlayer[indexOf(currentRow, column)])
+    : Array.from({ length: size }, (_, currentColumn) => colorPlayer[indexOf(row, currentColumn)]);
+}
+
+function renderPalette() {
+  paletteElement.hidden = !isColorMode;
+  if (!isColorMode) return;
+  paletteElement.innerHTML = `<span class="muted">Couleur :</span>${paletteColors.map(color => `<button class="palette-color${selectedColor === color ? ' selected' : ''}" data-color="${color}" style="background:${color}" title="Choisir ${color}"></button>`).join('')}<button class="palette-color erase${selectedColor === null ? ' selected' : ''}" data-color="erase">Gomme</button>`;
+  paletteElement.querySelectorAll('[data-color]').forEach(button => button.addEventListener('click', () => {
+    selectedColor = button.dataset.color === 'erase' ? null : button.dataset.color;
+    renderPalette();
+  }));
+}
+
+function addColorSeparators(maxRowClues, maxColumnClues) {
+  const totalColumns = maxRowClues + size;
+  const totalRows = maxColumnClues + size;
+  const addSeparator = (orientation, position) => {
+    const separator = document.createElement('div');
+    separator.className = `separator ${orientation}`;
+    if (orientation === 'vertical') {
+      separator.style.left = `${position * 30 - 1}px`;
+      separator.style.height = `${totalRows * 30 - 1}px`;
+    } else {
+      separator.style.top = `${position * 30 - 1}px`;
+      separator.style.width = `${totalColumns * 30 - 1}px`;
+    }
+    board.appendChild(separator);
+  };
+  new Set([maxRowClues, ...Array.from({ length: Math.floor((size - 1) / 5) }, (_, index) => maxRowClues + (index + 1) * 5)]).forEach(position => addSeparator('vertical', position));
+  new Set([maxColumnClues, ...Array.from({ length: Math.floor((size - 1) / 5) }, (_, index) => maxColumnClues + (index + 1) * 5)]).forEach(position => addSeparator('horizontal', position));
+}
+
+function colorClueMarkup(clue) {
+  return clue ? `<span class="color-clue"><i style="background:${clue.color}"></i>${clue.length}</span>` : '';
+}
+
+function renderColor() {
+  renderPalette();
+  const rowClues = Array.from({ length: size }, (_, row) => colorRuns(colorLine(row, null)));
+  const columnClues = Array.from({ length: size }, (_, column) => colorRuns(colorLine(null, column)));
+  const rowStates = rowClues.map((clues, row) => colorClueStates(clues, colorPlayerLine(row, null)));
+  const columnStates = columnClues.map((clues, column) => colorClueStates(clues, colorPlayerLine(null, column)));
+  const maxRowClues = Math.max(1, ...rowClues.map(clues => clues.length));
+  const maxColumnClues = Math.max(1, ...columnClues.map(clues => clues.length));
+  resizeBoardContainer(maxRowClues + size, maxColumnClues + size);
+  board.style.gridTemplateColumns = `repeat(${maxRowClues}, 29px) repeat(${size}, 29px)`;
+  board.style.gridTemplateRows = `repeat(${maxColumnClues}, 29px) repeat(${size}, 29px)`;
+  board.innerHTML = '';
+  for (let row = 0; row < maxColumnClues + size; row += 1) {
+    for (let column = 0; column < maxRowClues + size; column += 1) {
+      const element = document.createElement('div');
+      if (row < maxColumnClues && column < maxRowClues) element.className = 'corner';
+      else if (row < maxColumnClues) {
+        const clueColumn = column - maxRowClues;
+        const clues = columnClues[clueColumn];
+        const clueIndex = row - (maxColumnClues - clues.length);
+        const clue = clues[clueIndex];
+        element.className = 'clue top-clue';
+        if (clue && columnStates[clueColumn][clueIndex]) element.classList.add('done');
+        element.innerHTML = colorClueMarkup(clue);
+      } else if (column < maxRowClues) {
+        const clueRow = row - maxColumnClues;
+        const clues = rowClues[clueRow];
+        const clueIndex = column - (maxRowClues - clues.length);
+        const clue = clues[clueIndex];
+        element.className = 'clue';
+        if (clue && rowStates[clueRow][clueIndex]) element.classList.add('done');
+        element.innerHTML = colorClueMarkup(clue);
+      } else {
+        const gridRow = row - maxColumnClues;
+        const gridColumn = column - maxRowClues;
+        const cellIndex = indexOf(gridRow, gridColumn);
+        const value = colorPlayer[cellIndex];
+        const error = showErrors.checked && ((value && value !== -1 && value !== colorSolution[cellIndex]) || (value === -1 && colorSolution[cellIndex]));
+        element.className = `cell${value && value !== -1 ? ' color-filled' : (value === -1 ? ' marked' : '')}${error ? ' error' : ''}`;
+        if (value && value !== -1) element.style.background = value;
+        element.dataset.index = cellIndex;
+        element.addEventListener('pointerdown', event => {
+          if (event.button !== 0 && event.button !== 2) return;
+          event.preventDefault();
+          const target = event.button === 2 ? -1 : selectedColor;
+          paintValue = colorPlayer[cellIndex] === target ? null : target;
+          paintMode = colorPlayer[cellIndex] === target ? 'erase-color' : 'set-color';
+          isPainting = true;
+          clearTrace();
+          solverMessage = '';
+          colorPlayer[cellIndex] = paintValue;
+          renderColor();
+        });
+        element.addEventListener('pointerenter', event => {
+          if (!isPainting || (event.buttons & 3) === 0) return;
+          if ((paintMode === 'set-color' && colorPlayer[cellIndex] === paintValue) || (paintMode === 'erase-color' && colorPlayer[cellIndex] !== paintValue)) return;
+          colorPlayer[cellIndex] = paintValue;
+          renderColor();
+        });
+        element.addEventListener('contextmenu', event => event.preventDefault());
+      }
+      if (row === maxColumnClues - 1) element.classList.add('grid-divider-bottom');
+      if (column === maxRowClues - 1) element.classList.add('grid-divider-right');
+      board.appendChild(element);
+    }
+  }
+  addColorSeparators(maxRowClues, maxColumnClues);
+  const complete = colorPlayer.every((value, index) => value === colorSolution[index] || (!colorSolution[index] && (value === null || value === -1)));
+  const mistakes = colorPlayer.reduce((total, value, index) => total + Number((value && value !== -1 && value !== colorSolution[index]) || (value === -1 && colorSolution[index])), 0);
+  errorCount.textContent = `Erreurs : ${mistakes}`;
+  status.textContent = complete ? 'Nonogram couleur terminé !' : (solverMessage || 'Choisis une couleur dans la palette, puis remplis les indices colorés.');
+}
+
+function createColorPuzzle() {
+  createRandomSolution();
+  colorSolution = solution.map(value => value ? paletteColors[Math.floor(Math.random() * paletteColors.length)] : null);
+  colorPlayer = Array(size * size).fill(null);
+  selectedColor = paletteColors[0];
+}
+
+function quantizeImage(image, crop = importedCrop) {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (crop) {
+    const cropWidth = image.width / crop.parts;
+    const cropHeight = image.height / crop.parts;
+    context.drawImage(image, crop.column * cropWidth, crop.row * cropHeight, cropWidth, cropHeight, 0, 0, size, size);
+  } else context.drawImage(image, 0, 0, size, size);
+  const pixels = context.getImageData(0, 0, size, size).data;
+  const buckets = new Map();
+  for (let index = 0; index < pixels.length; index += 4) {
+    const [red, green, blue, alpha] = pixels.slice(index, index + 4);
+    if (alpha < 100 || (red > 242 && green > 242 && blue > 242)) continue;
+    const color = `#${[red, green, blue].map(value => Math.min(255, Math.round(value / 51) * 51).toString(16).padStart(2, '0')).join('')}`;
+    buckets.set(color, (buckets.get(color) || 0) + 1);
+  }
+  paletteColors = [...buckets.entries()].sort((first, second) => second[1] - first[1]).slice(0, paletteLimit).map(([color]) => color);
+  if (!paletteColors.length) paletteColors = ['#334155'];
+  const nearest = (red, green, blue) => paletteColors.reduce((best, color) => {
+    const rgb = color.match(/[a-f0-9]{2}/gi).map(value => parseInt(value, 16));
+    const distance = (rgb[0] - red) ** 2 + (rgb[1] - green) ** 2 + (rgb[2] - blue) ** 2;
+    return distance < best.distance ? { color, distance } : best;
+  }, { color: paletteColors[0], distance: Infinity }).color;
+  colorSolution = Array.from({ length: size * size }, (_, pixel) => {
+    const offset = pixel * 4;
+    const [red, green, blue, alpha] = pixels.slice(offset, offset + 4);
+    return alpha < 100 || (red > 242 && green > 242 && blue > 242) ? null : nearest(red, green, blue);
+  });
+  solution = colorSolution.map(Boolean);
+  colorPlayer = Array(size * size).fill(null);
+  selectedColor = paletteColors[0];
+  solverMessage = '';
+  clearTrace();
+  board.hidden = false;
+  imageOverview.hidden = true;
+  renderImageTools();
+  renderColor();
+}
+
+function importImage(file) {
+  if (!file) return;
+  const image = new Image();
+  image.addEventListener('load', () => {
+    isColorMode = true;
+    modeSelect.value = 'color';
+    importedImage = image;
+    importedCrop = null;
+    imageBlocks = new Map();
+    quantizeImage(image);
+  });
+  image.src = URL.createObjectURL(file);
+}
+
+function colorLinePatterns(clues, known) {
+  const patterns = [];
+  const compatible = pattern => pattern.every((value, index) => known[index] === null || (known[index] === -1 ? value === null : value === known[index]));
+  const minimumLength = start => clues.slice(start).reduce((total, clue, offset) => total + clue.length + Number(offset > 0 && clue.color === clues[start + offset - 1].color), 0);
+  const place = (runIndex, minimumStart, pattern) => {
+    if (runIndex === clues.length) { if (compatible(pattern)) patterns.push(pattern); return; }
+    const run = clues[runIndex];
+    const laterLength = minimumLength(runIndex + 1) + Number(clues[runIndex + 1]?.color === run.color);
+    for (let start = minimumStart; start <= size - run.length - laterLength; start += 1) {
+      const next = pattern.slice();
+      for (let offset = 0; offset < run.length; offset += 1) next[start + offset] = run.color;
+      const separator = clues[runIndex + 1]?.color === run.color ? 1 : 0;
+      place(runIndex + 1, start + run.length + separator, next);
+    }
+  };
+  place(0, 0, Array(size).fill(null));
+  return patterns;
+}
+
+function solveColorLine(indexes) {
+  const clues = colorRuns(indexes.map(index => colorSolution[index]));
+  const known = indexes.map(index => colorPlayer[index]);
+  const patterns = colorLinePatterns(clues, known);
+  if (!patterns.length) return { changes: 0, contradiction: true };
+  let changes = 0;
+  indexes.forEach((index, position) => {
+    const fixed = patterns.every(pattern => pattern[position] === patterns[0][position]) ? patterns[0][position] : undefined;
+    const next = fixed === null ? -1 : fixed;
+    if (fixed !== undefined && colorPlayer[index] !== next) { colorPlayer[index] = next; changes += 1; }
+  });
+  return { changes, contradiction: false };
+}
+
+function solveColorLogicalStep() {
+  let changes = 0;
+  let contradictions = 0;
+  const lines = [...Array.from({ length: size }, (_, row) => rowLine(row)), ...Array.from({ length: size }, (_, column) => columnLine(column))];
+  lines.forEach(indexes => { const result = solveColorLine(indexes); changes += result.changes; contradictions += Number(result.contradiction); });
+  return { changes, contradictions };
+}
+
+function solveColorLogically(all = false) {
+  let total = 0;
+  let contradictions = 0;
+  const limit = all ? size * size * 3 : 1;
+  for (let iteration = 0; iteration < limit; iteration += 1) { const result = solveColorLogicalStep(); total += result.changes; contradictions += result.contradictions; if (!result.changes || result.contradictions) break; }
+  solverMessage = contradictions ? 'Contradiction détectée : une couleur ou une croix est incompatible avec les indices.' : total ? `${total} déduction${total > 1 ? 's' : ''} colorée${total > 1 ? 's' : ''} appliquée${total > 1 ? 's' : ''}.` : 'Aucune déduction colorée supplémentaire.';
+  renderColor();
+}
+
+function buildColorTrace(startState) {
+  const saved = colorPlayer;
+  colorPlayer = startState.slice();
+  const snapshots = [colorPlayer.slice()];
+  const messages = ['État de départ.'];
+  let totalChanges = 0;
+  let contradictions = 0;
+  let progress = true;
+  while (progress) {
+    progress = false;
+    for (let row = 0; row < size; row += 1) {
+      const result = solveColorLine(rowLine(row));
+      contradictions += Number(result.contradiction);
+      if (!result.changes) continue;
+      totalChanges += result.changes;
+      progress = true;
+      snapshots.push(colorPlayer.slice());
+      messages.push(`Ligne ${row + 1} : ${result.changes} déduction${result.changes > 1 ? 's' : ''} colorée${result.changes > 1 ? 's' : ''}.`);
+    }
+    for (let column = 0; column < size; column += 1) {
+      const result = solveColorLine(columnLine(column));
+      contradictions += Number(result.contradiction);
+      if (!result.changes) continue;
+      totalChanges += result.changes;
+      progress = true;
+      snapshots.push(colorPlayer.slice());
+      messages.push(`Colonne ${column + 1} : ${result.changes} déduction${result.changes > 1 ? 's' : ''} colorée${result.changes > 1 ? 's' : ''}.`);
+    }
+    if (contradictions) break;
+  }
+  const finalState = colorPlayer.slice();
+  colorPlayer = saved;
+  return { snapshots, messages, finalState, totalChanges, contradictions };
+}
+
+document.addEventListener('pointerup', () => { isPainting = false; });
+generateButton.addEventListener('click', () => { size = Number(sizeSelect.value); solverMessage = ''; clearTrace(); if (importedImage && isColorMode && colorPlayer.every(value => value === null || value === -1)) quantizeImage(importedImage); else if (isColorMode) createColorPuzzle(); else createSolution(); render(); });
+resetButton.addEventListener('click', () => { solverMessage = ''; if (isColorMode) colorPlayer = Array(size * size).fill(null); else player = Array(size * size).fill(0); clearTrace(); render(); });
+solveStepButton.addEventListener('click', () => {
+  const result = isColorMode ? buildColorTrace(colorPlayer) : buildLogicalTrace(player);
+  traceIsColor = isColorMode;
+  solverTrace = result.snapshots.slice(0, 2);
+  traceMessages = result.messages.slice(0, 2);
+  if (solverTrace.length > 1) {
+    if (traceIsColor) colorPlayer = solverTrace[1].slice();
+    else player = solverTrace[1].slice();
+  }
+  traceIndex = Math.max(0, solverTrace.length - 1);
+  isViewingTrace = false;
+  solverMessage = result.contradictions
+    ? 'Contradiction détectée : vérifie les cases déjà posées.'
+    : (solverTrace.length > 1 ? traceMessages[1] : 'Aucune déduction sur cette étape.');
+  updateTraceControls();
+  if (traceIsColor) renderColor(); else render();
+});
+solveAllButton.addEventListener('click', () => {
+  if (!isColorMode) { solveLogically(); return; }
+  const result = buildColorTrace(colorPlayer);
+  traceIsColor = true;
+  solverTrace = result.snapshots;
+  traceMessages = result.messages;
+  colorPlayer = result.finalState;
+  traceIndex = Math.max(0, solverTrace.length - 1);
+  isViewingTrace = false;
+  solverMessage = result.contradictions ? 'Contradiction détectée : vérifie les couleurs déjà posées.' : (result.totalChanges ? `${result.totalChanges} déduction${result.totalChanges > 1 ? 's' : ''} colorée${result.totalChanges > 1 ? 's' : ''} appliquée${result.totalChanges > 1 ? 's' : ''}.` : 'Aucune déduction colorée supplémentaire.');
+  updateTraceControls();
+  renderColor();
+});
+showErrors.addEventListener('change', () => { if (isColorMode) renderColor(); else render(); });
+traceModeToggle.addEventListener('click', toggleTraceMode);
+previousTrace.addEventListener('click', () => showTrace(traceIndex - 1));
+nextTrace.addEventListener('click', () => showTrace(traceIndex + 1));
+traceSlider.addEventListener('input', () => showTrace(Number(traceSlider.value)));
+modeSelect.addEventListener('change', () => {
+  isColorMode = modeSelect.value === 'color';
+  solverMessage = '';
+  clearTrace();
+  if (isColorMode) createColorPuzzle(); else { createSolution(); paletteElement.hidden = true; }
+  render();
+});
+imageInput.addEventListener('change', () => importImage(imageInput.files[0]));
+sizeSelect.addEventListener('change', () => { if (!importedImage || !isColorMode || colorPlayer.some(value => value !== null && value !== -1)) return; size = Number(sizeSelect.value); quantizeImage(importedImage); });
+localStorage.setItem('game-hub:last-game', 'nonogram');
+createSolution();
+updateTraceControls();
+render();

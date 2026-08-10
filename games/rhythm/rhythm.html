@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Rhythm Lab</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Arial, sans-serif; background: #eaf1fb; color: #17243a; }
+    body { margin: 0; min-height: 100vh; background: linear-gradient(#dbeafe, #b9d4ed); }
+    main { max-width: 1280px; margin: auto; padding: 24px; }
+    .panel { padding: 18px; border: 1px solid #c2d2e5; border-radius: 18px; background: #fff; box-shadow: 0 10px 28px #0f172a24; }
+    .toolbar, .tracks, .stats { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+    .option-groups { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 10px; margin: 12px 0 16px; }
+    .option-group { min-width: 0; border: 1px solid #c2d2e5; border-radius: 11px; background: #f8fbff; }
+    .option-group summary { padding: 9px 11px; color: #263f63; font-weight: 900; cursor: pointer; user-select: none; }
+    .option-group > div { display: flex; min-width: 0; gap: 8px; align-items: center; flex-wrap: wrap; padding: 2px 10px 11px; overflow: hidden; }
+    .option-group label { max-width: 100%; margin: 0; box-sizing: border-box; }
+    .option-group select { width: auto; max-width: min(100%,240px); min-width: 0; box-sizing: border-box; text-overflow: ellipsis; }
+    .option-group input[type="range"] { max-width: 100%; min-width: 0; }
+    .option-group .volume-control, .option-group .speed-control, .option-group .visual-control { width: 100%; max-width: 100%; grid-template-columns: minmax(0,auto) minmax(70px,1fr) auto; box-sizing: border-box; }
+    .option-group .volume-control input, .option-group .speed-control input, .option-group .visual-control input { width: 100%; }
+    .option-group button { padding: 6px 9px; }
+    h1 { margin: 0 auto 0 0; }
+    button, a, select, input { font: inherit; }
+    button, a, select { padding: 8px 11px; border: 1px solid #8297b5; border-radius: 9px; color: #17243a; background: #fff; cursor: pointer; text-decoration: none; }
+    button:hover, a:hover, .track.selected { color: #fff; border-color: #315fa7; background: #315fa7; }
+    .muted { color: #52657f; line-height: 1.5; }
+    .volume-control { display: grid; grid-template-columns:auto 110px; gap: 7px; align-items: center; font-size: 12px; }
+    .volume-control input { width: 110px; accent-color: #315fa7; }
+    .volume-slider { position: relative; display: grid; padding-bottom: 12px; }
+    .volume-slider .midpoint { position: absolute; top: 17px; left: 25%; color: #52657f; font-size: 9px; font-weight: 800; transform: translateX(-50%); }
+    .speed-control { display: grid; grid-template-columns: auto 115px 48px; gap: 6px; align-items: center; font-size: 12px; }
+    .speed-control input { width: 115px; accent-color: #e11d48; }
+    .visual-control { display: grid; grid-template-columns:auto 100px 54px; gap: 6px; align-items: center; font-size: 12px; }
+    .visual-control input { width: 100px; accent-color: #315fa7; }
+    .stats strong { color: #b45309; font-size: 22px; }
+    .records { display: flex; gap: 14px; flex-wrap: wrap; margin: -4px 0 12px; }
+    .stage-wrap { margin-top: 118px; padding-top: 6px; }
+    .stage { position: relative; display: grid; height: 620px; grid-template-columns: repeat(var(--lanes), 1fr); gap: 3px; border: 3px solid #58749c; border-radius: 15px; background: #dceaff; }
+    .lane { position: relative; border-left: 1px solid #9db4d1; background: #eef6ff; }
+    .lane:nth-child(odd) { background: #e5f0ff; }
+    .target { position: absolute; z-index: 4; right: 4px; bottom: 18px; left: 4px; display: grid; height: 54px; place-items: center; border: 3px solid var(--lane); border-radius: 8px; color: #263f63; background: #fffffff2; font-size: 20px; font-weight: 900; }
+    .note { position: absolute; z-index: 3; top: 0; left: 8%; display: grid; width: 84%; height: 30px; place-items: center; border-radius: 8px; color: #102038; background: var(--lane); box-shadow: 0 0 14px var(--lane); font-weight: 900; will-change: transform; }
+    .track { padding: 7px 10px; border: 1px solid #8197b7; border-radius: 8px; background: #f8fbff; cursor: pointer; }
+    .hint { margin: -108px 0 84px; color: #52657f; text-align: center; font-size: 12px; }
+    .score-stage { display: block; width: 100%; max-width: 100%; height: auto; min-height: 0; padding: 28px 38px; overflow: hidden; box-sizing: border-box; background: #fff; }
+    .score-stage .staff-meta, .score-stage .staff-lines, .score-stage .duration-track, .score-stage .score-keys { width: var(--score-content-width,100%); max-width: var(--score-content-width,100%); box-sizing: border-box; zoom: var(--score-scale,1); }
+    .staff-meta { display: flex; gap: 20px; justify-content: space-between; margin-bottom: 12px; color: #263f63; }
+    .staff-lines { position: relative; min-width: 0; height: 300px; border-top: 1px solid #94a3b8; border-bottom: 1px solid #94a3b8; background: linear-gradient(to bottom,transparent 91px,#263f63 92px 94px,transparent 95px 113px,#263f63 114px 116px,transparent 117px 135px,#263f63 136px 138px,transparent 139px 157px,#263f63 158px 160px,transparent 161px 179px,#263f63 180px 182px,transparent 183px); background-position: 0 var(--staff-shift, 0); background-repeat: no-repeat; }
+    .clef { position: absolute; top: calc(61px + var(--staff-shift, 0px)); left: 14px; color: #263f63; font-size: 134px; line-height: 1; }
+    .percussion-clef-symbol { display: block; width: 72px; height: 112px; color: inherit; transform: translateY(18px); }
+    .score-change.incoming-clef .percussion-clef-symbol { width: 48px; height: 72px; transform: translateY(24px); }
+    .score-note { position: absolute; z-index: 2; width: 23px; height: 17px; border: 2px solid #17243a; border-radius: 52%; color: #17243a; background: var(--note); transform: rotate(-17deg); box-sizing: border-box; will-change: transform; }
+    .score-note.flowing { animation: score-note-flow var(--flow-ms) linear forwards; }
+    @keyframes score-note-flow { from { transform: translateX(0) rotate(-17deg); } to { transform: translateX(calc(-1 * var(--flow-step))) rotate(-17deg); } }
+    .score-note.open { background: #fff; box-shadow: inset 0 0 0 3px var(--note); }
+    .score-note.whole::after { display: none; }
+    .score-note::after { position: absolute; bottom: 8px; left: 18px; width: 2px; height: 44px; background: #17243a; content: ''; transform: rotate(17deg); transform-origin: bottom; }
+    .score-note.flag-1::before, .score-note.flag-2::before, .score-note.flag-3::before { position: absolute; z-index: 3; bottom: 29px; left: 19px; width: 12px; height: 16px; border-right: 4px solid #17243a; border-bottom: 4px solid #17243a; border-radius: 0 0 12px; content: ''; transform: rotate(17deg) skewY(24deg); transform-origin: top left; }
+    .score-note.flag-2::before { box-shadow: 3px 7px 0 -1px #17243a; }
+    .score-note.flag-3::before { box-shadow: 3px 7px 0 -1px #17243a,6px 14px 0 -1px #17243a; }
+    .score-note em { position: absolute; right: 24px; top: -5px; color: #17243a; font-size: 20px; font-style: normal; transform: rotate(17deg); }
+    .score-note .fingering { position: absolute; z-index: 5; top: 28px; left: 50%; width: max-content; min-width: 26px; max-width: 46px; padding: 2px 4px; border: 1px solid #94a3b8; border-radius: 5px; color: #101827; background: #fffffff2; font-size: 12px; font-weight: 900; line-height: 1.05; text-align: center; transform: translateX(-50%) rotate(17deg); transform-origin: center top; }
+    .score-note .fingering.stacked { min-width: 20px; max-width: 24px; padding: 3px 2px; line-height: .95; }
+    .score-note .fingering.lower { top: 55px; }
+    .score-note .duration-dot { position: absolute; left: 26px; top: 1px; font-size: 16px; transform: rotate(17deg); }
+    .score-note .chord-count { position: absolute; top: -15px; right: -16px; color: #334155; font-size: 10px; transform: rotate(18deg); }
+    .score-note .articulation { position: absolute; bottom: -20px; left: 5px; color: #17243a; font-size: 17px; font-weight: 900; transform: rotate(18deg); }
+    .score-note .notation-symbols { position: absolute; top: 45px; left: -28px; width: 80px; overflow: hidden; color: #475569; font-size: 8px; font-style: normal; text-align: center; text-overflow: ellipsis; white-space: nowrap; transform: rotate(17deg); }
+    .beam-segment { position: absolute; z-index: 3; height: 5px; border-radius: 2px; background: #17243a; transform-origin: left center; }
+    .tie-segment { position: absolute; z-index: 2; height: 20px; border-bottom: 3px solid #17243a; border-radius: 0 0 50% 50%; pointer-events: none; }
+    .tie-incoming { position: absolute; right: 17px; top: 8px; width: 34px; height: 12px; border-bottom: 3px solid #17243a; border-radius: 0 0 50% 50%; pointer-events: none; transform: rotate(17deg); transform-origin: right center; }
+    .score-rest { position: absolute; z-index: 2; width: 32px; height: 54px; color: #17243a; transform: translate(-50%,-18px); }
+    .rest-symbol { display: block; width: 32px; height: 54px; overflow: visible; fill: currentColor; }
+    .whole-rest { transform: translateY(-1px); }
+    .half-rest { transform: translateY(-5px); }
+    .score-rest b { position: absolute; left: 50%; bottom: 38px; min-width: 22px; padding: 2px 5px; border-radius: 10px; color: #fff; background: #315fa7; font: 800 11px/1 Arial,sans-serif; text-align: center; transform: translateX(-50%); }
+    .measure-line { position: absolute; z-index: 1; top: calc(91px + var(--staff-shift, 0px)); width: 2px; height: 91px; background: #64748b; opacity: .72; }
+    .measure-line small { position: absolute; top: -17px; left: 4px; color: #64748b; font: 700 9px/1 Arial,sans-serif; }
+    .duration-track { position: relative; min-width: 0; height: 52px; margin-top: 94px; border-top: 1px solid #94a3b8; background: #f8fafc; }
+    .duration-mark { position: absolute; top: 12px; height: 12px; min-width: 5px; border-radius: 8px; background: var(--note); box-shadow: inset 0 0 0 1px #17243a55; transform: translateX(-2px); }
+    .duration-mark.tap { width: 8px !important; height: 8px; border-radius: 50%; }
+    .duration-mark::after { position: absolute; top: 16px; left: 0; color: #52657f; content: attr(data-label); font-size: 9px; white-space: nowrap; }
+    .duration-label { position: absolute; left: 0; top: -18px; color: #52657f; font-size: 11px; font-weight: 700; }
+    .hit-line { position: absolute; z-index: 4; top: -18px; bottom: -18px; width: 4px; border-radius: 3px; background: #e11d48; box-shadow: 0 0 12px #e11d48; }
+    .key-signature { position: absolute; z-index: 3; top: var(--staff-shift, 0px); left: 84px; width: 72px; height: 220px; color: #17243a; }
+    .key-signature i { position: absolute; top: calc(77px + var(--staff-pos) * 11px); left: calc(var(--index, 0) * 10px); font: normal 32px/1 serif; }
+    .key-signature i:nth-child(1){--index:0}.key-signature i:nth-child(2){--index:1}.key-signature i:nth-child(3){--index:2}.key-signature i:nth-child(4){--index:3}.key-signature i:nth-child(5){--index:4}.key-signature i:nth-child(6){--index:5}.key-signature i:nth-child(7){--index:6}
+    .natural-key { position: absolute; top: 123px; left: 4px; color: #94a3b8; font-size: 24px; }
+    .time-signature { position: absolute; z-index: 3; top: calc(112px + var(--staff-shift, 0px)); left: 156px; display: grid; color: #17243a; font: 900 34px/.83 Georgia,serif; text-align: center; }
+    .score-change { position: absolute; z-index: 3; top: -25px; padding: 3px 6px; border: 1px solid #64748b; border-radius: 5px; color: #17243a; background: #fff; font-size: 11px; font-weight: 800; white-space: nowrap; transform: translateX(-50%); }
+    .score-change.incoming-signature { top: 0; padding: 0; border: 0; background: #ffffffeb; transform: translateX(-50%); }
+    .score-change.incoming-signature.key-signature { left: auto; width: 78px; }
+    .score-change.incoming-signature.key-signature { background: transparent; }
+    .score-change.incoming-signature.time-signature { left: auto; width: 42px; }
+    .score-change.incoming-clef { top: calc(63px + var(--staff-shift, 0px)); padding: 0 5px; border: 0; background: #ffffffeb; font-size: 82px; line-height: 1; }
+    .score-keys { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 18px; }
+    .score-keys span { padding: 8px 12px; border: 2px solid var(--lane, #315fa7); border-radius: 7px; color: #17243a; background: #fff; font-weight: 800; }
+    .score-keys span.pressed { color: #fff; background: #315fa7; box-shadow: 0 0 0 4px #60a5fa55; transform: translateY(3px); }
+    .score-keys span.breathing, .instrument-guide .valve.breathing { color: #17243a; background: #fb923c; box-shadow: 0 0 0 5px #fb923c55; }
+    .instrument-guide .slide-scale.breathing input { accent-color: #fb923c; }
+    .instrument-guide [data-slide-position].breathing { color: #c2410c; font-weight: 900; }
+    .instrument-guide .valve.zero { border-style: dashed; }
+    .instrument-guide { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; margin-top: 14px; min-height: 54px; }
+    .instrument-guide .valve { display: grid; width: 42px; height: 42px; place-items: center; border: 3px solid #52657f; border-radius: 50%; background: #fff; color: #17243a; font-weight: 900; transition: transform .1s, background .1s; }
+    .instrument-guide .valve.active { background: #facc15; transform: translateY(7px); }
+    .instrument-guide .valve small { display: block; font-size: 9px; }
+    .instrument-guide input[type=range] { width: 240px; accent-color: #e11d48; }
+    .instrument-guide small { color: #52657f; }
+    .stage-wrap.slide-at-left { display: grid; grid-template-columns: 112px minmax(0,1fr); column-gap: 12px; align-items: center; }
+    .stage-wrap.slide-at-left .hint { grid-column: 2; }
+    .stage-wrap.slide-at-left .stage { grid-column: 2; grid-row: 2; width: auto; }
+    .stage-wrap.slide-at-left .instrument-guide { grid-column: 1; grid-row: 2; margin: 0; }
+    .instrument-guide.vertical-slide { align-self: stretch; display: flex; flex-direction: column; justify-content: center; min-width: 100px; }
+    .slide-scale { position: relative; display: grid; place-items: center; }
+    .slide-scale i { display: none; }
+    .instrument-guide.vertical-slide .slide-scale { width: 78px; height: 360px; }
+    .instrument-guide.vertical-slide #slideControl { width: 30px; height: 340px; margin: 0; writing-mode: vertical-lr; direction: rtl; appearance: slider-vertical; }
+    .instrument-guide.vertical-slide .slide-scale i { position: absolute; top: calc(10px + var(--position) * 53px); right: 0; display: block; color: #52657f; font-size: 11px; font-style: normal; }
+    .input-mapping { margin: 0 0 16px; padding: 14px; border: 1px solid #9db4d1; border-radius: 13px; background: #eef6ff; }
+    .input-mapping > div:first-child { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin-bottom: 11px; }
+    .input-mapping > div:first-child strong { margin-right: auto; }
+    #mappingControls { display: grid; gap: 10px; }
+    .mapping-group { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+    .mapping-group > strong { width: 105px; }
+    .mapping-group button { padding: 6px 9px; }
+    .mapping-group button.listening { color: #fff; background: #e11d48; animation: mapping-pulse .7s infinite alternate; }
+    @keyframes mapping-pulse { to { transform: scale(1.06); } }
+    @media (max-width: 700px) { main { padding: 10px; } .stage { height: 520px; } .stage-wrap { margin-top: 80px; } .hint { margin: -74px 0 56px; } }
+    @media (prefers-color-scheme: dark) {
+      :root { background: #101827; color: #e8eef8; }
+      body { background: linear-gradient(#101827,#172a43); }
+      .panel { border-color: #34445e; background: #172235; box-shadow: 0 10px 30px #0008; }
+      .muted, .hint, .instrument-guide small, .duration-label, .duration-mark::after, .volume-slider .midpoint { color: #b6c6df; }
+      .stats strong { color: #fbbf24; }
+      button, a, select, input[type=file], .track { border-color: #60718a; color: #f1f5fb; background: #263447; }
+      button:hover, a:hover, .track.selected { color: #fff; border-color: #60a5fa; background: #315fa7; }
+      .stage { border-color: #6b83ad; background: #101a2d; }
+      .lane { border-color: #415a80; background: #182945; }
+      .lane:nth-child(odd) { background: #1e3150; }
+      .target { color: #dbeafe; background: #0d1628e8; }
+      .score-stage { background: #111b2e; }
+      .staff-meta, .clef, .key-signature, .time-signature { color: #dbeafe; }
+      .staff-lines { border-color: #526987; background: linear-gradient(to bottom,transparent 91px,#dbeafe 92px 94px,transparent 95px 113px,#dbeafe 114px 116px,transparent 117px 135px,#dbeafe 136px 138px,transparent 139px 157px,#dbeafe 158px 160px,transparent 161px 179px,#dbeafe 180px 182px,transparent 183px); background-position: 0 var(--staff-shift, 0); background-repeat: no-repeat; }
+      .score-note { border-color: #e5edf8; color: #e5edf8; }
+      .score-note::after, .score-note.flag-1::before, .score-note.flag-2::before, .score-note.flag-3::before, .beam-segment { background-color: #e5edf8; border-color: #e5edf8; }
+      .score-note.flag-2::before { box-shadow: 3px 7px 0 -1px #e5edf8; }
+      .score-note.flag-3::before { box-shadow: 3px 7px 0 -1px #e5edf8,6px 14px 0 -1px #e5edf8; }
+      .score-note.open { background: #172235; }
+      .score-note em, .score-note .chord-count, .score-note .articulation, .score-note .notation-symbols { color: #e5edf8; }
+      .score-note small { color: #f8fafc; background: #172235e8; }
+      .tie-segment { border-color: #e5edf8; }
+      .tie-incoming { border-color: #e5edf8; }
+      .score-rest { color: #e5edf8; }
+      .measure-line { background: #94a3b8; }
+      .measure-line small { color: #b6c6df; }
+      .duration-track { border-color: #526987; background: #18263b; }
+      .score-change { border-color: #7186a4; color: #eef4ff; background: #263447; }
+      .score-change.incoming-signature, .score-change.incoming-clef { background: #172235eb; }
+      .score-change.incoming-signature.key-signature { background: transparent; }
+      .score-keys span { color: #e8eef8; background: #263447; }
+      .score-keys span.pressed { color: #fff; background: #315fa7; }
+      .instrument-guide .valve { border-color: #8da2c0; color: #e8eef8; background: #263447; }
+      .instrument-guide .valve.active { color: #17243a; background: #facc15; }
+      .instrument-guide .slide-scale i { color: #c8d6ea; }
+      .input-mapping { border-color: #526987; background: #1d2d44; }
+      .option-group { border-color: #526987; background: #1d2d44; }
+      .option-group summary { color: #e5edf8; }
+    }
+  </style>
+</head>
+<body>
+  <main><section class="panel">
+    <div class="toolbar"><h1>Rhythm Lab</h1><a href="../../index.html">Hub</a><label class="muted">Partition <input id="file" type="file" accept=".mscz,.mscx,.musicxml,.xml"></label><label class="muted">Affichage <select id="mode"><option value="piano">Piano · 12 touches</option><option value="buttons">Boutons · 11 touches</option><option value="score" selected>Partition colorée</option></select></label><label class="muted"><input id="accidentals" type="checkbox" checked> Dièses / bémols</label><button id="start">Démarrer</button></div>
+    <div class="muted">Import local MuseScore (`.mscz`/`.mscx`) ou MusicXML. Les notes entrent au-dessus de la zone pour laisser le temps d’anticiper ; choisissez AZERTY, QWERTY ou QWERTZ dans les options de commande.</div>
+    <div id="trackList" class="tracks"></div><div class="stats"><span>Score <strong id="score">0</strong></span><span>Précision <strong id="accuracy">—</strong></span><span id="status" class="muted">Démo chargée.</span></div><div id="records" class="records muted"></div>
+    <div class="stage-wrap"><div class="hint">Zone d’anticipation</div><div id="stage" class="stage"></div></div>
+  </section></main>
+  <script type="importmap">{"imports":{"spessasynth_core":"../../vendor/spessasynth_core/dist/index.js?v=local-2","stb-vorbis":"../../vendor/stb-vorbis/dist/index.js?v=local-2"}}</script>
+  <script type="module" src="soundfont-engine.js?v=5"></script>
+  <script src="brass-fingering.js?v=1"></script>
+  <script src="trombone-position.js?v=1"></script>
+  <script src="rhythm.js?v=79"></script>
+</body>
+</html>

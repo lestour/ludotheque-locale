@@ -1,0 +1,24 @@
+.DS_Store
+**/.DS_Store
+build/
+*.webloc
+
+# Contenus personnels importés dans les modules.
+imports/
+user-content/
+*.mscz
+*.mscx
+*.musicxml
+
+# Fichiers temporaires des lanceurs et éditeurs.
+*.log
+*.pid
+*.tmp
+*~
+
+# Anciens liens symboliques locaux, remplacés par les chemins vers shared/.
+/games/board/effects.js
+/games/cards/classic/cards.js
+/games/cards/modern/cards.js
+/games/cards/modern/effects.js
+/games/grid/effects.js

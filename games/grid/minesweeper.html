@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Démineur</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Arial, sans-serif; background: #f3f6fb; color: #152238; }
+    body { margin: 0; }
+    main { max-width: 1180px; margin: auto; padding: 24px; }
+    .panel { background: #fff; border: 1px solid #d7e0ed; border-radius: 16px; padding: 18px; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+    .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+    h1 { margin: 0 auto 0 0; }
+    button, select, a { border: 1px solid #9baac0; border-radius: 10px; padding: 8px 12px; background: #fff; color: #152238; font: inherit; text-decoration: none; cursor: pointer; }
+    button:hover, a:hover { background: #2447a8; color: #fff; border-color: #2447a8; }
+    .muted { color: #61718a; font-size: 14px; }
+    #status { min-height: 22px; font-weight: 700; }
+    #board { display: grid; width: max-content; max-width: 100%; overflow: hidden; padding: 3px; border: 2px solid #203048; background: #7f8ea4; gap: 1px; user-select: none; }
+    .cell { width: var(--cell-size, 30px); height: var(--cell-size, 30px); border: 0; border-radius: 0; padding: 0; background: #dbe4ee; color: #17243a; font-weight: 700; font-size: clamp(9px, 2vw, 16px); }
+    .cell:hover:not(.revealed) { background: #b9c8da; }
+    .cell.revealed { background: #f8fafc; cursor: default; }
+    .cell.flagged { background: #f5c2c7; }
+    .cell.mine { background: #fde68a; color: #854d0e; }
+    .cell.exploded { background: #ef4444; color: #fff; }
+    .cell.found-flag { background: #86efac; color: #166534; }
+    .cell.wrong-flag { background: #fca5a5; color: #991b1b; }
+    .cell.solver-flag { background: #c4b5fd; color: #4c1d95; box-shadow: inset 0 0 0 2px #7c3aed; }
+    .cell.solver-error { background: #fb923c; color: #7c2d12; box-shadow: inset 0 0 0 3px #dc2626; }
+    .n1 { color: #2563eb; }.n2 { color: #16803c; }.n3 { color: #d11a2a; }.n4 { color: #6d28d9; }.n5 { color: #9f1239; }.n6 { color: #0f766e; }.n7 { color: #111827; }.n8 { color: #4b5563; }
+    @media (prefers-color-scheme: dark) {
+      :root { background: #101827; color: #e8eef8; }
+      .panel { background: #172235; border-color: #34445e; box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+      button, select, a { background: #263447; border-color: #60718a; color: #f1f5fb; }
+      .muted { color: #b5c1d1; }
+      #board { border-color: #92a4bf; background: #53647d; }
+      .cell { background: #40516a; color: #eff5fb; }
+      .cell:hover:not(.revealed) { background: #536884; }
+      .cell.revealed { background: #1f2c3e; }
+      .cell.flagged { background: #78404d; }
+      .cell.mine { background: #7c5c20; color: #fff1b8; }
+      .cell.exploded { background: #b91c1c; }
+      .cell.found-flag { background: #276749; color: #bbf7d0; }
+      .cell.wrong-flag { background: #8d3744; color: #fee2e2; }
+      .cell.solver-flag { background: #5b3a93; color: #ede9fe; box-shadow: inset 0 0 0 2px #c4b5fd; }
+      .cell.solver-error { background: #9a4d18; color: #ffedd5; box-shadow: inset 0 0 0 3px #fb7185; }
+      .n1 { color: #7db2ff; }.n2 { color: #6ee7a0; }.n3 { color: #ff8c9a; }.n4 { color: #c4b5fd; }.n5 { color: #fda4af; }.n6 { color: #5eead4; }.n7 { color: #f8fafc; }.n8 { color: #cbd5e1; }
+    }
+  </style>
+</head>
+<body>
+  <main><section class="panel">
+    <div class="toolbar"><h1>Démineur</h1><a href="../../index.html">Hub de jeux</a></div>
+    <div class="toolbar"><label for="difficulty">Difficulté</label><select id="difficulty"><option value="easy">Facile · 9×9 · 10 mines</option><option value="medium" selected>Moyen · 16×16 · 40 mines</option><option value="hard">Difficile · 30×16 · 99 mines</option><option value="expert">Expert · 40×22 · 180 mines</option><option value="giant">Géant · 50×30 · 400 mines</option><option value="colossal">Colossal · 60×36 · 600 mines</option><option value="titan">Titan · 80×48 · 900 mines</option></select><label class="muted"><input id="noGuess" type="checkbox" checked> Sans supposition</label><label class="muted"><input id="adaptDensity" type="checkbox"> Densité adaptée</label><button id="newGame">Nouvelle partie</button><button id="solveStep" disabled>Déduction suivante</button><button id="solveAll" disabled>Résoudre logiquement</button></div>
+    <div class="muted">Clic gauche : révéler. Clic droit : poser ou retirer un drapeau. Le premier clic est toujours sûr.</div>
+    <div id="status" class="muted"></div><div id="board" aria-label="Grille du Démineur"></div>
+  </section></main>
+  <script src="minesweeper.js?v=6"></script>
+  <script src="../../shared/records.js?v=1"></script>
+</body>
+</html>
