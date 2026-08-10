@@ -12,6 +12,8 @@ Un petit serveur HTTP local est nécessaire pour les modules audio, les AudioWor
 
 Pour partager l’application, compresser le dossier complet sous le nom `Ludotheque-locale`, sans retirer `vendor`, `games/rhythm/assets/MS-Basic.sf3` ni les quatre fichiers `Lancer le Hub…`. L’application ne dépend plus des liens symboliques pour charger ses scripts partagés.
 
+Les lanceurs vérifient désormais les cinq fichiers indispensables au moteur MS Basic avant d’ouvrir le hub. Dans Rhythm Lab, le bouton **Tester MS Basic** contrôle aussi le protocole, Web Audio, AudioWorklet, les modules locaux et le SoundFont ; son message indique précisément l’élément absent ou incompatible.
+
 Les licences et attributions des composants redistribués sont regroupées dans `THIRD_PARTY_NOTICES.md`. Le fichier `games/rhythm/assets/MS-Basic-LICENSE.md` doit toujours accompagner `MS-Basic.sf3`.
 
 Le code original est publié sous licence MIT (`LICENSE`). Cette licence ne

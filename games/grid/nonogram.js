@@ -42,7 +42,7 @@ let selectedColor = paletteColors[0];
 let importedImage = null;
 let importedCrop = null;
 let imageBlocks = new Map();
-let imageSplit = 2;
+let imageGrid = { columns: 3, rows: 3 };
 let traceIsColor = false;
 let paletteLimit = 8;
 
@@ -55,12 +55,56 @@ function resizeBoardContainer(columns, rows) {
 function renderImageTools() {
   imageTools.hidden = !importedImage;
   if (!importedImage) return;
-  imageTools.innerHTML = `<span class="muted">Image importée :</span><button id="removeImage">Supprimer l’image</button><label class="muted">Couleurs <select id="paletteLimit"><option value="3">3 · facile</option><option value="5">5 · normal</option><option value="8" selected>8 · précis</option></select></label><span class="muted">Sous-grilles</span><button data-split="2">2 × 2</button><button data-split="3">3 × 3</button><button data-split="0">Image entière</button>`;
+  const formats = imageSubdivisionFormats(importedImage);
+  const currentKey = imageGridKey(imageGrid);
+  imageTools.innerHTML = `<span class="muted">Image ${importedImage.naturalWidth || importedImage.width} × ${importedImage.naturalHeight || importedImage.height} :</span><button id="removeImage">Supprimer l’image</button><label class="muted">Couleurs <select id="paletteLimit"><option value="3">3 · facile</option><option value="5">5 · normal</option><option value="8" selected>8 · précis</option></select></label><label class="muted">Découpage <select id="imageGridFormat">${formats.map(format => `<option value="${imageGridKey(format)}"${imageGridKey(format) === currentKey ? ' selected' : ''}>${format.columns} × ${format.rows}${format.recommended ? ' · recommandé' : ''} · ${format.columns * format.rows} blocs</option>`).join('')}</select></label><button id="showImageOverview">Image entière</button>`;
   document.getElementById('removeImage').onclick = removeImportedImage;
   const limitSelect = document.getElementById('paletteLimit');
   limitSelect.value = String(paletteLimit);
-  limitSelect.onchange = () => { paletteLimit = Number(limitSelect.value); if (importedImage) quantizeImage(importedImage, importedCrop); };
-  imageTools.querySelectorAll('[data-split]').forEach(button => button.onclick = () => showImageSubgrids(Number(button.dataset.split)));
+  limitSelect.onchange = () => {
+    paletteLimit = Number(limitSelect.value);
+    if (!importedImage) return;
+    imageBlocks = new Map();
+    if (importedCrop) quantizeImage(importedImage, importedCrop);
+    else showImageOverview(imageGrid);
+  };
+  document.getElementById('imageGridFormat').onchange = event => {
+    const [columns, rows] = event.target.value.split('x').map(Number);
+    showImageSubgrids({ columns, rows });
+  };
+  document.getElementById('showImageOverview').onclick = () => showImageOverview(imageGrid);
+}
+
+function imageGridKey(format) { return `${format.columns}x${format.rows}`; }
+
+function imageSubdivisionFormats(image) {
+  const ratio = Math.max(.1, (image.naturalWidth || image.width) / Math.max(1, image.naturalHeight || image.height));
+  const candidates = new Map();
+  const add = (columns, rows) => {
+    columns = Math.max(1, Math.min(24, Math.round(columns)));
+    rows = Math.max(1, Math.min(18, Math.round(rows)));
+    candidates.set(`${columns}x${rows}`, { columns, rows });
+  };
+  [[1,1],[2,1],[2,2],[3,2],[3,3],[4,2],[4,3],[4,4],[5,3],[5,4],[5,5],[6,3],[6,4],[6,5],[6,6],[8,4],[8,5],[8,6],[8,8],[10,5],[10,6],[10,8],[10,10],[12,6],[12,7],[12,8],[12,9],[12,12],[16,9],[16,10],[16,12],[16,16],[20,10],[20,12],[20,15],[24,12],[24,14],[24,16],[24,18]].forEach(([columns, rows]) => add(columns, rows));
+  for (let columns = 2; columns <= 24; columns += 1) {
+    const idealRows = columns / ratio;
+    add(columns, Math.floor(idealRows));
+    add(columns, Math.round(idealRows));
+    add(columns, Math.ceil(idealRows));
+  }
+  const formats = [...candidates.values()];
+  const recommended = formats.reduce((best, format) => {
+    const ratioError = Math.abs(Math.log((format.columns / format.rows) / ratio));
+    const blockPenalty = Math.abs(format.columns * format.rows - 12) * .018;
+    const score = ratioError + blockPenalty;
+    return !best || score < best.score ? { format, score } : best;
+  }, null).format;
+  formats.forEach(format => { format.recommended = imageGridKey(format) === imageGridKey(recommended); });
+  return formats.sort((left, right) => Number(right.recommended) - Number(left.recommended) || left.columns * left.rows - right.columns * right.rows || left.columns - right.columns || left.rows - right.rows);
+}
+
+function recommendedImageGrid(image) {
+  return imageSubdivisionFormats(image).find(format => format.recommended) || { columns: 3, rows: 3 };
 }
 
 function removeImportedImage() {
@@ -80,17 +124,17 @@ function removeImportedImage() {
 }
 
 function cropKey(crop = importedCrop) {
-  return crop ? `${crop.parts}:${crop.row}:${crop.column}` : 'full';
+  return crop ? `${crop.columns}x${crop.rows}:${crop.row}:${crop.column}` : 'full';
 }
 
 function saveCurrentImageBlock() {
-  if (!importedImage || !isColorMode) return;
+  if (!importedImage || !isColorMode || !importedCrop) return;
   imageBlocks.set(cropKey(), { size, palette: paletteColors.slice(), solution: colorSolution.slice(), player: colorPlayer.slice() });
 }
 
 function paintOverviewCanvas(canvas, state, crop) {
   const context = canvas.getContext('2d');
-  const resolution = state?.size || suggestedSizeForCrop(crop.row, crop.column, crop.parts);
+  const resolution = state?.size || suggestedSizeForCrop(crop.row, crop.column, crop.columns, crop.rows);
   const padding = 5;
   const pixel = Math.max(2, Math.floor((canvas.width - padding * 2) / resolution));
   context.fillStyle = '#f8fafc';
@@ -115,15 +159,16 @@ function paintOverviewCanvas(canvas, state, crop) {
   context.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
 }
 
-function showImageOverview(parts = imageSplit) {
+function showImageOverview(format = imageGrid) {
   saveCurrentImageBlock();
-  imageSplit = parts;
+  imageGrid = { columns: format.columns, rows: format.rows };
+  importedCrop = null;
   board.hidden = true;
   imageOverview.hidden = false;
-  imageOverview.innerHTML = `<div class="overview-title"><strong>Image entière · ${parts} × ${parts} blocs</strong><span class="muted">Survolez un bloc puis cliquez pour continuer sa grille. Les blocs blancs ne sont pas encore commencés.</span></div><div class="image-mosaic" style="--parts:${parts}"></div>`;
+  imageOverview.innerHTML = `<div class="overview-title"><strong>Image entière · ${imageGrid.columns} × ${imageGrid.rows} · ${imageGrid.columns * imageGrid.rows} blocs</strong><span class="muted">Survolez un bloc puis cliquez pour continuer sa grille. Les blocs blancs ne sont pas encore commencés.</span></div><div class="image-mosaic" style="--columns:${imageGrid.columns}"></div>`;
   const mosaic = imageOverview.querySelector('.image-mosaic');
-  for (let row = 0; row < parts; row += 1) for (let column = 0; column < parts; column += 1) {
-    const crop = { row, column, parts };
+  for (let row = 0; row < imageGrid.rows; row += 1) for (let column = 0; column < imageGrid.columns; column += 1) {
+    const crop = { row, column, columns: imageGrid.columns, rows: imageGrid.rows };
     const button = document.createElement('button');
     button.className = 'image-block';
     button.title = `Ouvrir le bloc ${row + 1}, ${column + 1}`;
@@ -153,18 +198,18 @@ function openImageCrop(crop) {
     renderColor();
     return;
   }
-  const recommended = suggestedSizeForCrop(crop.row, crop.column, crop.parts);
+  const recommended = suggestedSizeForCrop(crop.row, crop.column, crop.columns, crop.rows);
   size = recommended;
   sizeSelect.value = String(recommended);
   quantizeImage(importedImage, crop);
 }
 
-function suggestedSizeForCrop(row, column, parts) {
+function suggestedSizeForCrop(row, column, columns, rows) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 20;
   const context = canvas.getContext('2d', { willReadFrequently: true });
-  const width = importedImage.width / parts;
-  const height = importedImage.height / parts;
+  const width = importedImage.width / columns;
+  const height = importedImage.height / rows;
   context.drawImage(importedImage, column * width, row * height, width, height, 0, 0, 20, 20);
   const data = context.getImageData(0, 0, 20, 20).data;
   let variation = 0;
@@ -172,8 +217,8 @@ function suggestedSizeForCrop(row, column, parts) {
   return variation > 29000 ? 25 : variation > 16000 ? 20 : variation > 7000 ? 15 : 10;
 }
 
-function showImageSubgrids(parts) {
-  showImageOverview(parts || imageSplit);
+function showImageSubgrids(format) {
+  showImageOverview(format || imageGrid);
 }
 
 function updateTraceControls() {
@@ -724,8 +769,8 @@ function quantizeImage(image, crop = importedCrop) {
   canvas.height = size;
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (crop) {
-    const cropWidth = image.width / crop.parts;
-    const cropHeight = image.height / crop.parts;
+    const cropWidth = image.width / crop.columns;
+    const cropHeight = image.height / crop.rows;
     context.drawImage(image, crop.column * cropWidth, crop.row * cropHeight, cropWidth, cropHeight, 0, 0, size, size);
   } else context.drawImage(image, 0, 0, size, size);
   const pixels = context.getImageData(0, 0, size, size).data;
@@ -768,7 +813,9 @@ function importImage(file) {
     importedImage = image;
     importedCrop = null;
     imageBlocks = new Map();
-    quantizeImage(image);
+    imageGrid = recommendedImageGrid(image);
+    renderImageTools();
+    showImageOverview(imageGrid);
   });
   image.src = URL.createObjectURL(file);
 }

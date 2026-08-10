@@ -6,6 +6,13 @@ URL="http://127.0.0.1:${PORT}/index.html"
 PID_FILE="$ROOT/.hub-server.pid"
 LOG_FILE="$ROOT/.hub-server.log"
 
+for REQUIRED in "index.html" "games/rhythm/assets/MS-Basic.sf3" "vendor/spessasynth_lib/dist/spessasynth_processor.min.js" "vendor/spessasynth_core/dist/index.js" "vendor/stb-vorbis/dist/index.js"; do
+  if [ ! -s "$ROOT/$REQUIRED" ]; then
+    osascript -e "display alert \"Ludothèque locale\" message \"Fichier requis absent ou vide : $REQUIRED. Décompressez de nouveau le dossier complet.\" as critical"
+    exit 1
+  fi
+done
+
 if ! curl --silent --fail "http://127.0.0.1:${PORT}/" >/dev/null 2>&1; then
   cd "$ROOT" || exit 1
   if command -v python3 >/dev/null 2>&1; then

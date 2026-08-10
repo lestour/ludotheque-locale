@@ -35,6 +35,8 @@
     .visual-control input { width: 100px; accent-color: #315fa7; }
     .stats strong { color: #b45309; font-size: 22px; }
     .records { display: flex; gap: 14px; flex-wrap: wrap; margin: -4px 0 12px; }
+    .practice-history { min-height: 20px; margin: -5px 0 12px; font-size: 12px; }
+    .practice-history b { color: #b45309; }
     .stage-wrap { margin-top: 118px; padding-top: 6px; }
     .stage { position: relative; display: grid; height: 620px; grid-template-columns: repeat(var(--lanes), 1fr); gap: 3px; border: 3px solid #58749c; border-radius: 15px; background: #dceaff; }
     .lane { position: relative; border-left: 1px solid #9db4d1; background: #eef6ff; }
@@ -65,6 +67,10 @@
     .score-note .fingering.lower { top: 55px; }
     .score-note .duration-dot { position: absolute; left: 26px; top: 1px; font-size: 16px; transform: rotate(17deg); }
     .score-note .chord-count { position: absolute; top: -15px; right: -16px; color: #334155; font-size: 10px; transform: rotate(18deg); }
+    .score-note .tuplet-number { position: absolute; bottom: 43px; left: 50%; min-width: 18px; color: #334155; font: 900 10px/1 Arial,sans-serif; text-align: center; transform: translateX(-50%) rotate(17deg); }
+    .score-note.grace { width: 16px; height: 12px; transform: rotate(-24deg) scale(.82); }
+    .score-note.grace::after { left: 12px; height: 32px; }
+    .score-note.grace::before { position: absolute; z-index: 4; left: 6px; top: -14px; width: 2px; height: 39px; background: #17243a; content: ''; transform: rotate(52deg); }
     .score-note .articulation { position: absolute; bottom: -20px; left: 5px; color: #17243a; font-size: 17px; font-weight: 900; transform: rotate(18deg); }
     .score-note .notation-symbols { position: absolute; top: 45px; left: -28px; width: 80px; overflow: hidden; color: #475569; font-size: 8px; font-style: normal; text-align: center; text-overflow: ellipsis; white-space: nowrap; transform: rotate(17deg); }
     .beam-segment { position: absolute; z-index: 3; height: 5px; border-radius: 2px; background: #17243a; transform-origin: left center; }
@@ -143,11 +149,11 @@
       .staff-meta, .clef, .key-signature, .time-signature { color: #dbeafe; }
       .staff-lines { border-color: #526987; background: linear-gradient(to bottom,transparent 91px,#dbeafe 92px 94px,transparent 95px 113px,#dbeafe 114px 116px,transparent 117px 135px,#dbeafe 136px 138px,transparent 139px 157px,#dbeafe 158px 160px,transparent 161px 179px,#dbeafe 180px 182px,transparent 183px); background-position: 0 var(--staff-shift, 0); background-repeat: no-repeat; }
       .score-note { border-color: #e5edf8; color: #e5edf8; }
-      .score-note::after, .score-note.flag-1::before, .score-note.flag-2::before, .score-note.flag-3::before, .beam-segment { background-color: #e5edf8; border-color: #e5edf8; }
+      .score-note::after, .score-note.grace::before, .score-note.flag-1::before, .score-note.flag-2::before, .score-note.flag-3::before, .beam-segment { background-color: #e5edf8; border-color: #e5edf8; }
       .score-note.flag-2::before { box-shadow: 3px 7px 0 -1px #e5edf8; }
       .score-note.flag-3::before { box-shadow: 3px 7px 0 -1px #e5edf8,6px 14px 0 -1px #e5edf8; }
       .score-note.open { background: #172235; }
-      .score-note em, .score-note .chord-count, .score-note .articulation, .score-note .notation-symbols { color: #e5edf8; }
+      .score-note em, .score-note .chord-count, .score-note .tuplet-number, .score-note .articulation, .score-note .notation-symbols { color: #e5edf8; }
       .score-note small { color: #f8fafc; background: #172235e8; }
       .tie-segment { border-color: #e5edf8; }
       .tie-incoming { border-color: #e5edf8; }
@@ -176,10 +182,10 @@
     <div id="trackList" class="tracks"></div><div class="stats"><span>Score <strong id="score">0</strong></span><span>Précision <strong id="accuracy">—</strong></span><span id="status" class="muted">Démo chargée.</span></div><div id="records" class="records muted"></div>
     <div class="stage-wrap"><div class="hint">Zone d’anticipation</div><div id="stage" class="stage"></div></div>
   </section></main>
-  <script type="importmap">{"imports":{"spessasynth_core":"../../vendor/spessasynth_core/dist/index.js?v=local-2","stb-vorbis":"../../vendor/stb-vorbis/dist/index.js?v=local-2"}}</script>
-  <script type="module" src="soundfont-engine.js?v=5"></script>
-  <script src="brass-fingering.js?v=1"></script>
+  <script type="importmap">{"imports":{"spessasynth_core":"../../vendor/spessasynth_core/dist/index.js?v=local-3","stb-vorbis":"../../vendor/stb-vorbis/dist/index.js?v=local-3"}}</script>
+  <script type="module" src="soundfont-engine.js?v=7"></script>
+  <script src="brass-fingering.js?v=2"></script>
   <script src="trombone-position.js?v=1"></script>
-  <script src="rhythm.js?v=79"></script>
+  <script src="rhythm.js?v=90"></script>
 </body>
 </html>

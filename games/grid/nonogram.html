@@ -37,9 +37,9 @@
     .palette-color { width: 28px; height: 28px; padding: 0; border: 3px solid transparent; border-radius: 50%; }
     .palette-color.selected { border-color: #7c3aed; transform: scale(1.12); }
     .palette-color.erase { width: auto; padding: 5px 9px; border-radius: 9px; }
-    #imageOverview { max-width: 840px; margin: 22px auto 0; }
+    #imageOverview { max-width: min(1180px, 96vw); margin: 22px auto 0; }
     .overview-title { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; margin-bottom: 10px; }
-    .image-mosaic { display: grid; grid-template-columns: repeat(var(--parts), minmax(120px, 1fr)); gap: 8px; padding: 10px; border: 2px solid var(--grid-line); background: #d6e0ed; }
+    .image-mosaic { display: grid; grid-template-columns: repeat(var(--columns), minmax(0, 1fr)); gap: clamp(1px, .35vw, 6px); padding: clamp(3px, .6vw, 10px); border: 2px solid var(--grid-line); background: #d6e0ed; }
     .image-block { position: relative; padding: 0; border-radius: 3px; overflow: hidden; background: #fff; color: #26384e; transition: transform .12s, box-shadow .12s; }
     .image-block canvas { display: block; width: 100%; height: auto; }
     .image-block:hover, .image-block:focus-visible { transform: scale(1.03); outline: 3px solid #7c3aed; outline-offset: 2px; box-shadow: 0 0 0 5px #c4b5fd; background: #fff; color: #26384e; }
@@ -80,7 +80,7 @@
       <div id="nonogram" aria-label="Grille de Nonogram"></div>
     </section>
   </main>
-  <script src="nonogram.js?v=2"></script>
+  <script src="nonogram.js?v=3"></script>
   <script src="../../shared/records.js?v=1"></script>
 </body>
 </html>
