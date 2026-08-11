@@ -17,6 +17,12 @@ const imageInput = document.getElementById('imageInput');
 const paletteElement = document.getElementById('palette');
 const paletteSizeSelect = document.getElementById('paletteSize');
 const paletteSizeLabel = document.getElementById('paletteSizeLabel');
+const paletteSortSelect = document.getElementById('paletteSort');
+const paletteSortLabel = document.getElementById('paletteSortLabel');
+const sortPaletteButton = document.getElementById('sortPalette');
+const showColorTotals = document.getElementById('showColorTotals');
+const showColorTotalsLabel = document.getElementById('showColorTotalsLabel');
+const cellScaleSelect = document.getElementById('cellScale');
 const imageTools = document.createElement('div');
 imageTools.className = 'toolbar';
 paletteElement.after(imageTools);
@@ -24,11 +30,145 @@ const imageOverview = document.createElement('div');
 imageOverview.id = 'imageOverview';
 imageOverview.hidden = true;
 board.parentNode.insertBefore(imageOverview, board);
+const boardViewport = document.createElement('div');
+const boardCanvas = document.createElement('div');
+const boardControls = document.createElement('div');
+boardViewport.id = 'nonogramViewport';
+boardViewport.tabIndex = 0;
+boardViewport.setAttribute('aria-label', 'Zone déplaçable et zoomable du Nonogram');
+boardCanvas.id = 'nonogramCanvas';
+boardControls.className = 'nonogram-controls';
+boardControls.setAttribute('aria-label', 'Outils et zoom de la grille');
+boardControls.innerHTML = '<span class="nonogram-tool-group"><button type="button" data-tool="fill" title="Remplir les cases">■ Remplir</button><button type="button" data-tool="cross" title="Marquer les cases vides">× Croix</button><button type="button" data-tool="erase" title="Effacer les cases">⌫ Gomme</button><button type="button" data-tool="pan" title="Déplacer la grille sans la modifier">✥ Déplacer</button></span><span class="nonogram-zoom-group"><button type="button" data-zoom="out" title="Dézoomer">−</button><button type="button" data-zoom="reset" title="Revenir à 100 %">100 %</button><button type="button" data-zoom="in" title="Zoomer">+</button><button type="button" data-zoom="fit" title="Afficher toute la grille">Ajuster</button></span>';
+board.parentNode.insertBefore(boardViewport, board);
+boardViewport.appendChild(boardCanvas);
+boardCanvas.appendChild(board);
+document.getElementById('status').before(boardControls);
+
+let boardZoom = 1;
+let boardPan = null;
+let spacePressed = false;
+let interactionTool = 'fill';
+const navigationPointers = new Map();
+let pinchStart = null;
+
+function updateToolButtons() {
+  boardControls.querySelectorAll('[data-tool]').forEach(button => {
+    const selected = button.dataset.tool === interactionTool;
+    button.classList.toggle('selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+  boardViewport.classList.toggle('navigation-mode', interactionTool === 'pan');
+}
+
+function updateBoardZoom() {
+  if (board.hidden) return;
+  const width = board.offsetWidth;
+  const height = board.offsetHeight;
+  board.style.transform = `scale(${boardZoom})`;
+  boardCanvas.style.width = `${Math.ceil(width * boardZoom)}px`;
+  boardCanvas.style.height = `${Math.ceil(height * boardZoom)}px`;
+  boardControls.querySelector('[data-zoom="reset"]').textContent = `${Math.round(boardZoom * 100)} %`;
+}
+
+function setBoardZoom(nextZoom, clientX = null, clientY = null) {
+  const previousZoom = boardZoom;
+  boardZoom = Math.max(.25, Math.min(4, Math.round(nextZoom * 20) / 20));
+  if (boardZoom === previousZoom) return;
+  const bounds = boardViewport.getBoundingClientRect();
+  const pointX = clientX === null ? boardViewport.clientWidth / 2 : clientX - bounds.left;
+  const pointY = clientY === null ? boardViewport.clientHeight / 2 : clientY - bounds.top;
+  const contentX = (boardViewport.scrollLeft + pointX) / previousZoom;
+  const contentY = (boardViewport.scrollTop + pointY) / previousZoom;
+  updateBoardZoom();
+  boardViewport.scrollLeft = contentX * boardZoom - pointX;
+  boardViewport.scrollTop = contentY * boardZoom - pointY;
+}
+
+function fitBoardToViewport() {
+  if (!board.offsetWidth || !board.offsetHeight) return;
+  const availableWidth = Math.max(1, boardViewport.clientWidth - 12);
+  const availableHeight = Math.max(1, boardViewport.clientHeight - 12);
+  setBoardZoom(Math.min(1, availableWidth / board.offsetWidth, availableHeight / board.offsetHeight));
+  boardViewport.scrollTo({ left: 0, top: 0 });
+}
+
+function navigationRequested(event) {
+  return event.button === 1 || (event.button === 0 && (interactionTool === 'pan' || spacePressed));
+}
+
+function pointerDistance(pointers) {
+  const [first, second] = [...pointers.values()];
+  return first && second ? Math.hypot(second.x - first.x, second.y - first.y) : 0;
+}
+
+boardControls.addEventListener('click', event => {
+  const tool = event.target.dataset.tool;
+  if (tool) { interactionTool = tool; updateToolButtons(); return; }
+  const action = event.target.dataset.zoom;
+  if (action === 'in') setBoardZoom(boardZoom + .15);
+  if (action === 'out') setBoardZoom(boardZoom - .15);
+  if (action === 'reset') setBoardZoom(1);
+  if (action === 'fit') fitBoardToViewport();
+});
+boardViewport.addEventListener('wheel', event => {
+  event.preventDefault();
+  if (event.shiftKey) { boardViewport.scrollLeft += event.deltaY; return; }
+  setBoardZoom(boardZoom + (event.deltaY < 0 ? .1 : -.1), event.clientX, event.clientY);
+}, { passive: false });
+boardViewport.addEventListener('pointerdown', event => {
+  if (!navigationRequested(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  boardViewport.setPointerCapture(event.pointerId);
+  navigationPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  boardPan = { x: event.clientX, y: event.clientY, left: boardViewport.scrollLeft, top: boardViewport.scrollTop };
+  if (navigationPointers.size === 2) pinchStart = { distance: pointerDistance(navigationPointers), zoom: boardZoom };
+}, true);
+boardViewport.addEventListener('pointermove', event => {
+  if (!navigationPointers.has(event.pointerId)) return;
+  navigationPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (navigationPointers.size >= 2 && pinchStart?.distance) {
+    const pointers = [...navigationPointers.values()];
+    const centerX = (pointers[0].x + pointers[1].x) / 2;
+    const centerY = (pointers[0].y + pointers[1].y) / 2;
+    setBoardZoom(pinchStart.zoom * pointerDistance(navigationPointers) / pinchStart.distance, centerX, centerY);
+    return;
+  }
+  if (boardPan) {
+    boardViewport.scrollLeft = boardPan.left - (event.clientX - boardPan.x);
+    boardViewport.scrollTop = boardPan.top - (event.clientY - boardPan.y);
+  }
+});
+const endNavigation = event => {
+  navigationPointers.delete(event.pointerId);
+  pinchStart = null;
+  const remaining = [...navigationPointers.values()][0];
+  boardPan = remaining ? { x: remaining.x, y: remaining.y, left: boardViewport.scrollLeft, top: boardViewport.scrollTop } : null;
+};
+boardViewport.addEventListener('pointerup', endNavigation);
+boardViewport.addEventListener('pointercancel', endNavigation);
+boardViewport.addEventListener('keydown', event => {
+  if (event.key === '+' || event.key === '=') { setBoardZoom(boardZoom + .15); event.preventDefault(); }
+  else if (event.key === '-') { setBoardZoom(boardZoom - .15); event.preventDefault(); }
+  else if (event.key === '0') { setBoardZoom(1); event.preventDefault(); }
+  else if (event.key.toLowerCase() === 'f') { fitBoardToViewport(); event.preventDefault(); }
+  else if (event.key === 'ArrowLeft') { boardViewport.scrollLeft -= 60; event.preventDefault(); }
+  else if (event.key === 'ArrowRight') { boardViewport.scrollLeft += 60; event.preventDefault(); }
+  else if (event.key === 'ArrowUp') { boardViewport.scrollTop -= 60; event.preventDefault(); }
+  else if (event.key === 'ArrowDown') { boardViewport.scrollTop += 60; event.preventDefault(); }
+});
+window.addEventListener('keydown', event => { if (event.code === 'Space' && !event.repeat && !/INPUT|SELECT|TEXTAREA|BUTTON/.test(event.target.tagName)) { spacePressed = true; boardViewport.classList.add('temporary-navigation'); event.preventDefault(); } });
+window.addEventListener('keyup', event => { if (event.code === 'Space') { spacePressed = false; boardViewport.classList.remove('temporary-navigation'); } });
+if (typeof ResizeObserver === 'function') new ResizeObserver(updateBoardZoom).observe(board);
+new MutationObserver(() => { boardViewport.hidden = board.hidden; if (!board.hidden) requestAnimationFrame(updateBoardZoom); }).observe(board, { attributes: true, attributeFilter: ['hidden'] });
+updateToolButtons();
 
 let size = Number(sizeSelect.value);
 let solution = [];
 let player = [];
 let paintValue = 0;
+let paintMatchValue = null;
 let paintMode = '';
 let isPainting = false;
 let solverMessage = '';
@@ -45,28 +185,162 @@ let importedImage = null;
 let importedCrop = null;
 let imageBlocks = new Map();
 let imageGrid = { columns: 3, rows: 3 };
+let userSelectedImageGrid = null;
+let userSelectedImageBlockSize = null;
 let imageSuggestedSizes = new Map();
 let traceIsColor = false;
 let paletteLimit = Number(paletteSizeSelect.value);
+let cellPixels = Number(cellScaleSelect.value);
+const TOUCH_CROSS_DELAY = 420;
+const TOUCH_PAINT_THRESHOLD = 8;
+let touchPaintGesture = null;
+
+function touchCellAt(clientX, clientY) {
+  const cell = document.elementFromPoint(clientX, clientY)?.closest('#nonogram .cell[data-index]');
+  return cell && board.contains(cell) ? cell : null;
+}
+
+function prepareTouchPaint(tool, index) {
+  clearTrace();
+  solverMessage = '';
+  if (isColorMode) {
+    const target = tool === 'cross' ? -1 : tool === 'erase' ? null : selectedColor;
+    paintMatchValue = target;
+    paintValue = tool === 'erase' || colorPlayer[index] === target ? null : target;
+    paintMode = tool === 'erase' ? 'erase-any-color' : colorPlayer[index] === target ? 'erase-selected-color' : 'set-color';
+    return;
+  }
+  const currentValue = player[index];
+  if (tool === 'fill') {
+    paintMode = currentValue === 1 ? 'erase-filled' : 'fill-empty';
+    paintValue = currentValue === 1 ? 0 : 1;
+  } else if (tool === 'cross') {
+    paintMode = currentValue === -1 ? 'erase-marked' : 'mark-empty';
+    paintValue = currentValue === -1 ? 0 : -1;
+  } else {
+    paintMode = 'erase-any';
+    paintValue = 0;
+  }
+}
+
+function touchPaintAllowed(index) {
+  if (isColorMode) {
+    if (paintMode === 'set-color') return colorPlayer[index] !== paintValue;
+    if (paintMode === 'erase-selected-color') return colorPlayer[index] === paintMatchValue;
+    return paintMode === 'erase-any-color' && colorPlayer[index] !== null;
+  }
+  const currentValue = player[index];
+  if ((paintMode === 'fill-empty' || paintMode === 'mark-empty') && currentValue !== 0) return false;
+  if (paintMode === 'erase-filled' && currentValue !== 1) return false;
+  if (paintMode === 'erase-marked' && currentValue !== -1) return false;
+  return paintMode !== 'erase-any' || currentValue !== 0;
+}
+
+function updateTouchedCell(index) {
+  if (!touchPaintGesture || touchPaintGesture.visited.has(index) || !touchPaintAllowed(index)) return;
+  touchPaintGesture.visited.add(index);
+  if (isColorMode) colorPlayer[index] = paintValue;
+  else player[index] = paintValue;
+  const element = board.querySelector(`.cell[data-index="${index}"]`);
+  if (!element) return;
+  const value = isColorMode ? colorPlayer[index] : player[index];
+  element.classList.toggle('filled', !isColorMode && value === 1);
+  element.classList.toggle('color-filled', isColorMode && Boolean(value && value !== -1));
+  element.classList.toggle('marked', value === -1);
+  element.classList.remove('error');
+  element.style.background = isColorMode && value && value !== -1 ? value : '';
+}
+
+function beginTouchPaint(tool, clientX, clientY) {
+  if (!touchPaintGesture || touchPaintGesture.mode) return;
+  touchPaintGesture.mode = tool;
+  prepareTouchPaint(tool, touchPaintGesture.initialIndex);
+  updateTouchedCell(touchPaintGesture.initialIndex);
+  const cell = touchCellAt(clientX, clientY);
+  if (cell) updateTouchedCell(Number(cell.dataset.index));
+}
+
+function finishTouchPaint(event, cancelled = false) {
+  if (!touchPaintGesture || touchPaintGesture.pointerId !== event.pointerId) return;
+  clearTimeout(touchPaintGesture.timer);
+  if (!cancelled && !touchPaintGesture.mode) beginTouchPaint(interactionTool === 'fill' ? 'fill' : interactionTool, event.clientX, event.clientY);
+  const changed = touchPaintGesture.visited.size > 0;
+  touchPaintGesture = null;
+  if (changed) render();
+}
+
+boardViewport.addEventListener('pointerdown', event => {
+  if (event.pointerType !== 'touch' || event.button !== 0 || interactionTool === 'pan' || touchPaintGesture) return;
+  const cell = event.target.closest?.('#nonogram .cell[data-index]');
+  if (!cell) return;
+  event.preventDefault();
+  event.stopPropagation();
+  boardViewport.setPointerCapture?.(event.pointerId);
+  const gesture = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    initialIndex: Number(cell.dataset.index),
+    mode: null,
+    visited: new Set(),
+    timer: 0,
+  };
+  touchPaintGesture = gesture;
+  if (interactionTool === 'fill') {
+    gesture.timer = window.setTimeout(() => {
+      if (touchPaintGesture !== gesture) return;
+      navigator.vibrate?.(18);
+      beginTouchPaint('cross', gesture.startX, gesture.startY);
+    }, TOUCH_CROSS_DELAY);
+  } else beginTouchPaint(interactionTool, event.clientX, event.clientY);
+}, true);
+
+boardViewport.addEventListener('pointermove', event => {
+  if (!touchPaintGesture || touchPaintGesture.pointerId !== event.pointerId) return;
+  event.preventDefault();
+  const distance = Math.hypot(event.clientX - touchPaintGesture.startX, event.clientY - touchPaintGesture.startY);
+  if (!touchPaintGesture.mode && distance > TOUCH_PAINT_THRESHOLD) {
+    clearTimeout(touchPaintGesture.timer);
+    beginTouchPaint('fill', event.clientX, event.clientY);
+  }
+  if (!touchPaintGesture.mode) return;
+  const cell = touchCellAt(event.clientX, event.clientY);
+  if (cell) updateTouchedCell(Number(cell.dataset.index));
+});
+boardViewport.addEventListener('pointerup', event => finishTouchPaint(event));
+boardViewport.addEventListener('pointercancel', event => finishTouchPaint(event, true));
+
+function cellTrack() { return Math.max(8, cellPixels - 1); }
+function cellPitch() { return cellPixels; }
+function setColorControlsVisibility(visible) {
+  paletteSizeLabel.hidden = !visible;
+  paletteSortLabel.hidden = !visible;
+  sortPaletteButton.hidden = !visible;
+  showColorTotalsLabel.hidden = !visible;
+}
 
 function resizeBoardContainer(columns, rows) {
-  const requiredWidth = Math.max(1180, columns * 30 + 74);
-  document.querySelector('main').style.maxWidth = `${requiredWidth}px`;
-  document.querySelector('.panel').style.minWidth = `${Math.min(requiredWidth, 1720)}px`;
+  document.querySelector('main').style.maxWidth = '1440px';
+  document.querySelector('.panel').style.minWidth = '0';
 }
 
 function renderImageTools() {
   imageTools.hidden = !importedImage;
   if (!importedImage) return;
   const formats = imageSubdivisionFormats(importedImage);
-  const currentKey = imageGridKey(imageGrid);
-  imageTools.innerHTML = `<span class="muted">Image ${importedImage.naturalWidth || importedImage.width} × ${importedImage.naturalHeight || importedImage.height} · ${paletteLimit} couleurs</span><strong id="imageCompletion">Progression : ${imageCompletionPercent()} %</strong><label class="muted">Découpage <select id="imageGridFormat">${formats.map(format => `<option value="${imageGridKey(format)}"${imageGridKey(format) === currentKey ? ' selected' : ''}>${format.columns} × ${format.rows}${format.recommended ? ' · recommandé' : ''} · ${format.columns * format.rows} blocs</option>`).join('')}</select></label><button id="showImageOverview">Image entière</button><button id="removeImage">Supprimer l’image</button>`;
+  const activeFormat = userSelectedImageGrid || imageGrid;
+  const currentKey = imageGridKey(activeFormat);
+  const navigation = importedCrop ? '<button id="previousImageBlock">Bloc précédent</button><button id="nextImageBlock">Bloc suivant</button>' : '';
+  imageTools.innerHTML = `<span class="muted">Image ${importedImage.naturalWidth || importedImage.width} × ${importedImage.naturalHeight || importedImage.height} · ${paletteLimit} couleurs</span><strong id="imageCompletion">Progression : ${imageCompletionPercent(activeFormat)} %</strong><label class="muted">Découpage <select id="imageGridFormat">${formats.map(format => `<option value="${imageGridKey(format)}"${imageGridKey(format) === currentKey ? ' selected' : ''}>${format.columns} × ${format.rows}${format.recommended ? ' · recommandé' : ''} · ${format.columns * format.rows} blocs</option>`).join('')}</select></label>${navigation}<button id="showImageOverview">Image entière</button><button id="removeImage">Supprimer l’image</button>`;
   document.getElementById('removeImage').onclick = removeImportedImage;
   document.getElementById('imageGridFormat').onchange = event => {
     const [columns, rows] = event.target.value.split('x').map(Number);
-    showImageSubgrids({ columns, rows });
+    userSelectedImageGrid = { columns, rows };
+    showImageSubgrids(userSelectedImageGrid);
   };
-  document.getElementById('showImageOverview').onclick = () => showImageOverview(imageGrid);
+  document.getElementById('previousImageBlock')?.addEventListener('click', () => openAdjacentImageBlock(-1));
+  document.getElementById('nextImageBlock')?.addEventListener('click', () => openAdjacentImageBlock(1));
+  document.getElementById('showImageOverview').onclick = () => showImageOverview(userSelectedImageGrid || imageGrid);
 }
 
 function imageGridKey(format) { return `${format.columns}x${format.rows}`; }
@@ -105,6 +379,8 @@ function removeImportedImage() {
   importedImage = null;
   importedCrop = null;
   imageBlocks = new Map();
+  userSelectedImageGrid = null;
+  userSelectedImageBlockSize = null;
   imageSuggestedSizes = new Map();
   imageOverview.hidden = true;
   board.hidden = false;
@@ -153,7 +429,7 @@ function imageCompletionPercent(format = imageGrid) {
     const state = importedCrop && key === cropKey(importedCrop) ? currentImageBlockState() : imageBlocks.get(key);
     const progress = blockCompletion(state);
     completed += progress.completed;
-    total += progress.total || suggestedSizeForCrop(row, column, format.columns, format.rows) ** 2;
+    total += progress.total || (userSelectedImageBlockSize || suggestedSizeForCrop(row, column, format.columns, format.rows)) ** 2;
   }
   return total ? Math.round(completed * 1000 / total) / 10 : 0;
 }
@@ -166,20 +442,23 @@ function updateImageProgressDisplays() {
   if (overviewProgress) overviewProgress.textContent = `Progression : ${progress} %`;
 }
 
-function paintOverviewCanvas(canvas, state, crop) {
-  const context = canvas.getContext('2d');
-  const resolution = state?.size || suggestedSizeForCrop(crop.row, crop.column, crop.columns, crop.rows);
+function paintOverviewRegion(context, state, crop, left, top, width, height) {
+  const resolution = state?.size || userSelectedImageBlockSize || suggestedSizeForCrop(crop.row, crop.column, crop.columns, crop.rows);
   context.fillStyle = '#f8fafc';
-  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillRect(left, top, width, height);
   for (let row = 0; row < resolution; row += 1) for (let column = 0; column < resolution; column += 1) {
     const value = state?.player?.[row * resolution + column];
     context.fillStyle = value && value !== -1 ? value : '#ffffff';
-    const left = Math.floor(column * canvas.width / resolution);
-    const top = Math.floor(row * canvas.height / resolution);
-    const right = Math.ceil((column + 1) * canvas.width / resolution);
-    const bottom = Math.ceil((row + 1) * canvas.height / resolution);
-    context.fillRect(left, top, right - left, bottom - top);
+    const cellLeft = left + Math.floor(column * width / resolution);
+    const cellTop = top + Math.floor(row * height / resolution);
+    const cellRight = left + Math.floor((column + 1) * width / resolution);
+    const cellBottom = top + Math.floor((row + 1) * height / resolution);
+    context.fillRect(cellLeft, cellTop, cellRight - cellLeft, cellBottom - cellTop);
   }
+}
+
+function paintOverviewCanvas(canvas, state, crop) {
+  paintOverviewRegion(canvas.getContext('2d'), state, crop, 0, 0, canvas.width, canvas.height);
 }
 
 function showImageOverview(format = imageGrid) {
@@ -188,20 +467,30 @@ function showImageOverview(format = imageGrid) {
   importedCrop = null;
   board.hidden = true;
   imageOverview.hidden = false;
-  imageOverview.innerHTML = `<div class="overview-title"><strong>Image entière · ${imageGrid.columns} × ${imageGrid.rows} · ${imageGrid.columns * imageGrid.rows} blocs</strong><strong id="overviewCompletion">Progression : ${imageCompletionPercent()} %</strong><span class="muted">Survolez puis cliquez sur une zone pour continuer sa grille.</span></div><div class="image-mosaic" style="--columns:${imageGrid.columns}"></div>`;
+  renderImageTools();
+  imageOverview.innerHTML = `<div class="overview-title"><strong>Image entière · ${imageGrid.columns} × ${imageGrid.rows} · ${imageGrid.columns * imageGrid.rows} blocs</strong><strong id="overviewCompletion">Progression : ${imageCompletionPercent()} %</strong><span class="muted">Survolez puis cliquez sur une zone pour continuer sa grille.</span></div><div class="image-mosaic" style="--columns:${imageGrid.columns};--rows:${imageGrid.rows}"><canvas class="image-mosaic-canvas"></canvas><div class="image-mosaic-hotspots"></div></div>`;
   const mosaic = imageOverview.querySelector('.image-mosaic');
+  const canvas = mosaic.querySelector('.image-mosaic-canvas');
+  const hotspots = mosaic.querySelector('.image-mosaic-hotspots');
+  const sourceWidth = importedImage.naturalWidth || importedImage.width;
+  const sourceHeight = importedImage.naturalHeight || importedImage.height;
+  const scale = Math.min(1, 1400 / Math.max(sourceWidth, sourceHeight));
+  canvas.width = Math.max(imageGrid.columns, Math.round(sourceWidth * scale));
+  canvas.height = Math.max(imageGrid.rows, Math.round(sourceHeight * scale));
+  const context = canvas.getContext('2d');
   for (let row = 0; row < imageGrid.rows; row += 1) for (let column = 0; column < imageGrid.columns; column += 1) {
     const crop = { row, column, columns: imageGrid.columns, rows: imageGrid.rows };
+    const left = Math.floor(column * canvas.width / imageGrid.columns);
+    const top = Math.floor(row * canvas.height / imageGrid.rows);
+    const right = Math.floor((column + 1) * canvas.width / imageGrid.columns);
+    const bottom = Math.floor((row + 1) * canvas.height / imageGrid.rows);
+    paintOverviewRegion(context, imageBlocks.get(cropKey(crop)), crop, left, top, right - left, bottom - top);
     const button = document.createElement('button');
     button.className = 'image-block';
     button.title = `Ouvrir le bloc ${row + 1}, ${column + 1}`;
-    const canvas = document.createElement('canvas');
-    canvas.width = 240;
-    canvas.height = Math.max(60, Math.round(240 * ((importedImage.height / imageGrid.rows) / (importedImage.width / imageGrid.columns))));
-    paintOverviewCanvas(canvas, imageBlocks.get(cropKey(crop)), crop);
-    button.append(canvas);
+    button.setAttribute('aria-label', button.title);
     button.onclick = () => openImageCrop(crop);
-    mosaic.append(button);
+    hotspots.append(button);
   }
 }
 
@@ -211,7 +500,8 @@ function openImageCrop(crop) {
   const saved = imageBlocks.get(cropKey(crop));
   board.hidden = false;
   imageOverview.hidden = true;
-  if (saved) {
+  const savedHasProgress = saved?.player?.some(value => value !== null);
+  if (saved && (!userSelectedImageBlockSize || saved.size === userSelectedImageBlockSize || savedHasProgress)) {
     size = saved.size;
     sizeSelect.value = String(size);
     paletteColors = saved.palette.slice();
@@ -219,12 +509,14 @@ function openImageCrop(crop) {
     colorPlayer = saved.player.slice();
     selectedColor = paletteColors[0] || null;
     clearTrace();
+    renderImageTools();
     renderColor();
     return;
   }
-  const recommended = suggestedSizeForCrop(crop.row, crop.column, crop.columns, crop.rows);
-  size = recommended;
-  sizeSelect.value = String(recommended);
+  if (saved) imageBlocks.delete(cropKey(crop));
+  const preferredSize = userSelectedImageBlockSize || suggestedSizeForCrop(crop.row, crop.column, crop.columns, crop.rows);
+  size = preferredSize;
+  sizeSelect.value = String(preferredSize);
   quantizeImage(importedImage, crop);
 }
 
@@ -247,6 +539,15 @@ function suggestedSizeForCrop(row, column, columns, rows) {
 
 function showImageSubgrids(format) {
   showImageOverview(format || imageGrid);
+}
+
+function openAdjacentImageBlock(direction) {
+  if (!importedCrop) return;
+  const format = userSelectedImageGrid || imageGrid;
+  const current = importedCrop.row * format.columns + importedCrop.column;
+  const count = format.columns * format.rows;
+  const next = (current + direction + count) % count;
+  openImageCrop({ row: Math.floor(next / format.columns), column: next % format.columns, columns: format.columns, rows: format.rows });
 }
 
 function updateTraceControls() {
@@ -729,6 +1030,7 @@ function render() {
     renderColor();
     return;
   }
+  setColorControlsVisibility(false);
   if (!isViewingTrace) applyAutomaticCrosses();
   const rowIndexes = Array.from({ length: size }, (_, row) => rowLine(row));
   const columnIndexes = Array.from({ length: size }, (_, col) => columnLine(col));
@@ -738,8 +1040,9 @@ function render() {
   const columnStates = columnIndexes.map((indexes, col) => completedClueStates(columnClues[col], playerLine(indexes)));
   const maxRowClues = Math.max(...rowClues.map(clues => clues.length));
   const maxColumnClues = Math.max(...columnClues.map(clues => clues.length));
-  board.style.gridTemplateColumns = `repeat(${maxRowClues}, 29px) repeat(${size}, 29px)`;
-  board.style.gridTemplateRows = `repeat(${maxColumnClues}, 29px) repeat(${size}, 29px)`;
+  board.style.setProperty('--cell-pixels', `${cellTrack() - 2}px`);
+  board.style.gridTemplateColumns = `repeat(${maxRowClues}, ${cellTrack()}px) repeat(${size}, ${cellTrack()}px)`;
+  board.style.gridTemplateRows = `repeat(${maxColumnClues}, ${cellTrack()}px) repeat(${size}, ${cellTrack()}px)`;
   board.innerHTML = '';
   for (let row = 0; row < maxColumnClues + size; row += 1) {
     for (let col = 0; col < maxRowClues + size; col += 1) {
@@ -774,16 +1077,18 @@ function render() {
         element.dataset.index = cellIndex;
         element.addEventListener('pointerdown', event => {
           if (event.button !== 0 && event.button !== 2) return;
+          if (event.button === 0 && (interactionTool === 'pan' || spacePressed)) return;
           event.preventDefault();
           const currentValue = player[cellIndex];
-          if (event.button === 0) {
+          const requestedTool = event.button === 2 ? 'cross' : interactionTool;
+          if (requestedTool === 'fill') {
             paintMode = currentValue === 1 ? 'erase-filled' : 'fill-empty';
             paintValue = currentValue === 1 ? 0 : 1;
-          } else {
+          } else if (requestedTool === 'cross') {
             if (currentValue === 1) return;
             paintMode = currentValue === -1 ? 'erase-marked' : 'mark-empty';
             paintValue = currentValue === -1 ? 0 : -1;
-          }
+          } else { paintMode = 'erase-any'; paintValue = 0; }
           isPainting = true;
           clearTrace();
           solverMessage = '';
@@ -796,6 +1101,7 @@ function render() {
           if ((paintMode === 'fill-empty' || paintMode === 'mark-empty') && currentValue !== 0) return;
           if (paintMode === 'erase-filled' && currentValue !== 1) return;
           if (paintMode === 'erase-marked' && currentValue !== -1) return;
+          if (paintMode === 'erase-any' && currentValue === 0) return;
           player[cellIndex] = paintValue;
           render();
         });
@@ -812,11 +1118,11 @@ function render() {
     const separator = document.createElement('div');
     separator.className = `separator ${orientation}`;
     if (orientation === 'vertical') {
-      separator.style.left = `${position * 30 - 1}px`;
-      separator.style.height = `${totalRows * 30 - 1}px`;
+      separator.style.left = `${position * cellPitch() - 1}px`;
+      separator.style.height = `${totalRows * cellPitch() - 1}px`;
     } else {
-      separator.style.top = `${position * 30 - 1}px`;
-      separator.style.width = `${totalColumns * 30 - 1}px`;
+      separator.style.top = `${position * cellPitch() - 1}px`;
+      separator.style.width = `${totalColumns * cellPitch() - 1}px`;
     }
     board.appendChild(separator);
   };
@@ -826,6 +1132,7 @@ function render() {
   const mistakes = player.reduce((total, value, index) => total + Number((value === 1 && !solution[index]) || (value === -1 && solution[index])), 0);
   errorCount.textContent = `Erreurs : ${mistakes}`;
   status.textContent = complete ? 'Grille terminée !' : (solverMessage || 'Complète les groupes indiqués par les nombres de chaque ligne et colonne.');
+  if (complete) window.GameRecords?.finish({ won: true });
 }
 
 function colorRuns(values) {
@@ -864,11 +1171,48 @@ function colorPlayerLine(row, column) {
 function renderPalette() {
   paletteElement.hidden = !isColorMode;
   if (!isColorMode) return;
-  paletteElement.innerHTML = `<span class="muted">Couleur :</span>${paletteColors.map(color => `<button class="palette-color${selectedColor === color ? ' selected' : ''}" data-color="${color}" style="background:${color}" title="Choisir ${color}"></button>`).join('')}<button class="palette-color erase${selectedColor === null ? ' selected' : ''}" data-color="erase">Gomme</button>`;
+  paletteElement.innerHTML = `<span class="muted">Couleur :</span>${paletteColors.map(color => `<button class="palette-color${selectedColor === color ? ' selected' : ''}" data-color="${color}" style="background:${color}" aria-label="Choisir ${color}" aria-pressed="${selectedColor === color}"></button>`).join('')}<button class="palette-color erase${selectedColor === null ? ' selected' : ''}" data-color="erase" aria-pressed="${selectedColor === null}">Gomme</button>`;
   paletteElement.querySelectorAll('[data-color]').forEach(button => button.addEventListener('click', () => {
     selectedColor = button.dataset.color === 'erase' ? null : button.dataset.color;
-    renderPalette();
+    interactionTool = button.dataset.color === 'erase' ? 'erase' : 'fill';
+    updateToolButtons();
+    renderColor();
   }));
+}
+
+function colorMetrics(color) {
+  const channels = color.replace('#', '').match(/.{1,2}/g)?.map(channel => Number.parseInt(channel, 16)) || [0, 0, 0];
+  const [red, green, blue] = channels.map(channel => channel / 255);
+  const maximum = Math.max(red, green, blue);
+  const minimum = Math.min(red, green, blue);
+  const delta = maximum - minimum;
+  let hue = 0;
+  if (delta) {
+    if (maximum === red) hue = 60 * (((green - blue) / delta) % 6);
+    else if (maximum === green) hue = 60 * ((blue - red) / delta + 2);
+    else hue = 60 * ((red - green) / delta + 4);
+  }
+  if (hue < 0) hue += 360;
+  const lightness = (maximum + minimum) / 2;
+  const saturation = delta ? delta / (1 - Math.abs(2 * lightness - 1)) : 0;
+  const luminance = channels.map(channel => channel / 255).map(channel => channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4);
+  return { hue, lightness, saturation, luminance: luminance[0] * .2126 + luminance[1] * .7152 + luminance[2] * .0722 };
+}
+
+function sortPaletteColors() {
+  const usage = new Map(paletteColors.map(color => [color, 0]));
+  colorSolution.forEach(color => { if (usage.has(color)) usage.set(color, usage.get(color) + 1); });
+  const metric = color => colorMetrics(color);
+  const sorters = {
+    hue: (left, right) => metric(left).hue - metric(right).hue || metric(left).lightness - metric(right).lightness,
+    lightness: (left, right) => metric(left).luminance - metric(right).luminance || metric(left).hue - metric(right).hue,
+    saturation: (left, right) => metric(right).saturation - metric(left).saturation || metric(left).hue - metric(right).hue,
+    usage: (left, right) => usage.get(right) - usage.get(left) || left.localeCompare(right),
+    hex: (left, right) => left.localeCompare(right)
+  };
+  paletteColors.sort(sorters[paletteSortSelect.value] || sorters.hue);
+  solverMessage = `Palette triée par ${paletteSortSelect.selectedOptions[0].textContent.toLowerCase()}.`;
+  renderColor();
 }
 
 function generatedPalette(count) {
@@ -899,11 +1243,11 @@ function addColorSeparators(maxRowClues, maxColumnClues) {
     const separator = document.createElement('div');
     separator.className = `separator ${orientation}`;
     if (orientation === 'vertical') {
-      separator.style.left = `${position * 30 - 1}px`;
-      separator.style.height = `${totalRows * 30 - 1}px`;
+      separator.style.left = `${position * cellPitch() - 1}px`;
+      separator.style.height = `${totalRows * cellPitch() - 1}px`;
     } else {
-      separator.style.top = `${position * 30 - 1}px`;
-      separator.style.width = `${totalColumns * 30 - 1}px`;
+      separator.style.top = `${position * cellPitch() - 1}px`;
+      separator.style.width = `${totalColumns * cellPitch() - 1}px`;
     }
     board.appendChild(separator);
   };
@@ -915,7 +1259,22 @@ function colorClueMarkup(clue) {
   return clue ? `<span class="color-clue"><i style="background:${clue.color}"></i>${clue.length}</span>` : '';
 }
 
+function configureColorClue(element, clue, completed) {
+  if (!clue) return;
+  if (completed) element.classList.add('done');
+  element.classList.add('color-selectable');
+  element.style.setProperty('--clue-highlight', clue.color);
+  if (selectedColor === clue.color) element.classList.add('color-selected');
+  element.tabIndex = 0;
+  element.setAttribute('role', 'button');
+  element.setAttribute('aria-label', `Sélectionner ${clue.color}, groupe de ${clue.length} cases`);
+  const selectClueColor = () => { selectedColor = clue.color; interactionTool = 'fill'; updateToolButtons(); renderColor(); };
+  element.addEventListener('click', selectClueColor);
+  element.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectClueColor(); } });
+}
+
 function renderColor() {
+  setColorControlsVisibility(true);
   renderPalette();
   const rowClues = Array.from({ length: size }, (_, row) => colorRuns(colorLine(row, null)));
   const columnClues = Array.from({ length: size }, (_, column) => colorRuns(colorLine(null, column)));
@@ -923,33 +1282,51 @@ function renderColor() {
   const columnStates = columnClues.map((clues, column) => colorClueStates(clues, colorPlayerLine(null, column)));
   const maxRowClues = Math.max(1, ...rowClues.map(clues => clues.length));
   const maxColumnClues = Math.max(1, ...columnClues.map(clues => clues.length));
-  resizeBoardContainer(maxRowClues + size, maxColumnClues + size);
-  board.style.gridTemplateColumns = `repeat(${maxRowClues}, 29px) repeat(${size}, 29px)`;
-  board.style.gridTemplateRows = `repeat(${maxColumnClues}, 29px) repeat(${size}, 29px)`;
+  const totalsOffset = showColorTotals.checked ? 1 : 0;
+  const clueColumns = maxRowClues + totalsOffset;
+  const clueRows = maxColumnClues + totalsOffset;
+  const rowTotals = rowClues.map(clues => clues.reduce((total, clue) => total + clue.length, 0));
+  const columnTotals = columnClues.map(clues => clues.reduce((total, clue) => total + clue.length, 0));
+  resizeBoardContainer(clueColumns + size, clueRows + size);
+  board.style.setProperty('--cell-pixels', `${cellTrack() - 2}px`);
+  board.style.gridTemplateColumns = `repeat(${clueColumns}, ${cellTrack()}px) repeat(${size}, ${cellTrack()}px)`;
+  board.style.gridTemplateRows = `repeat(${clueRows}, ${cellTrack()}px) repeat(${size}, ${cellTrack()}px)`;
   board.innerHTML = '';
-  for (let row = 0; row < maxColumnClues + size; row += 1) {
-    for (let column = 0; column < maxRowClues + size; column += 1) {
+  for (let row = 0; row < clueRows + size; row += 1) {
+    for (let column = 0; column < clueColumns + size; column += 1) {
       const element = document.createElement('div');
-      if (row < maxColumnClues && column < maxRowClues) element.className = 'corner';
-      else if (row < maxColumnClues) {
-        const clueColumn = column - maxRowClues;
-        const clues = columnClues[clueColumn];
-        const clueIndex = row - (maxColumnClues - clues.length);
-        const clue = clues[clueIndex];
-        element.className = 'clue top-clue';
-        if (clue && columnStates[clueColumn][clueIndex]) element.classList.add('done');
-        element.innerHTML = colorClueMarkup(clue);
-      } else if (column < maxRowClues) {
-        const clueRow = row - maxColumnClues;
-        const clues = rowClues[clueRow];
-        const clueIndex = column - (maxRowClues - clues.length);
-        const clue = clues[clueIndex];
-        element.className = 'clue';
-        if (clue && rowStates[clueRow][clueIndex]) element.classList.add('done');
-        element.innerHTML = colorClueMarkup(clue);
+      if (row < clueRows && column < clueColumns) element.className = 'corner';
+      else if (row < clueRows) {
+        const clueColumn = column - clueColumns;
+        if (totalsOffset && row === 0) {
+          element.className = 'clue top-clue total-clue';
+          element.textContent = columnTotals[clueColumn];
+          element.title = `${columnTotals[clueColumn]} cases colorées dans la colonne ${clueColumn + 1}`;
+        } else {
+          const clues = columnClues[clueColumn];
+          const clueIndex = row - totalsOffset - (maxColumnClues - clues.length);
+          const clue = clues[clueIndex];
+          element.className = 'clue top-clue';
+          configureColorClue(element, clue, clue && columnStates[clueColumn][clueIndex]);
+          element.innerHTML = colorClueMarkup(clue);
+        }
+      } else if (column < clueColumns) {
+        const clueRow = row - clueRows;
+        if (totalsOffset && column === 0) {
+          element.className = 'clue total-clue';
+          element.textContent = rowTotals[clueRow];
+          element.title = `${rowTotals[clueRow]} cases colorées dans la ligne ${clueRow + 1}`;
+        } else {
+          const clues = rowClues[clueRow];
+          const clueIndex = column - totalsOffset - (maxRowClues - clues.length);
+          const clue = clues[clueIndex];
+          element.className = 'clue';
+          configureColorClue(element, clue, clue && rowStates[clueRow][clueIndex]);
+          element.innerHTML = colorClueMarkup(clue);
+        }
       } else {
-        const gridRow = row - maxColumnClues;
-        const gridColumn = column - maxRowClues;
+        const gridRow = row - clueRows;
+        const gridColumn = column - clueColumns;
         const cellIndex = indexOf(gridRow, gridColumn);
         const value = colorPlayer[cellIndex];
         const error = showErrors.checked && ((value && value !== -1 && value !== colorSolution[cellIndex]) || (value === -1 && colorSolution[cellIndex]));
@@ -959,10 +1336,13 @@ function renderColor() {
         element.dataset.index = cellIndex;
         element.addEventListener('pointerdown', event => {
           if (event.button !== 0 && event.button !== 2) return;
+          if (event.button === 0 && (interactionTool === 'pan' || spacePressed)) return;
           event.preventDefault();
-          const target = event.button === 2 ? -1 : selectedColor;
-          paintValue = colorPlayer[cellIndex] === target ? null : target;
-          paintMode = colorPlayer[cellIndex] === target ? 'erase-color' : 'set-color';
+          const requestedTool = event.button === 2 ? 'cross' : interactionTool;
+          const target = requestedTool === 'cross' ? -1 : requestedTool === 'erase' ? null : selectedColor;
+          paintMatchValue = target;
+          paintValue = requestedTool === 'erase' || colorPlayer[cellIndex] === target ? null : target;
+          paintMode = requestedTool === 'erase' ? 'erase-any-color' : colorPlayer[cellIndex] === target ? 'erase-selected-color' : 'set-color';
           isPainting = true;
           clearTrace();
           solverMessage = '';
@@ -971,35 +1351,51 @@ function renderColor() {
         });
         element.addEventListener('pointerenter', event => {
           if (!isPainting || (event.buttons & 3) === 0) return;
-          if ((paintMode === 'set-color' && colorPlayer[cellIndex] === paintValue) || (paintMode === 'erase-color' && colorPlayer[cellIndex] !== paintValue)) return;
+          if (paintMode === 'set-color' && colorPlayer[cellIndex] === paintValue) return;
+          if (paintMode === 'erase-selected-color' && colorPlayer[cellIndex] !== paintMatchValue) return;
+          if (paintMode === 'erase-any-color' && colorPlayer[cellIndex] === null) return;
           colorPlayer[cellIndex] = paintValue;
           renderColor();
         });
         element.addEventListener('contextmenu', event => event.preventDefault());
       }
-      if (row === maxColumnClues - 1) element.classList.add('grid-divider-bottom');
-      if (column === maxRowClues - 1) element.classList.add('grid-divider-right');
+      if (row === clueRows - 1) element.classList.add('grid-divider-bottom');
+      if (column === clueColumns - 1) element.classList.add('grid-divider-right');
       board.appendChild(element);
     }
   }
-  addColorSeparators(maxRowClues, maxColumnClues);
+  addColorSeparators(clueColumns, clueRows);
   const complete = colorPlayer.every((value, index) => value === colorSolution[index] || (!colorSolution[index] && (value === null || value === -1)));
   const mistakes = colorPlayer.reduce((total, value, index) => total + Number((value && value !== -1 && value !== colorSolution[index]) || (value === -1 && colorSolution[index])), 0);
   errorCount.textContent = `Erreurs : ${mistakes}`;
   status.textContent = complete ? 'Nonogram couleur terminé !' : (solverMessage || 'Choisis une couleur dans la palette, puis remplis les indices colorés.');
+  if (complete) window.GameRecords?.finish({ won: true });
   updateImageProgressDisplays();
 }
 
 function createColorPuzzle() {
   paletteColors = generatedPalette(paletteLimit);
-  createRandomSolution();
-  colorSolution = solution.map(value => value ? paletteColors[Math.floor(Math.random() * paletteColors.length)] : null);
+  const attempts = size <= 25 ? 10 : size <= 40 ? 4 : 1;
+  let verified = false;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    createRandomSolution();
+    colorSolution = solution.map(value => value ? paletteColors[Math.floor(Math.random() * paletteColors.length)] : null);
+    if (size > 40) { verified = true; break; }
+    const clues = colorConstraintClues();
+    const propagated = propagateConstraintState(Array(size * size).fill(null), clues.rows, clues.columns);
+    if (!propagated.contradiction && propagated.state.every(value => value !== null)) { verified = true; break; }
+  }
+  if (!verified && size <= 40) {
+    const clues = colorConstraintClues();
+    verified = Boolean(searchConstraintSolution(Array(size * size).fill(null), clues.rows, clues.columns).solution);
+  }
   colorPlayer = Array(size * size).fill(null);
   selectedColor = paletteColors[0];
+  solverMessage = verified ? 'Grille couleur vérifiée par le solveur.' : 'Grande grille générée ; sa résolution complète peut nécessiter des hypothèses.';
 }
 
 function quantizeImage(image, crop = importedCrop) {
-  paletteSizeLabel.hidden = false;
+  setColorControlsVisibility(true);
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
@@ -1046,11 +1442,13 @@ function importImage(file) {
   image.addEventListener('load', () => {
     isColorMode = true;
     modeSelect.value = 'color';
-    paletteSizeLabel.hidden = false;
+    setColorControlsVisibility(true);
     importedImage = image;
     importedCrop = null;
     imageBlocks = new Map();
     imageSuggestedSizes = new Map();
+    userSelectedImageGrid = null;
+    userSelectedImageBlockSize = null;
     imageGrid = recommendedImageGrid(image);
     renderImageTools();
     showImageOverview(imageGrid);
@@ -1193,7 +1591,7 @@ nextTrace.addEventListener('click', () => showTrace(traceIndex + 1));
 traceSlider.addEventListener('input', () => showTrace(Number(traceSlider.value)));
 modeSelect.addEventListener('change', () => {
   isColorMode = modeSelect.value === 'color';
-  paletteSizeLabel.hidden = !isColorMode;
+  setColorControlsVisibility(isColorMode);
   solverMessage = '';
   clearTrace();
   if (isColorMode) createColorPuzzle(); else { createSolution(); paletteElement.hidden = true; }
@@ -1211,8 +1609,21 @@ paletteSizeSelect.addEventListener('change', () => {
   }
   if (isColorMode) { createColorPuzzle(); renderColor(); }
 });
+sortPaletteButton.addEventListener('click', sortPaletteColors);
+showColorTotals.addEventListener('change', () => { if (isColorMode) renderColor(); });
+cellScaleSelect.addEventListener('change', () => { cellPixels = Number(cellScaleSelect.value); if (isColorMode) renderColor(); else render(); });
 imageInput.addEventListener('change', () => importImage(imageInput.files[0]));
-sizeSelect.addEventListener('change', () => { if (!importedImage || !isColorMode || !importedCrop || colorPlayer.some(value => value !== null && value !== -1)) return; size = Number(sizeSelect.value); quantizeImage(importedImage, importedCrop); });
+sizeSelect.addEventListener('change', () => {
+  if (!importedImage || !isColorMode || !importedCrop) return;
+  if (colorPlayer.some(value => value !== null)) {
+    sizeSelect.value = String(size);
+    status.textContent = 'La résolution d’un bloc déjà commencé est conservée pour ne pas perdre sa progression.';
+    return;
+  }
+  userSelectedImageBlockSize = Number(sizeSelect.value);
+  size = userSelectedImageBlockSize;
+  quantizeImage(importedImage, importedCrop);
+});
 localStorage.setItem('game-hub:last-game', 'nonogram');
 createSolution();
 updateTraceControls();
@@ -1253,7 +1664,26 @@ function runNonogramDiagnostics() {
   board.hidden = previousBoardHidden;
   imageOverview.hidden = previousOverviewHidden;
   checks.push([...sizeSelect.options].some(option => option.value === '60') && [...paletteSizeSelect.options].some(option => option.value === '32'));
-  document.title = `NONOGRAM TEST · ${checks.filter(Boolean).length}/${checks.length}`;
+  const black = colorMetrics('#000000');
+  const white = colorMetrics('#ffffff');
+  checks.push(black.luminance < white.luminance && Number.isFinite(black.hue) && Number.isFinite(white.saturation));
+  checks.push([...paletteSortSelect.options].map(option => option.value).join(',') === 'hue,lightness,saturation,usage,hex' && Boolean(showColorTotals));
+  const clueElement = document.createElement('div');
+  configureColorClue(clueElement, { color: selectedColor, length: 3 }, false);
+  checks.push(clueElement.classList.contains('color-selected') && clueElement.getAttribute('role') === 'button');
+  const summary = { passed: checks.filter(Boolean).length, total: checks.length, checks };
+  document.title = `NONOGRAM TEST · ${summary.passed}/${summary.total}`;
+  return summary;
 }
 
+window.NonogramTestAPI = Object.freeze({
+  runDiagnostics: runNonogramDiagnostics,
+  interfaceSummary: () => ({
+    viewport: boardViewport.id === 'nonogramViewport' && boardViewport.contains(board),
+    zoomButtons: boardControls.querySelectorAll('[data-zoom]').length,
+    tools: [...boardControls.querySelectorAll('[data-tool]')].map(button => button.dataset.tool),
+    bounded: getComputedStyle(boardViewport).overflow !== 'visible' && boardViewport.clientHeight > 0,
+    touchCrossDelay: TOUCH_CROSS_DELAY,
+  }),
+});
 if (new URLSearchParams(location.search).has('nonogramTest')) runNonogramDiagnostics();

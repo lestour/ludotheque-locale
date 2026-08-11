@@ -1,4 +1,4 @@
-import('../../../shared/options-help.js?v=2');
+import('../../../shared/options-help.js?v=3');
 
 const table = document.getElementById('table');
 const status = document.getElementById('status');
@@ -11,6 +11,8 @@ const continueActionButton = document.getElementById('continueAction');
 const playersSelect = document.getElementById('players');
 const limitSelect = document.getElementById('limit');
 const columnsOption = document.getElementById('columns');
+const rowsOption = document.getElementById('rows');
+const initialRevealsOption = document.getElementById('initialReveals');
 const doubleFinishOption = document.getElementById('doubleFinish');
 const bonusRulesOption = document.getElementById('bonusRules');
 const bonusArea = document.getElementById('bonusArea');
@@ -145,7 +147,7 @@ function refillActionMarket() {
 }
 
 function removeMatchedGroups(player, playerIndex) {
-  if (!columnsOption.checked && !bonusRulesOption.checked) return;
+  if (!columnsOption.checked && !rowsOption.checked) return;
   let changed = true;
   while (changed) {
     changed = false;
@@ -153,7 +155,7 @@ function removeMatchedGroups(player, playerIndex) {
     if (columnsOption.checked) {
       for (let column = 0; column < 4; column += 1) groups.push([column, column + 4, column + 8]);
     }
-    if (bonusRulesOption.checked) {
+    if (rowsOption.checked) {
       for (let row = 0; row < 3; row += 1) groups.push([row * 4, row * 4 + 1, row * 4 + 2, row * 4 + 3]);
     }
     for (const indexes of groups) {
@@ -209,6 +211,7 @@ function finishRound(finisher) {
     game.over = true;
     const winner = game.people.map((player, index) => ({ index, score: player.score })).sort((left, right) => left.score - right.score)[0];
     status.textContent = `${name(winner.index)} gagne avec ${winner.score} points.`;
+    window.GameRecords?.finish({ score: winner.score, scoreLabel: `${winner.score} points`, lowerIsBetter: true, won: winner.index === 0 });
     render();
     return;
   }
@@ -457,10 +460,10 @@ function handleCellClick(playerIndex, cardIndex) {
   const player = game.people[playerIndex];
   const card = player.board[cardIndex];
   if (game.phase === 'setup') {
-    if (playerIndex !== 0 || game.setupCount >= 2 || !revealCard(0, cardIndex)) return;
+    if (playerIndex !== 0 || game.setupCount >= game.initialReveals || !revealCard(0, cardIndex)) return;
     game.setupCount += 1;
     log(`Vous retournez ${cardLabel(card)} pour préparer la manche.`);
-    if (game.setupCount === 2) beginRound();
+    if (game.setupCount === game.initialReveals) beginRound();
     else {
       status.textContent = 'Choisissez encore une carte de votre grille à retourner.';
       render();
@@ -569,7 +572,7 @@ function scheduleBot() {
 
 function isSelectable(playerIndex, cardIndex, card) {
   if (card.removed || game.over) return false;
-  if (game.phase === 'setup') return playerIndex === 0 && !card.up && game.setupCount < 2;
+  if (game.phase === 'setup') return playerIndex === 0 && !card.up && game.setupCount < game.initialReveals;
   if (game.turn !== 0) return false;
   if (game.selection?.type === 'revealOwn') return playerIndex === 0 && !card.up;
   if (game.selection?.type === 'selfSwap') return playerIndex === 0;
@@ -648,7 +651,7 @@ function render() {
   scores.innerHTML = game.people.map((player, index) => `<p><strong>${name(index)}</strong> : ${player.score} pts</p>`).join('');
   document.getElementById('log').innerHTML = game.log.map(entry => `<li>${entry}</li>`).join('');
   rules.innerHTML = bonusRulesOption.checked
-    ? '<strong>Mode bonus</strong><br>Les étoiles donnent une action. Trois étoiles en colonne valent −10, quatre en ligne −15. Les lignes identiques peuvent aussi disparaître. Chaque action inutilisée vaut +10 en fin de manche.'
+    ? `<strong>Mode bonus</strong><br>Les étoiles donnent une action. Chaque action inutilisée vaut +10 en fin de manche.${rowsOption.checked ? ' Les lignes de quatre cartes identiques disparaissent.' : ''}`
     : '<strong>Règles classiques</strong><br>Prenez la défausse ou piochez. Une carte piochée peut remplacer la carte de votre choix, ou être défaussée pour retourner une carte cachée choisie.';
   renderBonus();
 }
@@ -681,7 +684,7 @@ function startRound() {
     player.actions = [];
     player.roundBonus = 0;
     if (playerIndex !== 0) {
-      shuffle(player.board.map((_, index) => index)).slice(0, 2).forEach(cardIndex => revealCard(playerIndex, cardIndex));
+      shuffle(player.board.map((_, index) => index)).slice(0, game.initialReveals).forEach(cardIndex => revealCard(playerIndex, cardIndex));
     }
   });
   game.phase = 'setup';
@@ -693,7 +696,7 @@ function startRound() {
   game.actionChoice = null;
   game.peek = null;
   game.extraTurns = 0;
-  status.textContent = 'Choisissez vous-même deux cartes de votre grille à retourner.';
+  status.textContent = `Choisissez vous-même ${game.initialReveals} cartes de votre grille à retourner.`;
   render();
 }
 
@@ -704,6 +707,7 @@ function newGame() {
     round: 1,
     phase: 'setup',
     setupCount: 0,
+    initialReveals: Number(initialRevealsOption.value),
     turn: 0,
     turnSerial: 0,
     deck: [],
@@ -723,6 +727,16 @@ function newGame() {
   startRound();
 }
 
+window.GrilleZeroTestAPI = Object.freeze({
+  summary: () => ({
+    numberCardCount: game.deck.length + game.discard.length + game.people.reduce((total, player) => total + player.board.filter(card => !card.removed).length, 0) + (game.pending?.card ? 1 : 0),
+    expectedNumberCards: bonusRulesOption.checked ? 158 : 150,
+    boardSizesValid: game.people.every(player => player.board.length === 12),
+    actionCardCount: game.actionDeck.length + game.actionMarket.length + game.actionDiscard.length + game.people.reduce((total, player) => total + player.actions.length, 0),
+    expectedActionCards: bonusRulesOption.checked ? Object.values(ACTION_COUNTS).reduce((total, count) => total + count, 0) : 0,
+  }),
+});
+
 document.getElementById('newGame').addEventListener('click', newGame);
 playersSelect.addEventListener('change', newGame);
 bonusRulesOption.addEventListener('change', newGame);
@@ -732,6 +746,8 @@ discardDrawButton.addEventListener('click', discardAndReveal);
 continueActionButton.addEventListener('click', completeAction);
 actionDeckButton.addEventListener('click', () => acquireAction(0, null, false));
 columnsOption.addEventListener('change', render);
+rowsOption.addEventListener('change', render);
+initialRevealsOption.addEventListener('change', newGame);
 doubleFinishOption.addEventListener('change', render);
 localStorage.setItem('game-hub:last-game', 'grille-zero');
 newGame();

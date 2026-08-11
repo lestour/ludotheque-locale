@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Karaoké Lab</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Arial, sans-serif; background: #f5f1fa; color: #241936; }
+    body { margin: 0; min-height: 100vh; }
+    main { max-width: 1180px; margin: auto; padding: 22px; }
+    .panel, .card { border: 1px solid #d8cce6; border-radius: 15px; background: #fff; box-shadow: 0 8px 24px #0001; }
+    .panel { padding: 17px; }
+    .toolbar { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+    h1 { margin: 0 auto 0 0; }
+    button, a, select, input, textarea { box-sizing: border-box; border: 1px solid #9c8aae; border-radius: 9px; padding: 8px 11px; background: #fff; color: inherit; font: inherit; text-decoration: none; }
+    button, a { cursor: pointer; }
+    .layout { display: grid; grid-template-columns: minmax(400px, 1fr) 330px; gap: 17px; margin-top: 15px; }
+    .stage { position: relative; min-height: 450px; overflow: hidden; border-radius: 14px; background: linear-gradient(180deg, #301452, #7c2d8f 52%, #f087ad); color: #fff; }
+    canvas { width: 100%; height: 330px; display: block; }
+    .target { padding: 4px 20px 18px; text-align: center; }
+    .target strong { display: block; font-size: clamp(44px, 8vw, 86px); }
+    .target span { font-size: 20px; }
+    .meter { height: 14px; margin: 8px 20px; border-radius: 8px; background: #fff4; overflow: hidden; }
+    .meter i { display: block; width: 0; height: 100%; background: #4ade80; transition: width .08s linear; }
+    .side { display: grid; gap: 12px; align-content: start; min-width: 0; }
+    .card { padding: 13px; min-width: 0; overflow: hidden; }
+    .card h2 { margin: 0 0 8px; }
+    .options { display: grid; gap: 8px; }
+    .options label { display: grid; gap: 4px; }
+    .options select, .options input, .options textarea, .options button { width: 100%; min-width: 0; max-width: 100%; }
+    .options label.check-option { display: flex; align-items: center; justify-content: space-between; }
+    .options label.check-option input { width: auto; }
+    .score { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 7px; }
+    .score div { padding: 9px; border-radius: 9px; background: #f0e8f7; text-align: center; }
+    .muted { color: #695b78; line-height: 1.5; }
+    #sequence { min-height: 92px; resize: vertical; }
+    @media (max-width: 850px) { .layout { grid-template-columns: 1fr; } }
+    @media (prefers-color-scheme: dark) {
+      :root { background: #130f1d; color: #f5efff; }
+      .panel, .card { background: #21182e; border-color: #4f3d64; }
+      button, a, select, input, textarea { background: #332643; color: #fff; border-color: #725b8c; }
+      .score div { background: #332643; }
+      .muted { color: #cbbdd8; }
+    }
+  </style>
+</head>
+<body>
+  <main><section class="panel">
+    <div class="toolbar"><h1>Karaoké Lab</h1><a href="../../index.html">Hub</a><button id="microphone">Activer le microphone</button><button id="start">Démarrer</button><button id="stop">Arrêter</button></div>
+    <p id="status" class="muted">Le microphone reste local : aucun son n’est envoyé.</p>
+    <div class="layout">
+      <section class="stage"><canvas id="pitchCanvas" width="820" height="330"></canvas><div class="target"><strong id="targetNote">—</strong><span id="lyric">En attente</span></div><div class="meter"><i id="holdMeter"></i></div></section>
+      <aside class="side">
+        <section class="card"><h2>Options</h2><div class="options option-groups">
+          <label>Exercice <select id="exercise"><option value="scale">Gamme majeure</option><option value="intervals">Intervalles</option><option value="custom">Séquence personnalisée</option><option value="score" disabled>Partition importée</option></select></label>
+          <label class="check-option">Notation française <input id="frenchNotation" type="checkbox" checked></label>
+          <label class="check-option">Évaluer les nuances <input id="scoreVolume" type="checkbox" checked></label>
+          <label>Tempo <input id="tempo" type="range" min="50" max="150" value="90"><output id="tempoValue">90 BPM</output></label>
+          <label>Latence micro <input id="latency" type="range" min="0" max="500" value="80"><output id="latencyValue">80 ms</output></label>
+          <button id="calibrate">Calibrer par clic sonore</button>
+          <label>Partition vocale <input id="scoreFile" type="file" accept=".mscz,.mscx,.musicxml,.xml"></label>
+          <label id="scoreTrackLabel" hidden>Voix <select id="scoreTrack"></select></label>
+          <label>Accompagnement local <input id="backingFile" type="file" accept="audio/*"></label>
+          <label>Séquence personnalisée <textarea id="sequence" placeholder="Do4:1:La Ré4:1:la Mi4:2:la"></textarea></label>
+        </div></section>
+        <section class="card"><h2>Performance</h2><div id="score" class="score"></div><p id="detected" class="muted">Note captée : —</p></section>
+        <details class="card" open><summary><strong>Règles du jeu</strong></summary><p class="muted">Chantez la note cible pendant sa durée. La justesse mesure l’écart en cents, la tenue mesure la proportion de la note effectivement détectée. Une mesure de décompte précède l’exercice. Un accompagnement audio peut être chargé localement.</p></details>
+      </aside>
+    </div>
+    <audio id="backing"></audio>
+  </section></main>
+  <script src="../../shared/game-runtime.js?v=3"></script>
+  <script src="../../shared/options-help.js?v=3"></script>
+  <script src="../../shared/music-score-parser.js?v=1"></script>
+  <script src="karaoke.js?v=3"></script>
+</body>
+</html>

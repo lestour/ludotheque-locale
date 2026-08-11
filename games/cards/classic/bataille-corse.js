@@ -9,7 +9,7 @@ const playerCountSelect = document.getElementById('playerCount');
 const slapOnSeven = document.getElementById('slapOnSeven');
 const slapOnTenSandwich = document.getElementById('slapOnTenSandwich');
 const attemptsForFigure = { V: 1, D: 2, R: 3, A: 4 };
-const botProfiles = { easy: { minimumDelay: 900, maximumDelay: 1550, accuracy: .48 }, normal: { minimumDelay: 520, maximumDelay: 980, accuracy: .72 }, hard: { minimumDelay: 180, maximumDelay: 480, accuracy: .93 } };
+const botProfiles = { easy: { minimumDelay: 900, maximumDelay: 1550, accuracy: .48 }, normal: { minimumDelay: 520, maximumDelay: 980, accuracy: .72 }, hard: { minimumDelay: 180, maximumDelay: 480, accuracy: .93 }, extreme: { minimumDelay: 85, maximumDelay: 220, accuracy: .985 } };
 let game;
 let botTimer = null;
 let captureTimer = null;
@@ -25,7 +25,18 @@ function clearCaptureTimer() { if (captureTimer !== null) window.clearTimeout(ca
 function nextPlayer(player) { for (let offset = 1; offset <= game.players; offset += 1) { const candidate = (player + offset) % game.players; if (game.hands[candidate].length) return candidate; } return player; }
 function activePlayers() { return game.hands.map((hand, player) => hand.length ? player : -1).filter(player => player >= 0); }
 function cardFaceValue(card) { return card.label === 'A' ? 1 : card.value; }
-function isSlappable() { const pile = game.pile; return pile.length && ((slapOnSeven.checked && pile.at(-1).label === '7') || (slapOnTenSandwich.checked && pile.length > 2 && cardFaceValue(pile.at(-1)) + cardFaceValue(pile.at(-3)) === 10) || (pile.length > 1 && (pile.at(-1).value === pile.at(-2).value || (pile.length > 2 && pile.at(-1).value === pile.at(-3).value)))); }
+function isPileSlappable(pile, sevenEnabled = slapOnSeven.checked, tenSandwichEnabled = slapOnTenSandwich.checked) {
+  if (!pile.length) return false;
+  const last = pile[pile.length - 1];
+  const previous = pile[pile.length - 2];
+  const sandwich = pile[pile.length - 3];
+  return Boolean((sevenEnabled && last.label === '7')
+    || (tenSandwichEnabled && sandwich && cardFaceValue(last) + cardFaceValue(sandwich) === 10)
+    || (previous && last.value === previous.value)
+    || (sandwich && last.value === sandwich.value));
+}
+function isSlappable() { return isPileSlappable(game.pile); }
+function totalCardCount() { return game.hands.reduce((total, hand) => total + hand.length, 0) + game.pile.length + (game.capture?.cards.length || 0); }
 
 function deckStackMarkup(count) {
   if (!count) return '<div class="mini-stack empty" style="--count:0" aria-label="Paquet vide"></div>';
@@ -51,6 +62,7 @@ function finish(winner) {
   game.over = true;
   clearBotTimer();
   status.textContent = winner === null ? 'Partie nulle.' : `${playerName(winner)} remporte la partie !`;
+  window.GameRecords?.finish({ won: winner === 0 });
 }
 
 function settleCapturedPile() {
@@ -181,6 +193,21 @@ window.addEventListener('keydown', event => {
 });
 localStorage.setItem('game-hub:last-game', 'bataille-corse');
 createGame();
+
+window.BatailleCorseTestAPI = {
+  diagnostics() {
+    const card = (label, value) => ({ label, value, suit: { color: 'black', symbol: '♠' } });
+    return {
+      players: game.players,
+      totalCards: totalCardCount(),
+      doubleDetected: isPileSlappable([card('4', 4), card('4', 4)], false, false),
+      sandwichDetected: isPileSlappable([card('6', 6), card('2', 2), card('6', 6)], false, false),
+      sevenOptional: isPileSlappable([card('7', 7)], true, false) && !isPileSlappable([card('7', 7)], false, false),
+      tenOptional: isPileSlappable([card('4', 4), card('2', 2), card('6', 6)], false, true),
+      onlyOneHuman: opponentSelect.querySelector('option[value="human"]') === null
+    };
+  }
+};
 
 if (new URLSearchParams(location.search).has('battleTest')) {
   const checks = [document.querySelectorAll('.mini-layer').length === 52];

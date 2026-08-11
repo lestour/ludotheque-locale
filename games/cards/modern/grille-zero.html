@@ -73,6 +73,8 @@
       </div>
       <div class="toolbar">
         <label><input id="columns" type="checkbox" checked> retirer les colonnes de 3 identiques</label>
+        <label><input id="rows" type="checkbox"> retirer les lignes de 4 identiques</label>
+        <label>Cartes révélées au départ <select id="initialReveals"><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option></select></label>
         <label><input id="doubleFinish" type="checkbox" checked> doubler le score du finisseur s’il n’est pas le plus bas</label>
         <label><input id="bonusRules" type="checkbox"> cartes et règles bonus</label>
       </div>
@@ -109,6 +111,8 @@
       </div>
     </section>
   </main>
-  <script src="grille-zero.js?v=4"></script>
+  <script src="../../../shared/game-runtime.js?v=3"></script>
+  <script src="grille-zero.js?v=6"></script>
+  <script src="../../../shared/records.js?v=3"></script>
 </body>
 </html>

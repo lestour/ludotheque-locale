@@ -8,6 +8,8 @@ const drawCount = document.getElementById('drawCount');
 const dealDifficulty = document.getElementById('dealDifficulty');
 const redealLimit = document.getElementById('redealLimit');
 const acePosition = document.getElementById('acePosition');
+const emptyTableauRule = document.getElementById('emptyTableauRule');
+const solitaireScoring = document.getElementById('solitaireScoring');
 const undoButton = document.getElementById('undo');
 const redoButton = document.getElementById('redo');
 const hintButton = document.getElementById('hint');
@@ -68,6 +70,10 @@ function tableauValue(card) {
 
 function firstTableauValue() {
   return game.acePosition === 'end' ? 13 : 14;
+}
+
+function emptyTableauAllows(state, card) {
+  return state.emptyTableauRule === 'any' || stateTableauValue(state, card) === stateFirstTableauValue(state);
 }
 
 function cloneGameState(source = game) {
@@ -207,7 +213,7 @@ function moveToTableau(column) {
   const cards = selectedCards();
   const target = game.tableau[column].at(-1);
   const first = cards[0];
-  const allowed = validTableauStack(cards) && (target ? target.faceUp && tableauValue(target) === tableauValue(first) + 1 && !sameColor(target, first) : tableauValue(first) === firstTableauValue());
+  const allowed = validTableauStack(cards) && (target ? target.faceUp && tableauValue(target) === tableauValue(first) + 1 && !sameColor(target, first) : game.emptyTableauRule === 'any' || tableauValue(first) === firstTableauValue());
   if (!allowed) return false;
   removeSelectedCards(cards);
   game.tableau[column].push(...cards);
@@ -431,7 +437,7 @@ function stateTableauTargets(state, cards, sourceColumn = null) {
     const top = pile.at(-1);
     const allowed = top
       ? top.faceUp && stateTableauValue(state, top) === stateTableauValue(state, first) + 1 && !sameColor(top, first)
-      : stateTableauValue(state, first) === stateFirstTableauValue(state);
+      : emptyTableauAllows(state, first);
     return allowed ? [target] : [];
   });
 }
@@ -805,12 +811,12 @@ function render() {
     tableau.appendChild(slot);
   });
   const foundationCards = game.foundations.reduce((total, pile) => total + pile.length, 0);
-  score.textContent = foundationCards * 10;
+  score.textContent = game.solitaireScoring === 'vegas' ? foundationCards * 5 - 52 : foundationCards * 10;
   errorCount.textContent = `Erreurs : ${game.errors}`;
   stockCount.textContent = game.stock.length;
   wasteCount.textContent = game.waste.length;
   hiddenCount.textContent = game.tableau.flat().filter(card => !card.faceUp).length;
-  rulesSummary.textContent = `pioche de ${game.drawCount} · ${game.redealLimit === Infinity ? 'recyclages illimités' : `${game.redealLimit} recyclage${game.redealLimit > 1 ? 's' : ''}`} · ${game.generationDifficulty || 'Personnalisé'} · As ${game.acePosition === 'end' ? 'en fin de suite (K → A)' : 'au début de suite (A → K)'}`;
+  rulesSummary.textContent = `pioche de ${game.drawCount} · ${game.redealLimit === Infinity ? 'recyclages illimités' : `${game.redealLimit} recyclage${game.redealLimit > 1 ? 's' : ''}`} · ${game.generationDifficulty || 'Personnalisé'} · As ${game.acePosition === 'end' ? 'en fin de suite (K → A)' : 'au début de suite (A → K)'} · colonne vide : ${game.emptyTableauRule === 'any' ? 'toute carte' : 'Roi'} · score ${game.solitaireScoring === 'vegas' ? 'casino' : 'classique'}`;
   status.textContent = game.message;
   updateHistoryButtons();
   updateTraceControls();
@@ -989,7 +995,7 @@ function createVerifiedDeal(selectedDrawCount, selectedDifficulty = 'normal') {
 function createGame() {
   const selectedDrawCount = Number(drawCount.value);
   const deal = createVerifiedDeal(selectedDrawCount, dealDifficulty.value);
-  game = { ...deal, selected: null, hint: null, animation: null, errors: 0, drawCount: selectedDrawCount, redeals: 0, redealLimit: Number(redealLimit.value), acePosition: acePosition.value, message: '' };
+  game = { ...deal, selected: null, hint: null, animation: null, errors: 0, drawCount: selectedDrawCount, redeals: 0, redealLimit: Number(redealLimit.value), acePosition: acePosition.value, emptyTableauRule: emptyTableauRule.value, solitaireScoring: solitaireScoring.value, message: '' };
   game.solvable = verifyFoundationPlan(game);
   game.message = game.solvable
     ? `${game.generationDifficulty} : ${game.generationPlanLength} actions certifiées${game.generationTargetReached ? '' : ` (objectif ${game.generationTarget} non atteint après recherche exhaustive)`}.`
@@ -1000,6 +1006,17 @@ function createGame() {
   saveHistory();
   render();
 }
+
+window.KlondikeTestAPI = Object.freeze({
+  summary: () => ({
+    cardCount: game.stock.length + game.waste.length + game.tableau.reduce((total, pile) => total + pile.length, 0) + game.foundations.reduce((total, pile) => total + pile.length, 0),
+    solvable: game.solvable,
+    certifiedActions: game.generationPlanLength,
+    hiddenCards: game.tableau.flat().filter(card => !card.faceUp).length,
+    drawCount: game.drawCount,
+    difficulty: game.generationDifficulty,
+  }),
+});
 
 stockSlot.addEventListener('click', drawStock);
 wasteSlot.addEventListener('click', () => selectCard('waste'));
@@ -1021,6 +1038,11 @@ redealLimit.addEventListener('change', createGame);
 acePosition.addEventListener('change', () => {
   createGame();
   game.message = 'Nouvelle partie avec la nouvelle position de l’As dans les suites.';
+  render();
+});
+emptyTableauRule.addEventListener('change', createGame);
+solitaireScoring.addEventListener('change', () => {
+  game.solitaireScoring = solitaireScoring.value;
   render();
 });
 traceModeButton.addEventListener('click', toggleTraceMode);

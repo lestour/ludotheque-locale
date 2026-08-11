@@ -1,3 +1,5 @@
+import('../../shared/options-help.js?v=3');
+
 const board = document.getElementById('board');
 const titleElement = document.getElementById('title');
 const rulesElement = document.getElementById('rules');
@@ -18,6 +20,12 @@ const assetsElement = document.getElementById('assets');
 const assetsTitleElement = document.getElementById('assetsTitle');
 const logElement = document.getElementById('log');
 const modalHost = document.getElementById('modalHost');
+const estateAuctionsInput = document.getElementById('estateAuctions');
+const estateParkingPotInput = document.getElementById('estateParkingPot');
+const worldCountryModeSelect = document.getElementById('worldCountryMode');
+const worldRoyaltyThresholdSelect = document.getElementById('worldRoyaltyThreshold');
+const worldEarlyTradesInput = document.getElementById('worldEarlyTrades');
+const paydayMonthsSelect = document.getElementById('paydayMonths');
 
 const tokenColors = ['#2563eb', '#dc2626', '#059669', '#7c3aed'];
 let game;
@@ -35,11 +43,25 @@ const estateSkins = {
   france: ['Départ', 'Marcillac-Vallon', 'Caisse commune', 'Millau', 'Impôts', 'Gare de Lyon', 'Angers', 'Destin', 'Bordeaux', 'Toulouse', 'Prison / visite', 'Montpellier', 'Électricité', 'Rennes', 'Strasbourg', 'Gare de Paris', 'Lille', 'Caisse commune', 'Nice', 'Marseille', 'Parc gratuit', 'Lyon', 'Destin', 'Nantes', 'Reims', 'Gare du Nord', 'Chambéry', 'Grenoble', 'Eaux', 'Annecy', 'Allez en prison', 'Dijon', 'Aix-en-Provence', 'Caisse commune', 'Biarritz', 'Gare Saint-Charles', 'Destin', 'Versailles', 'Taxe de luxe', 'Paris'],
   usa: ['Départ', 'Boston', 'Caisse commune', 'Chicago', 'Impôts', 'Gare centrale', 'Seattle', 'Destin', 'Denver', 'Austin', 'Prison / visite', 'Miami', 'Électricité', 'Atlanta', 'Dallas', 'Gare de l’Union', 'San Francisco', 'Caisse commune', 'Las Vegas', 'Nouvelle-Orléans', 'Parc gratuit', 'Phoenix', 'Destin', 'Los Angeles', 'Washington', 'Gare du Capitole', 'Portland', 'Detroit', 'Eaux', 'Philadelphie', 'Allez en prison', 'Houston', 'Orlando', 'Caisse commune', 'Honolulu', 'Grand Central', 'Destin', 'San Diego', 'Taxe de luxe', 'New York'],
   uk: ['Départ', 'Édimbourg', 'Caisse commune', 'Cardiff', 'Impôts', 'Gare du Nord', 'Bristol', 'Destin', 'Liverpool', 'Manchester', 'Prison / visite', 'Brighton', 'Électricité', 'Leeds', 'Birmingham', 'Gare du Sud', 'Glasgow', 'Caisse commune', 'Cambridge', 'York', 'Parc gratuit', 'Sheffield', 'Destin', 'Oxford', 'Windsor', 'Gare de l’Ouest', 'Bath', 'Nottingham', 'Eaux', 'Canterbury', 'Allez en prison', 'Belfast', 'Swansea', 'Caisse commune', 'Dover', 'Gare de l’Est', 'Destin', 'Newcastle', 'Taxe de luxe', 'Londres'],
-  galaxy: ['Départ', 'Auriga', 'Réseau stellaire', 'Nébula', 'Taxe orbitale', 'Navette centrale', 'Cérès', 'Destin', 'Orion', 'Cygnus', 'Cellule / visite', 'Hélios', 'Énergie', 'Vesper', 'Nova', 'Port spatial', 'Titan', 'Réseau stellaire', 'Kepler', 'Atlas', 'Repos orbital', 'Nyx', 'Destin', 'Zénith', 'Éclipse', 'Navette libre', 'Aster', 'Solaria', 'Eau', 'Polaris', 'Station pénitentiaire', 'Gaïa', 'Altaïr', 'Réseau stellaire', 'Lumen', 'Navette lointaine', 'Destin', 'Andromède', 'Taxe de luxe', 'Cosmos'],
-  fantasy: ['Départ', 'Valbois', 'Conseil', 'Hauterive', 'Taxe royale', 'Gare des forges', 'Clairvallon', 'Destin', 'Sylveclaire', 'Montedor', 'Prison / visite', 'Rochebrune', 'Pierre de vision', 'Fortacier', 'Boisombre', 'Gare forestière', 'Mines profondes', 'Conseil', 'Tourcendre', 'Citadelle blanche', 'Repos', 'Terres noires', 'Destin', 'Désert rouge', 'Île éternelle', 'Gare du Nord', 'Vieilleforêt', 'Lacbourg', 'Eaux', 'Monts de fer', 'Tour sombre', 'Havres clairs', 'Valdor', 'Conseil', 'Nordgel', 'Gare de l’Ouest', 'Destin', 'Port-Serein', 'Taxe de luxe', 'Pic du Dragon'],
-  academy: ['Départ', 'Village des mages', 'Banque runique', 'Val-enchanté', 'Taxe magique', 'Express arcanique', 'Allée des grimoires', 'Destin', 'Maison des alchimistes', 'Clinique enchantée', 'Prison / visite', 'Conseil magique', 'Énergie mystique', 'Académie boréale', 'Académie australe', 'Voie secrète', 'Forteresse magique', 'Banque runique', 'Manoir ancien', 'Maison du serpent', 'Salle mouvante', 'Institut occidental', 'Destin', 'Maison du blaireau', 'Maison de l’aigle', 'Carrosse nocturne', 'Maison du lion', 'Marché des sortilèges', 'Eaux', 'Crypte des secrets', 'Forteresse magique', 'Forêt enchantée', 'Banque runique', 'Manoir des ombres', 'Tournoi aérien', 'Gare de l’académie', 'Destin', 'Institut tropical', 'Taxe de luxe', 'Grande Académie']
+  galaxy: ['Départ', 'Tatooine', 'Sénat galactique', 'Naboo', 'Taxe impériale', 'Faucon Millenium', 'Hoth', 'Destin', 'Endor', 'Bespin', 'Cellule / visite', 'Kamino', 'Réacteur', 'Geonosis', 'Mustafar', 'Destroyer stellaire', 'Dagobah', 'Sénat galactique', 'Jedha', 'Scarif', 'Cantina', 'Mandalore', 'Destin', 'Coruscant', 'Kashyyyk', 'Navette impériale', 'Alderaan', 'Yavin IV', 'Réserve d’eau', 'Dathomir', 'Étoile de la Mort', 'Ahch-To', 'Crait', 'Sénat galactique', 'Exegol', 'Croiseur rebelle', 'Destin', 'Corellia', 'Taxe de luxe', 'Chandrila'],
+  fantasy: ['Départ', 'La Comté', 'Conseil d’Elrond', 'Bree', 'Taxe du royaume', 'Grand Aigle', 'Fondcombe', 'Destin', 'Forêt Noire', 'Dale', 'Prison / visite', 'Erebor', 'Palantír', 'Rohan', 'Fangorn', 'Cheval du Rohan', 'Moria', 'Conseil d’Elrond', 'Isengard', 'Minas Tirith', 'Lothlórien', 'Mordor', 'Destin', 'Harad', 'Valinor', 'Navire gris', 'Vieille Forêt', 'Lacville', 'Eaux de Nimrodel', 'Monts de Fer', 'Barad-dûr', 'Havres Gris', 'Gondor', 'Conseil d’Elrond', 'Forochel', 'Navire de Númenor', 'Destin', 'Pelargir', 'Taxe de luxe', 'Mont Destin'],
+  academy: ['Départ', 'Pré-au-Lard', 'Gringotts', 'Godric’s Hollow', 'Taxe magique', 'Poudlard Express', 'Chemin de Traverse', 'Destin', 'Sainte-Mangouste', 'Chaumière aux Coquillages', 'Azkaban / visite', 'Ministère de la Magie', 'Énergie magique', 'Beauxbâtons', 'Durmstrang', 'Portoloin', 'Poudlard', 'Gringotts', '12 square Grimmaurd', 'Manoir Malefoy', 'Grande Salle', 'Ilvermorny', 'Destin', 'Poufsouffle', 'Serdaigle', 'Magicobus', 'Gryffondor', 'Allée des Embrumes', 'Lac Noir', 'Chambre des Secrets', 'Azkaban', 'Forêt Interdite', 'Gringotts', 'Maison des Jedusor', 'Terrain de Quidditch', 'Voie 9¾', 'Destin', 'Castelobruxo', 'Taxe de luxe', 'Tour d’Astronomie'],
+  pirates: ['Départ', 'Port Royal', 'Compagnie des Indes', 'Tortuga', 'Taxe du gouverneur', 'Black Pearl', 'Isla de Muerta', 'Destin', 'Cuba', 'Nassau', 'Geôle / visite', 'Baie des Naufragés', 'Boussole de Jack', 'Crique des Contrebandiers', 'Île de la Croix', 'Flying Dutchman', 'Singapour', 'Compagnie des Indes', 'Pelegosto', 'Shipwreck Cove', 'Taverne de Tortuga', 'Fontaine de Jouvence', 'Destin', 'Whitecap Bay', 'Isla Cruces', 'Queen Anne’s Revenge', 'Saint-Martin', 'Port de La Havane', 'Eau douce', 'Devil’s Triangle', 'Cale du Hollandais', 'Dead Man’s Chest', 'Île des Quatre Vents', 'Compagnie des Indes', 'Mer des Caraïbes', 'Silent Mary', 'Destin', 'At World’s End', 'Taxe de luxe', 'Trésor de Cortés']
 };
 let estateNames = estateSkins.france.slice();
+
+const skinCatalog = {
+  estate: [
+    ['france', 'France · villes'], ['usa', 'États-Unis'], ['uk', 'Royaume-Uni'],
+    ['galaxy', 'Star Wars'], ['fantasy', 'Le Seigneur des anneaux'],
+    ['academy', 'Harry Potter'], ['pirates', 'Pirates des Caraïbes']
+  ],
+  world: [
+    ['world', 'Terre'], ['galaxy', 'Star Wars'], ['fantasy', 'Le Seigneur des anneaux'],
+    ['pirates', 'Pirates des Caraïbes']
+  ],
+  payday: [['payday', 'Calendrier classique']]
+};
 
 const chanceCards = [
   { title: 'Destin', text: 'Avancez jusqu’au départ.', effect: { type: 'move', index: 0, collect: true } },
@@ -260,7 +282,7 @@ function estateWorth(player) {
 function createEstate() {
   estateNames = (estateSkins[skinSelect.value] || estateSkins.france).slice();
   game = {
-    kind: 'estate', turn: 0, turns: 0, busy: false, over: false, pending: null, log: [],
+    kind: 'estate', turn: 0, turns: 0, busy: false, over: false, pending: null, log: [], pot: 0,
     chance: shuffle(chanceCards), community: shuffle(communityCards),
     people: Array.from({ length: Number(playerCountSelect.value) }, () => ({ cash: 1500, pos: 0, laps: 0, assets: [], stored: [], jail: 0, doubles: 0, out: false }))
   };
@@ -327,7 +349,7 @@ async function resolveEstateSpace() {
       render();
       if (playerIndex !== 0) {
         await delay(450);
-        decideEstatePurchase(player.cash >= space.cost * 1.7 || Math.random() < .7);
+        await decideEstatePurchase(player.cash >= space.cost * 1.7 || Math.random() < .7);
       }
       return;
     }
@@ -347,27 +369,70 @@ async function resolveEstateSpace() {
     await drawEstateCard('community');
     return;
   }
-  if (space.type === 'tax') changeCash(playerIndex, -space.cost, 'taxe');
+  if (space.type === 'tax') {
+    changeCash(playerIndex, -space.cost, 'taxe');
+    if (estateParkingPotInput.checked) game.pot += space.cost;
+  }
+  if (space.type === 'parking' && estateParkingPotInput.checked && game.pot > 0) {
+    const prize = game.pot;
+    game.pot = 0;
+    changeCash(playerIndex, prize, 'cagnotte du parc gratuit');
+  }
   if (space.type === 'jail') enterJail(playerIndex);
   endTurn();
 }
 
-function decideEstatePurchase(accepted) {
+function createEstateAsset(pending) {
+  return {
+    kind: 'estate', index: pending.index, type: pending.space.type, group: pending.space.group,
+    cost: pending.space.cost, rent: Math.max(6, Math.round(pending.space.cost * .1)), houses: 0,
+    houseCost: 50 + (pending.space.group || 0) * 10
+  };
+}
+
+function awardEstateAsset(playerIndex, pending, price, reason = 'achat') {
+  const asset = createEstateAsset(pending);
+  asset.purchasePrice = price;
+  changeCash(playerIndex, -price, `${reason} de ${estateNames[asset.index]}`);
+  game.people[playerIndex].assets.push(asset);
+  game.boardFlash = { index: asset.index, type: 'bought' };
+}
+
+async function auctionEstate(pending, declinedBy) {
+  const bidders = game.people
+    .map((player, index) => ({ index, maximum: Math.max(0, Math.min(player.cash, Math.round(pending.space.cost * (.55 + Math.random() * .7)))) }))
+    .filter(bidder => !game.people[bidder.index].out && bidder.maximum >= 10 && !(declinedBy === 0 && bidder.index === 0));
+  if (!bidders.length) return false;
+  let humanBid = 0;
+  const bestBot = Math.max(0, ...bidders.filter(bidder => bidder.index !== 0).map(bidder => bidder.maximum));
+  if (declinedBy !== 0 && bidders.some(bidder => bidder.index === 0)) {
+    const minimum = Math.min(game.people[0].cash, Math.max(10, Math.ceil((bestBot + 10) / 10) * 10));
+    const choice = await showModal({
+      title: 'Enchère', text: `${estateNames[pending.index]} peut être adjugée à partir de ${money(minimum)}.`, color: '#b45309',
+      actions: [{ label: `Enchérir ${money(minimum)}`, value: 'bid' }, { label: 'Passer', value: 'pass' }]
+    });
+    if (choice === 'bid') humanBid = minimum;
+  }
+  const bids = bidders.filter(bidder => bidder.index !== 0).map(bidder => ({ index: bidder.index, amount: bidder.maximum }));
+  if (humanBid) bids.push({ index: 0, amount: humanBid });
+  bids.sort((left, right) => right.amount - left.amount);
+  if (!bids.length) return false;
+  const winner = bids[0];
+  awardEstateAsset(winner.index, pending, winner.amount, 'enchère');
+  await showModal({ title: 'Enchère terminée', text: `${playerName(winner.index)} obtient ${estateNames[pending.index]} pour ${money(winner.amount)}.`, color: '#b45309' });
+  return true;
+}
+
+async function decideEstatePurchase(accepted) {
   const pending = game.pending;
   if (!pending || pending.type !== 'estateBuy') return;
   const playerIndex = game.turn;
   const player = currentPlayer();
   if (accepted && player.cash >= pending.space.cost) {
-    const asset = {
-      kind: 'estate', index: pending.index, type: pending.space.type, group: pending.space.group,
-      cost: pending.space.cost, rent: Math.max(6, Math.round(pending.space.cost * .1)), houses: 0,
-      houseCost: 50 + (pending.space.group || 0) * 10
-    };
-    changeCash(playerIndex, -asset.cost, `achat de ${estateNames[asset.index]}`);
-    player.assets.push(asset);
-    game.boardFlash = { index: asset.index, type: 'bought' };
+    awardEstateAsset(playerIndex, pending, pending.space.cost);
   } else {
     log(`${playerName(playerIndex)} laisse ${estateNames[pending.index]} à la banque.`);
+    if (estateAuctionsInput.checked) await auctionEstate(pending, playerIndex);
   }
   game.pending = null;
   endTurn();
@@ -427,7 +492,7 @@ function createWorld() {
   });
   game = {
     kind: 'world', turn: 0, turns: 0, tradeTurns: 0, busy: false, over: false, pending: null, log: [], pot: 0,
-    titles: shuffle(titles), news: shuffle(worldNews), tradingUnlocked: false,
+    titles: shuffle(titles), news: shuffle(worldNews), tradingUnlocked: worldEarlyTradesInput.checked,
     people: Array.from({ length: Number(playerCountSelect.value) }, () => ({ cash: 66000000, pos: 0, laps: 0, assets: [], stored: [], jokers: 0, skip: 0, out: false }))
   };
 }
@@ -438,10 +503,11 @@ function worldShare(player, resource) {
 
 function worldRoyalty(player, resource) {
   const share = worldShare(player, resource);
+  const threshold = Number(worldRoyaltyThresholdSelect.value);
   if (share >= 90) return 18000000;
   if (share >= 70) return 9000000;
   if (share >= 50) return 4500000;
-  if (share >= 30) return 900000;
+  if (share >= threshold) return 900000;
   return 0;
 }
 
@@ -455,7 +521,15 @@ function unlockWorldTrading() {
 
 function worldOffers(country, player) {
   const direct = game.titles.filter(asset => asset.country === country);
-  if (direct.length) return direct.slice(0, 6);
+  if (direct.length) {
+    if (worldCountryModeSelect.value === 'single') {
+      const chosenResource = direct
+        .map(asset => asset.resource)
+        .sort((left, right) => worldShare(player, right) - worldShare(player, left))[0];
+      return direct.filter(asset => asset.resource === chosenResource).slice(0, 6);
+    }
+    return direct.slice(0, 6);
+  }
   const usefulResources = new Set(player.assets.map(asset => asset.resource));
   const useful = game.titles.filter(asset => usefulResources.has(asset.resource));
   return (useful.length ? useful : game.titles).slice(0, 6);
@@ -649,7 +723,7 @@ async function rollWorld() {
 
 function createPayday() {
   game = {
-    kind: 'payday', turn: 0, turns: 0, busy: false, over: false, pending: null, log: [], pot: 0, targetMonths: 2,
+    kind: 'payday', turn: 0, turns: 0, busy: false, over: false, pending: null, log: [], pot: 0, targetMonths: Number(paydayMonthsSelect.value),
     mail: shuffle(paydayMail), deals: shuffle(paydayDeals),
     people: Array.from({ length: Number(playerCountSelect.value) }, () => ({ cash: 6500, pos: 0, laps: 0, bills: 0, loans: 0, savings: 0, assets: [], stored: [], monthsCompleted: 0, out: false }))
   };
@@ -798,6 +872,7 @@ function finishGame() {
   game.busy = false;
   const ranking = game.people.map((player, index) => ({ index, value: playerValue(player) })).sort((left, right) => right.value - left.value);
   statusElement.textContent = `${playerName(ranking[0].index)} remporte la partie avec ${money(ranking[0].value)}.`;
+  window.GameRecords?.finish({ score: ranking[0].value, scoreLabel: money(ranking[0].value), won: ranking[0].index === 0 });
   render();
 }
 
@@ -905,11 +980,11 @@ function worldRegion(label) {
 }
 
 function worldSkinLabel(label, index) {
-  if (!['galaxy', 'fantasy', 'academy'].includes(skinSelect.value)) return label;
+  if (!['galaxy', 'fantasy', 'pirates'].includes(skinSelect.value)) return label;
   const themes = {
-    galaxy: { places: ['Auriga', 'Nébula', 'Cérès', 'Orion', 'Cygnus', 'Vesper', 'Nova', 'Titan', 'Kepler', 'Atlas', 'Polaris', 'Andromède'], resources: ['Plasma', 'Cristal', 'Alliage', 'Hélium'] },
-    fantasy: { places: ['Valbois', 'Clairvallon', 'Sylveclaire', 'Montedor', 'Rochebrune', 'Fortacier', 'Boisombre', 'Terres noires', 'Valdor', 'Désert rouge', 'Île éternelle', 'Tourcendre'], resources: ['Acier ancien', 'Bois sacré', 'Or des forges', 'Herbes rares'] },
-    academy: { places: ['Grande Académie', 'Village des mages', 'Allée des grimoires', 'Conseil magique', 'Académie boréale', 'Académie australe', 'Forteresse magique', 'Val-enchanté', 'Banque runique', 'Forêt enchantée', 'Maison des alchimistes', 'Manoir des ombres'], resources: ['Runes', 'Baguettes', 'Potions', 'Balais'] }
+    galaxy: { places: ['Tatooine', 'Naboo', 'Coruscant', 'Kamino', 'Mustafar', 'Endor', 'Hoth', 'Bespin', 'Mandalore', 'Kashyyyk', 'Corellia', 'Alderaan'], resources: ['Épice', 'Beskar', 'Bacta', 'Cristaux kyber'] },
+    fantasy: { places: ['La Comté', 'Fondcombe', 'Rohan', 'Gondor', 'Mordor', 'Erebor', 'Moria', 'Lothlórien', 'Dale', 'Harad', 'Númenor', 'Valinor'], resources: ['Mithril', 'Bois sacré', 'Or d’Erebor', 'Herbes d’Ithilien'] },
+    pirates: { places: ['Port Royal', 'Tortuga', 'Nassau', 'Cuba', 'Singapour', 'Whitecap Bay', 'Shipwreck Cove', 'Isla Cruces', 'Pelegosto', 'Saint-Martin', 'La Havane', 'Devil’s Triangle'], resources: ['Rhum', 'Épices', 'Or', 'Perles'] }
   };
   const theme = themes[skinSelect.value];
   if (countries.includes(label)) return theme.places[index % theme.places.length];
@@ -938,7 +1013,7 @@ function renderWorldBoard() {
     const [row, column] = perimeterPosition(localIndex, size);
     return `<div class="space world-space ${worldRegion(label)}" style="grid-area:${row}/${column}"><span class="name">${worldSkinLabel(label, globalIndex)}</span><span>${tokensAt(globalIndex)}</span>${worldOwnershipMarkup(label)}</div>`;
   };
-  const theme = ['galaxy', 'fantasy', 'academy'].includes(skinSelect.value) ? skinSelect.value : '';
+  const theme = ['galaxy', 'fantasy', 'pirates'].includes(skinSelect.value) ? skinSelect.value : '';
   board.innerHTML = `<div class="world-board"><div class="world-ring outer" style="--ring:11">${worldTrack.slice(0, 40).map((label, index) => cell(label, index, index, 11)).join('')}</div><div class="world-ring inner" style="--ring:9">${worldTrack.slice(40).map((label, index) => cell(label, index + 40, index, 9)).join('')}</div><div class="world-map ${theme}"><h2>MARCHÉS<br>DU MONDE</h2><p>40 cases extérieures · 32 cases intérieures</p></div></div>`;
 }
 
@@ -975,7 +1050,9 @@ function assetLabel(asset) {
 
 function renderSidebar() {
   playersElement.innerHTML = game.people.map((player, index) => {
-    const visibleAssets = player.assets.map(asset => `<span class="mini-asset" style="--asset-color:${assetColor(asset)}">${assetLabel(asset)}</span>`).join('');
+    const visibleAssets = game.kind === 'world'
+      ? [...new Set(player.assets.map(asset => asset.resource))].map(resource => `<span class="mini-asset" style="--asset-color:${player.assets.find(asset => asset.resource === resource).color}">${resource} · ${worldShare(player, resource)}%</span>`).join('')
+      : player.assets.map(asset => `<span class="mini-asset" style="--asset-color:${assetColor(asset)}">${assetLabel(asset)}</span>`).join('');
     const stored = player.stored.map(card => `<span class="mini-asset" style="--asset-color:#7c3aed">${card.label}</span>`).join('');
     const details = game.kind === 'payday' ? `Factures ${money(player.bills)} · prêt ${money(player.loans)} · épargne ${money(player.savings)}` : game.kind === 'world' ? `${player.assets.length} titre(s) · ${player.jokers} Joker(s)` : `${player.assets.length} propriété(s)`;
     const cashFlash = game.cashFlashes?.[index];
@@ -984,15 +1061,28 @@ function renderSidebar() {
   }).join('');
 }
 
+function renderWorldAssetStacks(player) {
+  const grouped = new Map();
+  player.assets.forEach(asset => {
+    if (!grouped.has(asset.resource)) grouped.set(asset.resource, []);
+    grouped.get(asset.resource).push(asset);
+  });
+  return [...grouped.entries()].map(([resource, cards]) => {
+    cards.sort((left, right) => right.share - left.share);
+    const width = Math.max(150, 116 + (cards.length - 1) * 38);
+    const stackedCards = cards.map((asset, index) => `<article class="resource-title-card" style="--resource:${asset.color};left:${index * 38}px;z-index:${index + 1}"><span class="share-tab">${asset.share}%</span><strong>${asset.country}</strong><small>${money(asset.cost)}</small></article>`).join('');
+    return `<section class="resource-stack"><h3><i style="--resource:${cards[0].color}"></i>${resource} · total ${worldShare(player, resource)}%</h3><div class="resource-stack-cards" style="width:${width}px">${stackedCards}</div></section>`;
+  }).join('');
+}
+
 function renderAssets() {
   const player = game.people[0];
   assetsTitleElement.textContent = 'Vos actifs et cartes conservées';
-  const cards = player.assets.map(asset => {
+  const cards = game.kind === 'world' ? [] : player.assets.map(asset => {
     const buildable = game.kind === 'estate' && asset.type === 'property' && hasEstateSet(player, asset.group) && asset.houses < 4 && player.cash >= asset.houseCost;
     return `<article class="card ${asset.kind === 'world' ? 'resource' : ''}" style="--resource:${assetColor(asset)}"><strong>${assetLabel(asset)}</strong>${asset.kind === 'estate' ? `<p>Achat ${money(asset.cost)} · loyer ${money(estateRent(asset, 0))}</p>` : ''}${buildable ? `<button data-build="${asset.index}">Construire · ${money(asset.houseCost)}</button>` : ''}</article>`;
   });
-  player.stored.forEach(card => cards.push(`<article class="card special-card"><strong>${card.label}</strong><p>Carte conservée jusqu’à son utilisation.</p></article>`));
-  assetsElement.innerHTML = cards.join('') || '<span class="muted">Aucun actif pour le moment.</span>';
+  assetsElement.innerHTML = `${game.kind === 'world' ? renderWorldAssetStacks(player) : cards.join('')}${player.stored.map(card => `<article class="card special-card"><strong>${card.label}</strong><p>Carte conservée jusqu’à son utilisation.</p></article>`).join('')}` || '<span class="muted">Aucun actif pour le moment.</span>';
   assetsElement.querySelectorAll('[data-build]').forEach(button => button.addEventListener('click', () => buildEstate(Number(button.dataset.build))));
 }
 
@@ -1016,10 +1106,10 @@ function renderControls() {
 function render() {
   titleElement.textContent = game.kind === 'estate' ? 'Empire Immobilier' : game.kind === 'world' ? 'Marchés du Monde' : 'Fin de Mois';
   rulesElement.textContent = game.kind === 'estate'
-    ? 'Achetez des propriétés, indiquez leurs propriétaires, complétez des groupes et construisez. Les cartes sont résolues une par une après leur fermeture.'
+    ? `Achetez les propriétés libres, percevez les loyers, complétez une couleur puis construisez régulièrement. Une propriété refusée ${estateAuctionsInput.checked ? 'part aux enchères' : 'reste à la banque'}. Le parc gratuit ${estateParkingPotInput.checked ? 'verse les taxes accumulées' : 'ne donne rien'}.`
     : game.kind === 'world'
-      ? 'Un tour complet parcourt les 40 cases extérieures puis les 32 intérieures. Les titres donnent des royalties dès 30 % et deviennent échangeables lorsque le marché est épuisé.'
-      : 'Parcourez les 31 jours : courriers, acquisitions, ventes, loteries, épargne et paye. Chaque courrier est lu et résolu séparément.';
+      ? `Le plateau comporte 40 cases extérieures puis 32 intérieures. Une case pays propose ${worldCountryModeSelect.value === 'multiple' ? 'jusqu’à six titres de productions différentes' : 'les titres d’une seule ressource (variante maison)'}. Les pourcentages d’une même ressource se cumulent et versent des royalties dès ${worldRoyaltyThresholdSelect.value} %. Les échanges ${worldEarlyTradesInput.checked ? 'sont ouverts dès le départ' : 's’ouvrent après attribution de tous les titres'}.`
+      : `Parcourez les 31 jours pendant ${game.targetMonths} mois : courriers, acquisitions, ventes, loteries, épargne et jour de paye. Les factures sont réglées au terme du mois et chaque carte est résolue séparément.`;
   renderBoard();
   renderSidebar();
   renderAssets();
@@ -1027,6 +1117,16 @@ function render() {
   renderControls();
   logElement.innerHTML = game.log.map(entry => `<li>${entry}</li>`).join('');
   if (game.boardFlash) setTimeout(() => { if (game) { game.boardFlash = null; renderBoard(); } }, 950);
+}
+
+function updateSkinOptions(preferredSkin) {
+  const entries = skinCatalog[variantSelect.value] || skinCatalog.estate;
+  const requested = preferredSkin || skinSelect.value;
+  skinSelect.innerHTML = entries.map(([value, label]) => `<option value="${value}">${label}</option>`).join('');
+  skinSelect.value = entries.some(([value]) => value === requested) ? requested : entries[0][0];
+  document.querySelectorAll('.board-option').forEach(option => {
+    option.hidden = option.dataset.for !== variantSelect.value;
+  });
 }
 
 function newGame() {
@@ -1053,11 +1153,17 @@ skipButton.addEventListener('click', () => {
 buildButton.addEventListener('click', () => buildEstate());
 tradeButton.addEventListener('click', openWorldTrade);
 document.getElementById('newGame').addEventListener('click', newGame);
-variantSelect.addEventListener('change', newGame);
+variantSelect.addEventListener('change', () => {
+  updateSkinOptions();
+  newGame();
+});
 playerCountSelect.addEventListener('change', newGame);
 skinSelect.addEventListener('change', () => {
   if (game.kind === 'estate') estateNames = (estateSkins[skinSelect.value] || estateSkins.france).slice();
   render();
+});
+[estateAuctionsInput, estateParkingPotInput, worldCountryModeSelect, worldRoyaltyThresholdSelect, worldEarlyTradesInput, paydayMonthsSelect].forEach(control => {
+  control.addEventListener('change', newGame);
 });
 
 Object.entries(estateSkins).forEach(([skin, labels]) => {
@@ -1068,4 +1174,20 @@ Object.entries(estateSkins).forEach(([skin, labels]) => {
 if (worldTrack.length !== 72) throw new Error('Marchés du Monde doit comporter 72 cases.');
 if (paydayTrack.length !== 31) throw new Error('Fin de Mois doit comporter 31 jours.');
 
+window.BoardGamesTestAPI = Object.freeze({
+  summary: () => ({
+    kind: game.kind,
+    playerCount: game.people.length,
+    positionsValid: game.people.every(player => Number.isInteger(player.pos) && player.pos >= 0),
+    estateSpaces: estateNames.length,
+    estatePropertiesUnique: new Set(estatePropertyIndexes.map(index => estateNames[index])).size === estatePropertyIndexes.length,
+    worldSpaces: worldTrack.length,
+    paydaySpaces: paydayTrack.length,
+  }),
+});
+
+const initialParameters = new URLSearchParams(location.search);
+const requestedVariant = initialParameters.get('variant');
+if (skinCatalog[requestedVariant]) variantSelect.value = requestedVariant;
+updateSkinOptions(initialParameters.get('skin'));
 newGame();

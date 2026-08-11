@@ -10,10 +10,10 @@
 </head>
 <body>
   <main><section class="panel">
-    <div class="toolbar"><h1>Bataille Corse</h1><a href="../../../index.html">Hub de jeux</a><button id="newGame">Nouvelle partie</button><label class="muted">Joueurs <select id="playerCount"><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label><label class="muted">Joueur 2 <select id="opponent"><option value="human">Humain local</option><option value="easy">Bot facile</option><option value="normal" selected>Bot moyen</option><option value="hard">Bot difficile</option></select></label><label class="muted"><input id="slapOnSeven" type="checkbox"> Taper sur les 7</label><label class="muted"><input id="slapOnTenSandwich" type="checkbox"> Sandwich de 10</label></div>
+    <div class="toolbar"><h1>Bataille Corse</h1><a href="../../../index.html">Hub de jeux</a><button id="newGame">Nouvelle partie</button><label class="muted">Joueurs <select id="playerCount"><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label><label class="muted">Joueur 2 <select id="opponent"><option value="human">Humain local</option><option value="easy">Bot facile</option><option value="normal" selected>Bot moyen</option><option value="hard">Bot difficile</option><option value="extreme">Bot extrême</option></select></label><label class="muted"><input id="slapOnSeven" type="checkbox"> Taper sur les 7</label><label class="muted"><input id="slapOnTenSandwich" type="checkbox"> Sandwich de 10</label></div>
     <p class="muted">Les cartes restent visibles pendant l’attribution du tas. Une croix rouge indique les cartes des perdants.</p>
     <div id="scores" class="scores"></div><div id="status" class="muted"></div><div id="pile" aria-label="Tas central"></div><div id="actions" class="actions"></div><ul id="history" aria-live="polite"></ul>
   </section></main>
-  <script src="../../../shared/cards.js?v=18"></script><script src="bataille-corse.js?v=6"></script>
+  <script src="../../../shared/game-runtime.js?v=2"></script><script src="../../../shared/cards.js?v=18"></script><script src="bataille-corse.js?v=7"></script><script src="../../../shared/records.js?v=3"></script>
 </body>
 </html>

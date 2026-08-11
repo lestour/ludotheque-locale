@@ -1,4 +1,4 @@
-if (!document.querySelector('script[data-options-help]')) { const source = document.currentScript?.src; const script = document.createElement('script'); script.src = source ? new URL('options-help.js?v=2', source).href : '../../shared/options-help.js?v=2'; script.dataset.optionsHelp = 'true'; document.head.append(script); }
+if (!document.querySelector('script[data-options-help]')) { const source = document.currentScript?.src; const script = document.createElement('script'); script.src = source ? new URL('options-help.js?v=3', source).href : '../../shared/options-help.js?v=3'; script.dataset.optionsHelp = 'true'; document.head.append(script); }
 window.CardTools = (() => {
   const suits = [
     { symbol: '♠', name: 'Pique', color: 'black' },
@@ -26,6 +26,7 @@ window.CardTools = (() => {
   }
 
   function animateTransfer(from, to, markup, options = {}) {
+    if (window.GameEffects?.transfer) return window.GameEffects.transfer(from, to, markup, options);
     const { axis = 'vertical', duration = 520, onFinish } = options;
     if (!(from instanceof Element) || !(to instanceof Element)) {
       onFinish?.();

@@ -153,6 +153,11 @@ const showFingeringToggle = document.getElementById('showFingering');
 const instrumentGuide = document.createElement('div');
 instrumentGuide.className = 'instrument-guide';
 stage.after(instrumentGuide);
+const mobileInputDock = document.createElement('section');
+mobileInputDock.className = 'mobile-input-dock';
+mobileInputDock.setAttribute('aria-label', 'Commandes tactiles de Rhythm Lab');
+mobileInputDock.innerHTML = '<div class="mobile-orientation-hint">Tournez le téléphone en paysage pour mieux lire la partition.</div><div class="mobile-dock-head"><strong>Commandes tactiles</strong><div class="mobile-dock-actions"><button type="button" data-mobile-action="focus">Vue jeu</button><button type="button" data-mobile-action="pause">Pause</button><button type="button" data-mobile-action="restart">Recommencer</button></div></div><div class="mobile-input-row"></div>';
+document.body.append(mobileInputDock);
 const pressedValves = new Set();
 let slidePosition = 1;
 let mappingTarget = null;
@@ -173,6 +178,7 @@ let microphoneFrequency = 0;
 let microphoneLatencyMs = 0;
 let microphoneCalibration = null;
 let tunerEnabled = false;
+const mobileInputPointers = new Map();
 try { microphoneLatencyMs = Number(localStorage.getItem('rhythm-microphone-latency') || 0); } catch {}
 const rightHandValveCodes = ['KeyJ', 'KeyK', 'KeyL'];
 const leftHandValveCodes = ['KeyA', 'KeyS', 'KeyD'];
@@ -332,7 +338,10 @@ function fingeringPitch(note) { return typeof note === 'number' ? note : note.pi
 function controlLabel(note, track = tracks[trackIndex] || tracks[0]) { const source = typeof note === 'number' ? (game?.notes.find(candidate => !candidate.done) || note) : note; const pitch = fingeringPitch(source); if (inputStyle.value === 'rhythm') return keyLabel(inputMappings.rhythm); if (inputStyle.value === 'valves') { const fingering = valveFingeringsFor(source, track); return fingering.display || fingering.primary; } if (inputStyle.value === 'slide') { const positions = slidePositionsFor(pitch); return positions.length ? positions.join('/') : '—'; } if (inputStyle.value === 'midi-device' || inputStyle.value === 'microphone') return noteName(notationPitch(source)); const codes = activeCodes(); const lanePitch = typeof source === 'number' ? source : source.pitch; return keyLabel(codes[laneFor(lanePitch)]); }
 function timingFor(track, speed = game?.speed || 1) {
   const tempos = [{ beat: 0, bpm: track.tempo || 100 }, ...(track.changes || []).filter(change => change.type === 'tempo')].sort((left, right) => left.beat - right.beat);
-  const bpmAt = beat => tempos.filter(change => change.beat <= beat).at(-1)?.bpm || tempos[0].bpm;
+  const bpmAt = beat => {
+    const available = tempos.filter(change => change.beat <= beat);
+    return available[available.length - 1]?.bpm || tempos[0].bpm;
+  };
   const beatToMs = targetBeat => { let elapsed = 0; let cursor = 0; let bpm = tempos[0].bpm; for (const change of tempos.slice(1)) { if (change.beat >= targetBeat) break; elapsed += (change.beat - cursor) * 60000 / bpm; cursor = change.beat; bpm = change.bpm; } elapsed += (targetBeat - cursor) * 60000 / bpm; const pauses = (track.pauses || []).filter(pause => pause.beat < targetBeat - .001).reduce((sum, pause) => sum + (pause.beats || 0) * 60000 / bpmAt(pause.beat), 0); return (elapsed + pauses) / speed; };
   return { tempos, beatToMs };
 }
@@ -410,7 +419,83 @@ function concertFifths(writtenValue, chromatic = 0, diatonic = 0) { return norma
 function stateAt(track, beat) { return (track.changes || []).filter(change => change.beat <= beat).reduce((state, change) => { if (change.type === 'key') return { ...state, key: concertPitchToggle.checked ? (change.concertValue ?? change.value) : (change.writtenValue ?? change.value) }; if (change.type === 'clef') return { ...state, clef: concertPitchToggle.checked ? (change.concertValue ?? change.value) : (change.writtenValue ?? change.value) }; return { ...state, [change.type]: change.value ?? change.bpm }; }, { key: concertPitchToggle.checked ? (track.concertKey ?? track.key) : (track.writtenKey ?? track.key), time: track.time, tempo: track.tempo, clef: effectiveClef(track) }); }
 function keySignatureMarkup(value, clef = 'G') { const info = typeof clef === 'object' ? clef : clefInfo(clef); if (info.kind === 'percussion') return ''; const fifths = Math.max(-7, Math.min(7, Number(String(value).replace('Armure ', '')) || 0)); if (!fifths) return '<span class="natural-key">♮</span>'; const sharpTreble = [0,3,6,2,5,1,4], flatTreble = [4,1,5,2,6,3,0]; const positions = fifths > 0 ? sharpTreble : flatTreble; const symbol = fifths > 0 ? '♯' : '♭'; const bassShift = info.kind === 'bass' ? 2 : 0; return Array.from({ length: Math.abs(fifths) }, (_, index) => `<i style="--staff-pos:${(positions[index] + bassShift) % 7}">${symbol}</i>`).join(''); }
 function timeSignatureMarkup(value = '4/4') { const [top, bottom] = String(value).split('/'); return `<b>${top || 4}</b><b>${bottom || 4}</b>`; }
-function renderInstrumentGuide() { const breathText = breathEnabled.checked ? `Souffle : ${keyLabel(inputMappings.breath)}` : 'Souffle automatique'; const vertical = inputStyle.value === 'slide' && verticalSlideToggle.checked; document.querySelector('.stage-wrap')?.classList.toggle('slide-at-left', vertical); instrumentGuide.classList.toggle('vertical-slide', vertical); if (slideInteracting && inputStyle.value === 'slide' && instrumentGuide.querySelector('#slideControl')) return; const expected = game?.notes.find(note => !note.done); const signature = [inputStyle.value, concertPitchToggle.checked, breathEnabled.checked, breathPressed, [...pressedValves].join(''), slidePosition, expected?.beat, expected?.pitch, microphoneCandidate, [...midiPressed].join(','), [...pressedKeys].join('')].join('|'); if (instrumentGuide.dataset.signature === signature) return; instrumentGuide.dataset.signature = signature; if (inputStyle.value === 'rhythm') instrumentGuide.innerHTML = `<strong>Rythme seul</strong><span class="valve${pressedKeys.has(inputMappings.rhythm) ? ' active' : ''}">${keyLabel(inputMappings.rhythm)}</span><small>La hauteur est ignorée ; seules la précision rythmique et la tenue comptent.</small>`; else if (inputStyle.value === 'valves') instrumentGuide.innerHTML = `<strong>Pistons</strong><span class="valve zero${pressedValves.size ? '' : ' active'}${breathPressed && !pressedValves.size ? ' breathing' : ''}">0<small>ouvert</small></span>${[1,2,3].map(value => `<span class="valve${pressedValves.has(value) ? ' active' : ''}${breathPressed && pressedValves.has(value) ? ' breathing' : ''}">${value}<small>${keyLabel(inputMappings.valves[value - 1])}</small></span>`).join('')}<small>${breathText} · attendu : ${expected ? controlLabel(expected) : '—'}</small>`; else if (inputStyle.value === 'slide') instrumentGuide.innerHTML = `<strong>Coulisse</strong><div class="slide-scale${breathPressed ? ' breathing' : ''}"><input id="slideControl" type="range" min="1" max="7" step="1" value="${slidePosition}" aria-label="Position de coulisse">${Array.from({ length: 7 }, (_, index) => `<i style="--position:${6 - index}">${index + 1}</i>`).join('')}</div><span data-slide-position class="${breathPressed ? 'breathing' : ''}">${slidePosition}</span><small>${inputMappings.slide.map(keyLabel).join(' · ')} · ${breathText}</small>`; else if (inputStyle.value === 'midi-device') instrumentGuide.innerHTML = `<strong>MIDI</strong><span class="valve active">${midiPressed.size ? [...midiPressed].map(noteName).join(' + ') : '—'}</span><small>Attendu : ${expected ? controlLabel(expected) : '—'}</small>`; else if (inputStyle.value === 'microphone') instrumentGuide.innerHTML = `<strong>Microphone</strong><span class="valve${microphoneCandidate !== null ? ' active' : ''}">${microphoneCandidate !== null ? noteName(microphoneCandidate) : '—'}</span><small>Attendu : ${expected ? controlLabel(expected) : '—'} · analyse locale</small>`; else if (inputStyle.value === 'organ') instrumentGuide.innerHTML = `<strong>Orgue</strong><small>${inputMappings.organ.map(keyLabel).join(' · ')}</small>`; else instrumentGuide.innerHTML = '<span class="muted">Jouez la touche écrite sous la note.</span>'; const slider = instrumentGuide.querySelector('#slideControl'); slider?.addEventListener('pointerdown', () => { slideInteracting = true; }); slider?.addEventListener('input', event => { slidePosition = Number(event.target.value); instrumentGuide.querySelector('[data-slide-position]').textContent = String(slidePosition); if (!breathEnabled.checked) scheduleInstrumentInput(); }); }
+function mobileControlDefinitions() {
+  if (inputStyle.value === 'rhythm') return [{ code: inputMappings.rhythm, label: 'FRAPPER', wide: true }];
+  if (inputStyle.value === 'valves') return [
+    ...inputMappings.valves.map((code, index) => ({ code, label: `Piston ${index + 1}`, kind: 'valve', value: index + 1 })),
+    ...(breathEnabled.checked ? [{ code: inputMappings.breath, label: 'Souffle', kind: 'breath', wide: true }] : []),
+  ];
+  if (inputStyle.value === 'slide') return [
+    ...inputMappings.slide.map((code, index) => ({ code, label: String(index + 1), kind: 'slide', value: index + 1 })),
+    ...(breathEnabled.checked ? [{ code: inputMappings.breath, label: 'Souffle', kind: 'breath', wide: true }] : []),
+  ];
+  if (inputStyle.value === 'midi-device' || inputStyle.value === 'microphone') return [];
+  return activeCodes().map(code => ({ code, label: keyLabel(code) }));
+}
+
+function mobileControlActive(button) {
+  if (button.dataset.kind === 'valve') return pressedValves.has(Number(button.dataset.value));
+  if (button.dataset.kind === 'slide') return slidePosition === Number(button.dataset.value);
+  if (button.dataset.kind === 'breath') return breathPressed;
+  return pressedKeys.has(button.dataset.code);
+}
+
+function renderMobileControls() {
+  const definitions = mobileControlDefinitions();
+  const signature = `${inputStyle.value}|${breathEnabled.checked}|${definitions.map(item => `${item.code}:${item.label}:${item.kind || ''}:${item.value || ''}`).join('|')}`;
+  const row = mobileInputDock.querySelector('.mobile-input-row');
+  if (row.dataset.signature !== signature) {
+    row.dataset.signature = signature;
+    row.innerHTML = definitions.length
+      ? definitions.map(item => `<button type="button" class="mobile-input-button${item.wide ? ' wide' : ''}" data-code="${item.code}" data-kind="${item.kind || ''}" data-value="${item.value || ''}">${item.label}</button>`).join('')
+      : `<span class="mobile-input-message">${inputStyle.value === 'microphone' ? 'Le microphone fournit directement les notes.' : 'Utilisez votre clavier MIDI connecté.'}</span>`;
+  }
+  row.querySelectorAll('[data-code]').forEach(button => {
+    const active = mobileControlActive(button);
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  const pause = mobileInputDock.querySelector('[data-mobile-action="pause"]');
+  pause.textContent = game?.pausedAt ? 'Reprendre' : 'Pause';
+  mobileInputDock.querySelector('[data-mobile-action="focus"]').textContent = document.body.classList.contains('rhythm-focus') ? 'Options' : 'Vue jeu';
+}
+
+function dispatchMobileKey(type, code) {
+  document.dispatchEvent(new KeyboardEvent(type, { code, key: keyLabel(code), bubbles: true, cancelable: true }));
+}
+
+mobileInputDock.addEventListener('pointerdown', event => {
+  const button = event.target.closest('[data-code]');
+  if (!button || mobileInputPointers.has(event.pointerId)) return;
+  event.preventDefault();
+  button.setPointerCapture?.(event.pointerId);
+  mobileInputPointers.set(event.pointerId, button.dataset.code);
+  dispatchMobileKey('keydown', button.dataset.code);
+  renderMobileControls();
+});
+const releaseMobileInput = event => {
+  const code = mobileInputPointers.get(event.pointerId);
+  if (!code) return;
+  event.preventDefault();
+  mobileInputPointers.delete(event.pointerId);
+  dispatchMobileKey('keyup', code);
+  renderMobileControls();
+};
+mobileInputDock.addEventListener('pointerup', releaseMobileInput);
+mobileInputDock.addEventListener('pointercancel', releaseMobileInput);
+mobileInputDock.addEventListener('contextmenu', event => event.preventDefault());
+mobileInputDock.addEventListener('click', event => {
+  const action = event.target.closest('[data-mobile-action]')?.dataset.mobileAction;
+  if (action === 'pause') { pauseButton.click(); requestAnimationFrame(renderMobileControls); }
+  else if (action === 'restart') { startButton.click(); requestAnimationFrame(renderMobileControls); }
+  else if (action === 'focus') {
+    document.body.classList.toggle('rhythm-focus');
+    renderMobileControls();
+    if (document.body.classList.contains('rhythm-focus')) document.querySelector('.stage-wrap')?.scrollIntoView({ block: 'start' });
+  }
+});
+
+function renderInstrumentGuide() { renderMobileControls(); const breathText = breathEnabled.checked ? `Souffle : ${keyLabel(inputMappings.breath)}` : 'Souffle automatique'; const vertical = inputStyle.value === 'slide' && verticalSlideToggle.checked; document.querySelector('.stage-wrap')?.classList.toggle('slide-at-left', vertical); instrumentGuide.classList.toggle('vertical-slide', vertical); if (slideInteracting && inputStyle.value === 'slide' && instrumentGuide.querySelector('#slideControl')) return; const expected = game?.notes.find(note => !note.done); const signature = [inputStyle.value, concertPitchToggle.checked, breathEnabled.checked, breathPressed, [...pressedValves].join(''), slidePosition, expected?.beat, expected?.pitch, microphoneCandidate, [...midiPressed].join(','), [...pressedKeys].join('')].join('|'); if (instrumentGuide.dataset.signature === signature) return; instrumentGuide.dataset.signature = signature; if (inputStyle.value === 'rhythm') instrumentGuide.innerHTML = `<strong>Rythme seul</strong><span class="valve${pressedKeys.has(inputMappings.rhythm) ? ' active' : ''}">${keyLabel(inputMappings.rhythm)}</span><small>La hauteur est ignorée ; seules la précision rythmique et la tenue comptent.</small>`; else if (inputStyle.value === 'valves') instrumentGuide.innerHTML = `<strong>Pistons</strong><span class="valve zero${pressedValves.size ? '' : ' active'}${breathPressed && !pressedValves.size ? ' breathing' : ''}">0<small>ouvert</small></span>${[1,2,3].map(value => `<span class="valve${pressedValves.has(value) ? ' active' : ''}${breathPressed && pressedValves.has(value) ? ' breathing' : ''}">${value}<small>${keyLabel(inputMappings.valves[value - 1])}</small></span>`).join('')}<small>${breathText} · attendu : ${expected ? controlLabel(expected) : '—'}</small>`; else if (inputStyle.value === 'slide') instrumentGuide.innerHTML = `<strong>Coulisse</strong><div class="slide-scale${breathPressed ? ' breathing' : ''}"><input id="slideControl" type="range" min="1" max="7" step="1" value="${slidePosition}" aria-label="Position de coulisse">${Array.from({ length: 7 }, (_, index) => `<i style="--position:${6 - index}">${index + 1}</i>`).join('')}</div><span data-slide-position class="${breathPressed ? 'breathing' : ''}">${slidePosition}</span><small>${inputMappings.slide.map(keyLabel).join(' · ')} · ${breathText}</small>`; else if (inputStyle.value === 'midi-device') instrumentGuide.innerHTML = `<strong>MIDI</strong><span class="valve active">${midiPressed.size ? [...midiPressed].map(noteName).join(' + ') : '—'}</span><small>Attendu : ${expected ? controlLabel(expected) : '—'}</small>`; else if (inputStyle.value === 'microphone') instrumentGuide.innerHTML = `<strong>Microphone</strong><span class="valve${microphoneCandidate !== null ? ' active' : ''}">${microphoneCandidate !== null ? noteName(microphoneCandidate) : '—'}</span><small>Attendu : ${expected ? controlLabel(expected) : '—'} · analyse locale</small>`; else if (inputStyle.value === 'organ') instrumentGuide.innerHTML = `<strong>Orgue</strong><small>${inputMappings.organ.map(keyLabel).join(' · ')}</small>`; else instrumentGuide.innerHTML = '<span class="muted">Jouez la touche écrite sous la note.</span>'; const slider = instrumentGuide.querySelector('#slideControl'); slider?.addEventListener('pointerdown', () => { slideInteracting = true; }); slider?.addEventListener('input', event => { slidePosition = Number(event.target.value); instrumentGuide.querySelector('[data-slide-position]').textContent = String(slidePosition); if (!breathEnabled.checked) scheduleInstrumentInput(); }); }
 document.addEventListener('pointerup', () => { if (!slideInteracting) return; slideInteracting = false; renderInstrumentGuide(); render(); });
 
 async function detectLayout() { if (keyboardLayout !== 'auto') return; try { const map = await navigator.keyboard?.getLayoutMap?.(); if (!map) return; const codes = new Set(Object.values(inputMappings).flatMap(value => Array.isArray(value) ? value : [value])); codes.forEach(code => { const label = map.get(code); if (label && label !== 'Dead') learnedKeyLabels.base[code] = /\p{L}/u.test(label) ? label.toLocaleUpperCase(navigator.language || 'fr') : label; }); refreshKeyLabels(); try { localStorage.setItem('rhythm-key-labels', JSON.stringify(learnedKeyLabels)); } catch {} renderMappingControls(); render(); } catch {} }
@@ -683,7 +768,7 @@ function toggleMetronome() {
 }
 function renderLatencyStatus(message = '') { const browserLatency = audio?.outputLatency ? ` · sortie navigateur ≈ ${Math.round(audio.outputLatency * 1000)} ms` : ''; latencyStatus.textContent = message || `Compensation : ${latencyOffsetMs >= 0 ? '+' : ''}${latencyOffsetMs} ms${browserLatency}`; }
 function finishLatencyCalibration(cancelled = false) { if (!calibration) return; calibration.timers.forEach(clearTimeout); const samples = calibration.samples.map(sample => sample.offset).sort((left, right) => left - right); calibration = null; document.getElementById('calibrateLatency').textContent = 'Calibrer la latence'; if (cancelled || samples.length < 4) { renderLatencyStatus(cancelled ? 'Calibrage annulé.' : 'Pas assez de frappes : recommencez le calibrage.'); return; } const trimmed = samples.length > 5 ? samples.slice(1, -1) : samples; latencyOffsetMs = Math.max(-250, Math.min(500, Math.round(trimmed.reduce((sum, value) => sum + value, 0) / trimmed.length))); try { localStorage.setItem('rhythm-latency-offset', latencyOffsetMs); } catch {} renderLatencyStatus(`Calibrage enregistré : ${latencyOffsetMs >= 0 ? '+' : ''}${latencyOffsetMs} ms (${samples.length} frappes).`); render(); }
-function startLatencyCalibration() { if (calibration) { finishLatencyCalibration(true); return; } stop(); ensureAudio(); const interval = 700; const startAt = performance.now() + 900; const expected = Array.from({ length: 12 }, (_, index) => startAt + index * interval); calibration = { expected, samples: [], used: new Set(), timers: expected.map((time, index) => setTimeout(() => { metronomeClick(index % 4 === 0); latencyStatus.textContent = index < 4 ? `Écoutez les clics… entraînement ${index + 1}/4` : `Frappez une touche sur chaque clic · ${index - 3}/8`; }, Math.max(0, time - performance.now()))) }; calibration.timers.push(setTimeout(() => finishLatencyCalibration(false), expected.at(-1) - performance.now() + 900)); document.getElementById('calibrateLatency').textContent = 'Annuler le calibrage'; latencyStatus.textContent = 'Préparez-vous : écoutez quatre clics, puis frappez en rythme.'; }
+function startLatencyCalibration() { if (calibration) { finishLatencyCalibration(true); return; } stop(); ensureAudio(); const interval = 700; const startAt = performance.now() + 900; const expected = Array.from({ length: 12 }, (_, index) => startAt + index * interval); calibration = { expected, samples: [], used: new Set(), timers: expected.map((time, index) => setTimeout(() => { metronomeClick(index % 4 === 0); latencyStatus.textContent = index < 4 ? `Écoutez les clics… entraînement ${index + 1}/4` : `Frappez une touche sur chaque clic · ${index - 3}/8`; }, Math.max(0, time - performance.now()))) }; calibration.timers.push(setTimeout(() => finishLatencyCalibration(false), expected[expected.length - 1] - performance.now() + 900)); document.getElementById('calibrateLatency').textContent = 'Annuler le calibrage'; latencyStatus.textContent = 'Préparez-vous : écoutez quatre clics, puis frappez en rythme.'; }
 function registerCalibrationTap() { if (!calibration) return; const now = performance.now(); let nearestIndex = -1, nearestDistance = Infinity; calibration.expected.forEach((time, index) => { const distance = Math.abs(now - time); if (index >= 4 && !calibration.used.has(index) && distance < nearestDistance) { nearestDistance = distance; nearestIndex = index; } }); if (nearestIndex < 0 || nearestDistance > 350) return; calibration.used.add(nearestIndex); calibration.samples.push({ index: nearestIndex, offset: now - calibration.expected[nearestIndex] }); }
 function loop() {
   if (!game) return;
@@ -703,6 +788,7 @@ function loop() {
       document.getElementById('speedValue').value = `${speedControl.value} %`;
     }
     statusElement.textContent = `Terminé : ${finished.hits} notes réussies.${isRecord ? ' Nouveau record !' : ''}${repeat ? ` Nouvelle boucle à ${speedControl.value} %…` : ''}`;
+    if (!repeat) window.LanMultiplayer?.finish({ score: finished.score, scoreLabel: `${finished.score} points · ${Math.round(accuracy * 100)} %`, won: true, accuracy: Math.round(accuracy * 100) });
     stopAudioScheduler(); game = null;
     if (repeat) window.setTimeout(() => startButton.click(), 800);
     return;
@@ -735,13 +821,17 @@ async function start() {
   const timeChanges = [{ beat: 0, value: track.time || '4/4' }, ...(track.changes || []).filter(change => change.type === 'time')];
   const clicks = Array.from({ length: countInPulseCount }, (_, pulse) => ({ time: timing.beatToMs(pulse * countInPulseBeats), accent: pulse === 0, prelude: true }));
   const measureStarts = track.measureBeats || [];
-  for (let beat = bounds.startBeat; beat <= maxBeat + .001;) { const signature = timeChanges.filter(change => change.beat <= beat).at(-1); const [numerator, denominator] = String(signature?.value || track.time || '4/4').split('/').map(Number); const pulseBeats = 4 / (denominator || 4); const measureBeats = (numerator || 4) * pulseBeats; const relativeMeasure = (beat - (signature?.beat || 0)) / measureBeats; const accent = measureStarts.length ? measureStarts.some(start => Math.abs(start - beat) < .01) : Math.abs(relativeMeasure - Math.round(relativeMeasure)) < .01; clicks.push({ time: countIn + timing.beatToMs(beat) - timelineOffset, accent, prelude: false }); beat += pulseBeats; }
+  for (let beat = bounds.startBeat; beat <= maxBeat + .001;) { const available = timeChanges.filter(change => change.beat <= beat); const signature = available[available.length - 1]; const [numerator, denominator] = String(signature?.value || track.time || '4/4').split('/').map(Number); const pulseBeats = 4 / (denominator || 4); const measureBeats = (numerator || 4) * pulseBeats; const relativeMeasure = (beat - (signature?.beat || 0)) / measureBeats; const accent = measureStarts.length ? measureStarts.some(start => Math.abs(start - beat) < .01) : Math.abs(relativeMeasure - Math.round(relativeMeasure)) < .01; clicks.push({ time: countIn + timing.beatToMs(beat) - timelineOffset, accent, prelude: false }); beat += pulseBeats; }
   const msToBeat = milliseconds => { let low = bounds.startBeat; let high = maxBeat + 1; for (let iteration = 0; iteration < 22; iteration += 1) { const middle = (low + high) / 2; if (timing.beatToMs(middle) - timelineOffset < milliseconds) low = middle; else high = middle; } return (low + high) / 2; };
   ensureAudio();
   game = { started: performance.now(), pausedAt: 0, pausedTotal: 0, visibilityPaused: false, speed, bounds, timelineOffset, travel: Number(approachTimeControl.value), hits: 0, misses: 0, score: 0, initialBeatMs, countIn, clicks, clickIndex: 0, changes, msToBeat, backPlayed: new Set(), backIndexes: tracks.map(() => 0), guideIndexes: tracks.map(() => 0), lastRender: -Infinity, visualStepMs: 16, activeInputs: new Map(), judgements: [], lastMissBeat: null, notes: playableNotes(track, timing, countIn, codes, -Infinity, bounds, timelineOffset) };
   syncPlaybackIndexes(0);
   retryBeforeError.disabled = true;
   renderPracticeHistory([]);
+  if (matchMedia('(pointer: coarse)').matches && modeSelect.value === 'score') {
+    document.body.classList.add('rhythm-focus');
+    requestAnimationFrame(() => document.querySelector('.stage-wrap')?.scrollIntoView({ block: 'start' }));
+  }
   document.getElementById('clickMetronome').textContent = metronomeToggle.checked ? 'Couper le métronome' : 'Écouter le métronome';
   scoreElement.textContent = '0'; statusElement.textContent = `Décompte initial : une mesure en ${initialNumerator || 4}/${initialDenominator || 4}${loopEnabled.checked ? ` · boucle M${bounds.startMeasure} à M${bounds.endMeasure}` : ''}. Le métronome continu dépend de l’option « Métronome pendant le morceau » dans Son.`; startAudioScheduler(); render(); game.frame = requestAnimationFrame(loop);
 }
@@ -869,7 +959,7 @@ async function startMicrophoneCalibration() {
   const expected = Array.from({ length: 8 }, (_, index) => startsAt + index * 700);
   const timers = expected.map(time => setTimeout(() => microphoneCalibrationTone(), Math.max(0, time - performance.now())));
   microphoneCalibration = { expected, samples: [], used: new Set(), timers };
-  timers.push(setTimeout(() => finishMicrophoneCalibration(false), expected.at(-1) - performance.now() + 700));
+  timers.push(setTimeout(() => finishMicrophoneCalibration(false), expected[expected.length - 1] - performance.now() + 700));
   calibrateMicrophoneButton.textContent = 'Annuler le calibrage';
   microphoneStatus.hidden = false;
   statusElement.textContent = 'Calibrage acoustique : laissez les haut-parleurs jouer huit La sans produire de son.';
@@ -948,9 +1038,18 @@ stage.addEventListener('pointerdown', event => { if (inputStyle.value !== 'rhyth
 stage.addEventListener('pointerup', event => { if (!pointerRhythmActive) return; event.preventDefault(); pointerRhythmActive = false; pressedKeys.delete(inputMappings.rhythm); releaseNote(inputMappings.rhythm); render(); });
 stage.addEventListener('pointercancel', () => { if (!pointerRhythmActive) return; pointerRhythmActive = false; pressedKeys.delete(inputMappings.rhythm); releaseNote(inputMappings.rhythm); render(); });
 modeSelect.onchange = () => { stop(); renderRecord(); renderInstrumentGuide(); render(); };
-startButton.onclick = () => { start().catch(error => { statusElement.textContent = `Démarrage impossible : ${error.message}`; }); };
+let lanStartAuthorized = false;
+startButton.onclick = () => {
+  if (window.LanMultiplayer?.active && !lanStartAuthorized) { statusElement.textContent = 'Le départ et le redémarrage sont contrôlés par le salon LAN.'; return; }
+  start().catch(error => { statusElement.textContent = `Démarrage impossible : ${error.message}`; });
+};
 pauseButton.onclick = togglePause;
 document.getElementById('restartGame').onclick = () => startButton.click();
+window.addEventListener('lan:start', () => { if (!game) { lanStartAuthorized = true; startButton.click(); lanStartAuthorized = false; } });
+window.addEventListener('lan:pause', event => {
+  const shouldPause = Boolean(event.detail?.paused);
+  if (game && Boolean(game.pausedAt) !== shouldPause) togglePause();
+});
 speedControl.oninput = () => { document.getElementById('speedValue').value = `${speedControl.value} %`; applyLiveSpeed(); };
 speedControl.onchange = renderRecord;
 practicePreset.onchange = applyPracticePreset;
@@ -1464,7 +1563,8 @@ function parseImportedScore(xml, name) { if (/<score-partwise\b|<score-timewise\
 function normalizedInstrumentName(value = '') { return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/gi, '').toLowerCase(); }
 function excerptDisplayName(document) {
   const doc = new DOMParser().parseFromString(document.xml, 'application/xml');
-  return doc.querySelector('museScore > Score > name')?.textContent.trim() || document.name.split('/').at(-2)?.replace(/^\d+_/, '').replaceAll('_', ' ') || document.name;
+  const nameParts = document.name.split('/');
+  return doc.querySelector('museScore > Score > name')?.textContent.trim() || nameParts[nameParts.length - 2]?.replace(/^\d+_/, '').replace(/_/g, ' ') || document.name;
 }
 function primaryExcerptTrack(document) {
   const excerptName = excerptDisplayName(document);
@@ -1516,7 +1616,7 @@ function musicalTimelineAnchors(excerpt, master) {
   });
   anchors.sort((left, right) => left.excerptBeat - right.excerptBeat || left.masterBeat - right.masterBeat);
   const monotonic = [];
-  anchors.forEach(anchor => { if (!monotonic.length || anchor.masterBeat > monotonic.at(-1).masterBeat) monotonic.push(anchor); });
+  anchors.forEach(anchor => { if (!monotonic.length || anchor.masterBeat > monotonic[monotonic.length - 1].masterBeat) monotonic.push(anchor); });
   return monotonic;
 }
 function alignExcerptToMaster(excerpt, master) {
@@ -1531,7 +1631,8 @@ function alignExcerptToMaster(excerpt, master) {
   if (!anchors.length) return excerpt;
   const mapBeat = beat => {
     if (beat <= anchors[0].excerptBeat) return beat + anchors[0].masterBeat - anchors[0].excerptBeat;
-    if (beat >= anchors.at(-1).excerptBeat) return beat + anchors.at(-1).masterBeat - anchors.at(-1).excerptBeat;
+    const lastAnchor = anchors[anchors.length - 1];
+    if (beat >= lastAnchor.excerptBeat) return beat + lastAnchor.masterBeat - lastAnchor.excerptBeat;
     const rightIndex = anchors.findIndex(anchor => anchor.excerptBeat >= beat);
     const left = anchors[rightIndex - 1], right = anchors[rightIndex];
     const ratio = (beat - left.excerptBeat) / Math.max(.001, right.excerptBeat - left.excerptBeat);
@@ -1613,7 +1714,7 @@ function loadImportedDocument(index) {
 scoreDocument.onchange = () => loadImportedDocument(Number(scoreDocument.value));
 fileInput.onchange = async () => { const file = fileInput.files[0]; if (!file) return; try { statusElement.textContent = `Import de ${file.name}…`; await new Promise(resolve => setTimeout(resolve, 20)); const buffer = await file.arrayBuffer(); if (file.name.toLowerCase().endsWith('.mscz')) { importedDocuments = await unzipMsczDocuments(buffer); const hasIndividualParts = importedDocuments.some(document => document.name.includes('/')); const merged = combineExcerptDocuments(importedDocuments); if (hasIndividualParts && merged.tracks.length) importedDocuments.splice(1, 0, { name: 'Parties individuelles réunies', tracks: merged.tracks, mergeInfo: merged, sourceKind: 'combined' }); } else importedDocuments = [{ name: file.name, xml: new TextDecoder().decode(buffer) }]; scoreDocument.innerHTML = importedDocuments.map((document, index) => `<option value="${index}">${importedDocumentLabel(document)}</option>`).join(''); document.getElementById('scoreDocumentLabel').hidden = importedDocuments.length < 2; const preferredIndex = importedDocuments.findIndex(document => document.sourceKind === 'combined'); scoreDocument.value = String(preferredIndex >= 0 ? preferredIndex : 0); loadImportedDocument(Number(scoreDocument.value)); } catch (error) { statusElement.textContent = `Import impossible : ${error.message}`; } };
 try { localStorage.setItem('game-hub:last-game', 'rhythm'); } catch {}
-window.RhythmLabTestApi = { parseScore: (xml, name = 'test.mscx') => parseScore(xml, name, false), validateTracks, trackDiagnosticSnapshot, runRhythmTests };
+window.RhythmLabTestApi = { parseScore: (xml, name = 'test.mscx') => parseScore(xml, name, false), validateTracks, trackDiagnosticSnapshot, runRhythmTests, mobileInterface: () => ({ dock: mobileInputDock.isConnected, controls: mobileInputDock.querySelectorAll('[data-code]').length, focusButton: Boolean(mobileInputDock.querySelector('[data-mobile-action="focus"]')), landscapeHint: Boolean(mobileInputDock.querySelector('.mobile-orientation-hint')) }) };
 window.addEventListener('beforeunload', stopMicrophone);
 renderLatencyStatus();
 renderUnknownSymbolButton();

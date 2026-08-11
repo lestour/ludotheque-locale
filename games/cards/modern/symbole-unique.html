@@ -24,6 +24,7 @@
     .card { position: relative; border: 6px solid #efab24; background: #fff; box-shadow: 0 6px 0 rgba(32,48,72,.16); overflow: hidden; }
     .card.empty { display: grid; place-items: center; border-style: dashed; border-color: #b6c4d8; color: #61718a; font-weight: 700; }
     .card.back { display: grid; place-items: center; border-color: #294c9c; background: repeating-linear-gradient(45deg, #294c9c, #294c9c 8px, #e7efff 8px, #e7efff 16px); color: #fff; font-size: 62px; cursor: pointer; }
+    .center-pile .card.back { color: #7c2d12; text-shadow: 0 1px 2px #fff, 0 0 5px #fff; }
     .card.revealing { animation: turn-card .48s ease-in-out; }
     .card.source-hidden { visibility: hidden; }
     .symbol { position: absolute; z-index: 1; border: 0; background: transparent; padding: 2px; border-radius: 50%; line-height: 1; transform: translate(-50%, -50%) rotate(var(--angle)); transition: filter .15s ease, scale .15s ease; }
@@ -74,6 +75,6 @@
       <section class="player-area"><h2 id="opponentTitle">Bot</h2><div id="cardTwo" class="card"></div><div class="muted">Cartes sous la carte active</div><div id="stackTwo" class="round-stack"></div></section>
     </div>
   </section></main>
-  <script src="../../../shared/cards.js?v=18"></script><script src="symbole-unique.js?v=16"></script><script src="../../../shared/records.js?v=2"></script>
+  <script src="../../../shared/game-runtime.js?v=3"></script><script src="../../../shared/cards.js?v=18"></script><script src="symbole-unique.js?v=16"></script><script src="../../../shared/records.js?v=3"></script>
 </body>
 </html>

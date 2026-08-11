@@ -28,6 +28,7 @@ function shuffled(values){return CardTools.shuffle(values)}
 function createLayout(list){const placed=[];return list.map((symbol,index)=>{const size=33+index*5+Math.random()*3;let layout;for(let attempt=0;attempt<300;attempt+=1){const angle=Math.random()*Math.PI*2;const distance=Math.sqrt(Math.random())*(39-size/5.5);const candidate={x:50+Math.cos(angle)*distance,y:50+Math.sin(angle)*distance,size,angle:-30+Math.random()*60};if(placed.every(previous=>Math.hypot(candidate.x-previous.x,candidate.y-previous.y)>(candidate.size+previous.size)/5.1+3)){layout=candidate;break}}layout||={x:50+Math.cos(index*Math.PI/3)*27,y:50+Math.sin(index*Math.PI/3)*27,size,angle:-20+Math.random()*40};placed.push(layout);return[symbol,layout]})}
 function createCard(list){return{symbols:list,layout:new Map(createLayout(shuffled(list)))}}
 function buildDeck(){const order=5,point=(x,y)=>x*order+y,infinity=slope=>25+slope,vertical=30,deck=[];for(let slope=0;slope<order;slope+=1)for(let intercept=0;intercept<order;intercept+=1)deck.push([...Array(order)].map((_,x)=>point(x,(slope*x+intercept)%order)).concat(infinity(slope)));for(let x=0;x<order;x+=1)deck.push([...Array(order)].map((_,y)=>point(x,y)).concat(vertical));deck.push([...Array(order)].map((_,slope)=>infinity(slope)).concat(vertical));return shuffled(deck.map(card=>createCard(card.map(index=>symbols[index]))))}
+function validateUniqueSymbolDeck(deck){for(let left=0;left<deck.length;left+=1)for(let right=left+1;right<deck.length;right+=1)if(deck[left].symbols.filter(symbol=>deck[right].symbols.includes(symbol)).length!==1)return false;return true}
 function clearBot(){if(botTimer!==null)clearTimeout(botTimer);botTimer=null}
 function isWell(){return game.mode==='well'}
 function isPotato(){return game.mode==='potato'}
@@ -59,7 +60,7 @@ function animateTransfers(transfers,{onStart,onArrival,onFinish}){
   window.setTimeout(()=>{prepared.forEach(item=>item.ghost.remove());onFinish?.()},transferDuration+20);
 }
 function revealCenter(){if(game.started||game.over)return;game.started=true;status.textContent=isPotato()?'Cliquez le symbole commun sur la carte d’un adversaire.':'Trouvez l’unique symbole commun avec la pile centrale.';render();scheduleBot()}
-function finish(winner=null){game.over=true;clearBot();if(winner===null){const ranking=[...Array(game.players)].map((_,player)=>({player,total:total(player)})).sort((a,b)=>b.total-a.total);winner=ranking[0].total===ranking[1]?.total?null:ranking[0].player}status.textContent=winner===null?'Égalité !':`${playerName(winner)} gagne !`;render()}
+function finish(winner=null){game.over=true;clearBot();if(winner===null){const ranking=[...Array(game.players)].map((_,player)=>({player,total:total(player)})).sort((a,b)=>b.total-a.total);winner=ranking[0].total===ranking[1]?.total?null:ranking[0].player}status.textContent=winner===null?'Égalité !':`${playerName(winner)} gagne !`;window.GameRecords?.finish({won:winner===0});render()}
 
 function claimTower(player){
   const central=topCard(),old=game.playerCards[player],recipient=isGift()?(player+1)%game.players:player;
@@ -118,6 +119,8 @@ function render(){scores.innerHTML=[...Array(game.players)].map((_,player)=>`<di
 function createGame(){clearBot();const deck=buildDeck(),players=Number(playerCount.value);game={mode:gameMode.value,players,centerPile:[],playerCards:Array(players).fill(null),hands:Array.from({length:players},()=>[]),playerPiles:Array.from({length:players},()=>[]),over:false,transitioning:false,started:false,exchanges:0,lastFinder:null};if(isPotato()){for(let player=0;player<players;player+=1)game.playerCards[player]=deck.pop()}else if(isWell()){game.centerPile.push(deck.pop());deck.forEach((card,index)=>game.playerPiles[index%players].push(card));for(let player=0;player<players;player+=1)game.playerCards[player]=game.playerPiles[player].pop()||null}else{for(let player=0;player<players;player+=1)game.playerCards[player]=deck.pop();game.centerPile=deck}status.textContent='Retournez la carte centrale pour commencer.';render()}
 
 opponentSelect.addEventListener('change',createGame);playerCount.addEventListener('change',createGame);gameMode.addEventListener('change',createGame);newGameButton.addEventListener('click',createGame);startButton.addEventListener('click',revealCenter);localStorage.setItem('game-hub:last-game','symbole-unique');createGame();
+
+window.SymbolUniqueTestAPI=Object.freeze({diagnostics:()=>{const deck=buildDeck();return{cardCount:deck.length,symbolsPerCard:deck.every(card=>card.symbols.length===6),oneCommonSymbol:validateUniqueSymbolDeck(deck)};}});
 
 async function runSymbolDiagnostics(){
   const checks=[],wait=milliseconds=>new Promise(resolve=>window.setTimeout(resolve,milliseconds));

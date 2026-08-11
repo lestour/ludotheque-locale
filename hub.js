@@ -178,6 +178,15 @@ const games = [
     href: 'games/cards/modern/chatastrophe.html'
   },
   {
+    id: 'rami-cartes',
+    title: 'Rami Cartes',
+    category: 'cards',
+    status: 'Jouable',
+    icon: '🃏', accent: '#177245', cardIcon: '♣',
+    description: 'Formez des groupes et suites de cartes, ouvrez au seuil choisi et complétez la table.',
+    href: 'games/cards/classic/rami-cartes.html'
+  },
+  {
     id: 'rami-tuiles',
     title: 'Rami Tuiles',
     category: 'board',
@@ -241,6 +250,15 @@ const games = [
     href: 'games/board/chess.html?variant=checkers'
   },
   {
+    id: 'go',
+    title: 'Go',
+    category: 'board',
+    status: 'Jouable',
+    icon: '⚫', accent: '#a16207',
+    description: 'Go local en 9×9, 13×13 ou 19×19 avec captures, ko, passes, score et Atari Go.',
+    href: 'games/board/go.html'
+  },
+  {
     id: 'board-games',
     title: 'Jeux de plateau',
     category: 'board',
@@ -256,6 +274,15 @@ const games = [
     icon: '🎵', accent: '#0891b2',
     description: 'Pistes de rythme locales, import MuseScore/MusicXML et modes piano ou boutons.',
     href: 'games/rhythm/rhythm.html'
+  },
+  {
+    id: 'karaoke',
+    title: 'Karaoké Lab',
+    category: 'rhythm',
+    status: 'Prototype jouable',
+    icon: '🎤', accent: '#be185d',
+    description: 'Chantez des notes cibles au microphone avec score de justesse, tenue, latence et accompagnement local.',
+    href: 'games/rhythm/karaoke.html'
   }
 ];
 
@@ -275,7 +302,7 @@ function renderCatalog() {
       <h3>${game.title}</h3>
       <p>${game.description}</p>
       ${game.variants ? `<div class="variant-picker"><button type="button" class="variant-toggle" data-variant-toggle aria-haspopup="true" aria-expanded="false">Variantes · 0 sélectionnée</button><div class="variant-menu" data-variant-menu hidden>${game.variants.map(variant => `<label><input type="checkbox" data-variant="${variant.id}"> ${variant.label}</label>`).join('')}</div></div>` : ''}
-      ${game.presets ? `<label class="muted">Profil <select data-game-preset="${game.id}">${game.presets.map((preset, index) => `<option value="${index}">${preset.label}</option>`).join('')}</select></label>` : ''}
+      ${game.presets ? `<label class="muted profile-picker">Profil <select data-game-preset="${game.id}">${game.presets.map((preset, index) => `<option value="${index}">${preset.label}</option>`).join('')}</select></label>` : ''}
       <footer>${game.href ? `<a class="open" data-game-link="${game.id}" href="${game.href}">Ouvrir</a>` : '<span class="muted">Module planifié</span>'}</footer>
     </article>
   `).join('') : '<div class="empty">Aucun jeu dans cette catégorie pour le moment.</div>';
@@ -352,16 +379,52 @@ document.querySelectorAll('[data-filter]').forEach(button => {
 });
 
 let lastGame = null;
-try { lastGame = localStorage.getItem('game-hub:last-game'); } catch (error) { lastGame = null; }
-recentGame.textContent = lastGame === 'bataille-corse'
-  ? 'Dernier jeu ouvert : Bataille Corse.'
-  : (lastGame === 'sudoku'
-  ? 'Dernier jeu ouvert : Sudoku Lab.'
-  : (lastGame === 'nonogram'
-    ? 'Dernier jeu ouvert : Nonogram.'
-    : (lastGame === 'minesweeper'
-      ? 'Dernier jeu ouvert : Démineur.'
-      : (lastGame === 'bataille'
-        ? 'Dernier jeu ouvert : Bataille.'
-        : (lastGame === 'klondike' ? 'Dernier jeu ouvert : Solitaire Klondike.' : 'Tous les jeux et sauvegardes restent locaux à ce navigateur.')))));
+let lastRoute = null;
+try {
+  lastGame = localStorage.getItem('game-hub:last-game');
+  lastRoute = JSON.parse(localStorage.getItem('game-hub:last-route') || 'null');
+} catch (error) {
+  lastGame = null;
+  lastRoute = null;
+}
+if (lastRoute?.route?.startsWith('games/')) {
+  const recentLink = document.createElement('a');
+  recentLink.href = lastRoute.route;
+  recentLink.textContent = `Reprendre : ${lastRoute.title || 'dernier jeu'}`;
+  recentGame.replaceChildren(recentLink);
+} else {
+  const knownGame = games.find(game => game.id === lastGame);
+  recentGame.textContent = knownGame ? `Dernier jeu ouvert : ${knownGame.title}.` : 'Tous les jeux et sauvegardes restent locaux à ce navigateur.';
+}
 renderCatalog();
+
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}), { once: true });
+}
+
+fetch('./api/lan/status', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(status => {
+  if (!status?.lan) return;
+  const shareUrl = status.publicUrls?.[0] || '';
+  const panel = document.createElement('section');
+  panel.className = 'lan-hub';
+  const title = document.createElement('h2');
+  title.textContent = '🌐 Mode LAN actif';
+  const address = document.createElement('p');
+  address.append('Adresse à envoyer aux autres joueurs : ');
+  const code = document.createElement('code');
+  code.textContent = shareUrl || 'Aucune adresse réseau détectée';
+  address.append(code);
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.textContent = 'Copier l’adresse';
+  copy.disabled = !shareUrl;
+  copy.onclick = async () => {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(shareUrl);
+    else { code.focus?.(); document.getSelection()?.selectAllChildren(code); document.execCommand('copy'); }
+    copy.textContent = 'Adresse copiée';
+  };
+  const instructions = document.createElement('ol');
+  ['Envoyez cette adresse aux personnes connectées au même Wi-Fi ou réseau.', 'Ouvrez tous le même jeu depuis le hub.', 'Dans le jeu, cliquez sur le bouton vert « Jouer en LAN » en bas à droite pour créer ou rejoindre le salon.'].forEach(text => { const item = document.createElement('li'); item.textContent = text; instructions.appendChild(item); });
+  panel.append(title, address, copy, instructions);
+  document.querySelector('main').prepend(panel);
+}).catch(() => {});

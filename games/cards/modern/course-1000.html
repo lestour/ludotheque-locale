@@ -1,1 +1,78 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Course 1000</title><style>:root{color-scheme:light dark;font-family:Arial,sans-serif;background:#edf3fb;color:#17243a}body{margin:0}main{max-width:1200px;margin:auto;padding:24px}.panel{background:#fff;border:1px solid #d7e0ed;border-radius:17px;padding:18px;box-shadow:0 8px 24px #0002}.toolbar,.hand,.targets{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:13px}h1{margin:0 auto 0 0}button,a,select{font:inherit;background:#fff;color:inherit;border:1px solid #9baac0;border-radius:9px;padding:8px 11px;cursor:pointer;text-decoration:none}button:hover,a:hover{background:#2447a8;color:#fff}.muted,#log{color:#61718a;line-height:1.5}.players{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:11px}.player{border:1px solid #d7e0ed;border-radius:12px;padding:11px;background:#f8fafc}.player.active{outline:3px solid #f1b82d}.road{height:32px;border-radius:99px;background:repeating-linear-gradient(90deg,#263447 0 34px,#fff 35px 59px);margin:9px 0;position:relative}.car{position:absolute;top:-7px;transform:translateX(-50%);font-size:29px}.card{width:115px;min-height:92px;border:3px solid #263e62;border-radius:10px;background:#fff;color:#17243a;padding:7px;text-align:left;font-weight:800;position:relative}.card.distance{border-top:13px solid #1d9d6d}.card.attack{border-top:13px solid #dc3d4e}.card.remedy{border-top:13px solid #3079ca}.card.safety{border-top:13px solid #f4a622}.hand .card{cursor:pointer}.hand .card:hover{transform:translateY(-5px);outline:3px solid #7c3aed;color:#17243a}.draw-zone{margin-top:48px;padding-top:24px;border-top:2px solid #cbd5e1}.pile{display:inline-grid;place-items:center;width:90px;height:122px;border:3px solid #263e62;border-radius:11px;background:repeating-linear-gradient(45deg,#d93445,#d93445 8px,#fee2e2 8px,#fee2e2 16px);color:#fff;font-weight:900}@media(prefers-color-scheme:dark){:root{background:#101827;color:#e8eef8}.panel,.player{background:#172235;border-color:#34445e}.muted,#log{color:#b5c1d1}button,a,select{background:#263447;color:#f1f5fb}.card{background:#f8fafc;color:#17243a;border-color:#94a3b8}.draw-zone{border-color:#475569}.road{background:repeating-linear-gradient(90deg,#0f172a 0 34px,#cbd5e1 35px 59px)}}</style></head><body><main><section class="panel"><div class="toolbar"><h1>Course 1000</h1><a href="../../../index.html">Hub</a><button id="newGame">Nouvelle partie</button><label class="muted">Joueurs <select id="players"><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label></div><div id="status" class="muted"></div><div id="targets" class="targets"></div><div id="table" class="players"></div><div class="toolbar draw-zone"><button id="draw" class="pile">PIOCHE</button><span id="discard" class="card">Défausse</span></div><h2>Votre main</h2><div id="hand" class="hand"></div><ul id="log"></ul></section></main><script src="course-1000.js?v=4"></script></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Course 1000</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Arial, sans-serif; background: #eef3fa; color: #17243a; }
+    body { margin: 0; }
+    main { max-width: 1200px; margin: auto; padding: 24px; }
+    .panel { background: #fff; border: 1px solid #d7e0ed; border-radius: 17px; padding: 18px; box-shadow: 0 8px 24px #0002; }
+    .toolbar, .hand, .targets { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin-bottom: 13px; }
+    h1 { margin: 0 auto 0 0; }
+    button, a, select { font: inherit; background: #fff; color: inherit; border: 1px solid #9baac0; border-radius: 9px; padding: 8px 11px; cursor: pointer; text-decoration: none; }
+    button:hover, a:hover { background: #2447a8; color: #fff; }
+    .muted, #log { color: #61718a; line-height: 1.5; }
+    .rules { margin: 13px 0; padding: 10px 13px; border: 1px solid #cbd5e1; border-radius: 11px; background: #f8fafc; }
+    .rules summary { cursor: pointer; font-weight: 900; }
+    .rules-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+    .rules-grid p { margin: 7px 0; }
+    .players { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 11px; }
+    .player { border: 1px solid #d7e0ed; border-radius: 12px; padding: 11px; background: #f8fafc; }
+    .player.active { outline: 3px solid #f1b82d; }
+    .route-help { margin: 6px 0; padding: 5px 7px; border-radius: 7px; background: #e7eef8; color: #27364d; font-size: 12px; font-weight: 800; }
+    .road { height: 32px; border-radius: 99px; background: repeating-linear-gradient(90deg, #263447 0 34px, #fff 35px 59px); margin: 9px 0; position: relative; }
+    .car { position: absolute; top: -7px; transform: translateX(-50%); font-size: 29px; }
+    .card { width: 132px; min-height: 112px; border: 3px solid #263e62; border-radius: 10px; background: #fff; color: #17243a; padding: 7px; text-align: left; font-weight: 800; position: relative; }
+    .card.distance { border-top: 13px solid #1d9d6d; } .card.attack { border-top: 13px solid #dc3d4e; } .card.remedy { border-top: 13px solid #3079ca; } .card.safety { border-top: 13px solid #f4a622; }
+    .hand .card { cursor: pointer; }
+    .hand .card:hover { transform: translateY(-5px); outline: 3px solid #7c3aed; color: #17243a; }
+    .draw-zone { margin-top: 48px; padding-top: 24px; border-top: 2px solid #cbd5e1; }
+    .pile { display: inline-grid; place-items: center; width: 90px; height: 122px; border: 3px solid #263e62; border-radius: 11px; background: repeating-linear-gradient(45deg, #d93445, #d93445 8px, #fee2e2 8px, #fee2e2 16px); color: #fff; font-weight: 900; }
+    @media (prefers-color-scheme: dark) {
+      :root { background: #101827; color: #e8eef8; }
+      .panel, .player, .rules { background: #172235; border-color: #34445e; }
+      .muted, #log { color: #b5c1d1; }
+      button, a, select { background: #263447; color: #f1f5fb; }
+      .card { background: #f8fafc; color: #17243a; border-color: #94a3b8; }
+      .route-help { background: #263447; color: #dce7f5; }
+      .draw-zone { border-color: #475569; }
+      .road { background: repeating-linear-gradient(90deg, #0f172a 0 34px, #cbd5e1 35px 59px); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="panel">
+      <div class="toolbar">
+        <h1>Course 1000</h1>
+        <a href="../../../index.html">Hub</a>
+        <button id="newGame">Nouvelle partie</button>
+        <label class="muted">Joueurs <select id="players"><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>
+      </div>
+      <div id="status" class="muted"></div>
+      <details class="rules" open>
+        <summary>Règles et utilisation des cartes</summary>
+        <div class="rules-grid">
+          <p><strong>Un tour :</strong> piochez pour avoir momentanément 7 cartes, puis jouez exactement une carte ou défaussez-en une. Vous devez finir avec 6 cartes.</p>
+          <p><strong>Démarrer :</strong> chaque voiture est arrêtée. Posez un <em>Feu vert</em> ou la Botte <em>Véhicule prioritaire</em> avant toute étape.</p>
+          <p><strong>Après une attaque :</strong> Panne → Essence → Feu vert ; Crevaison → Roue → Feu vert ; Accident → Réparation → Feu vert ; Feu rouge → Feu vert.</p>
+          <p><strong>Vitesse :</strong> sous Limite, seules les étapes 25 et 50 sont permises jusqu’à une Fin de limite. Deux étapes 200 maximum et arrivée exacte dans la règle classique.</p>
+          <p><strong>Bottes :</strong> elles protègent définitivement et donnent immédiatement un nouveau tour. Jouée au moment de l’attaque correspondante, une Botte réalise un Coup-Fourré et prend la main.</p>
+          <p><strong>Fin :</strong> le premier à atteindre exactement l’objectif gagne. Si les cartes sont épuisées, la plus grande distance l’emporte.</p>
+        </div>
+      </details>
+      <div id="targets" class="targets"></div>
+      <div id="table" class="players"></div>
+      <div class="toolbar draw-zone"><button id="draw" class="pile">PIOCHE</button><span id="discard" class="card">Défausse</span></div>
+      <h2>Votre main</h2>
+      <div id="hand" class="hand"></div>
+      <ul id="log"></ul>
+    </section>
+  </main>
+  <script src="../../../shared/game-runtime.js?v=3"></script>
+  <script type="module" src="course-1000.js?v=6"></script>
+  <script src="../../../shared/records.js?v=3"></script>
+</body>
+</html>

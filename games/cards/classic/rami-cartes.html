@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Rami Cartes</title>
+  <style>
+    :root{color-scheme:light dark;font-family:Arial,sans-serif;background:#edf3fb;color:#17243a}body{margin:0}main{max-width:1320px;margin:auto;padding:24px}.panel{background:#fff;border:1px solid #d7e0ed;border-radius:17px;padding:18px;box-shadow:0 8px 24px #0002}.bar,.hand,.actions,.piles,.groups{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:14px}h1{margin:0 auto 0 0}button,a,select{font:inherit;background:#fff;color:inherit;border:1px solid #9baac0;border-radius:9px;padding:8px 11px;cursor:pointer;text-decoration:none}button:hover,a:hover{background:#1d4ed8;color:#fff}button:disabled{opacity:.45;cursor:not-allowed}.muted,#log{color:#61718a;line-height:1.5}.players{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:18px}.player{padding:11px;border:1px solid #d7e0ed;border-radius:11px;background:#f8fafc}.player.active{outline:3px solid #eab308}.table{min-height:180px;padding:14px;border:2px solid #177245;border-radius:14px;background:#e9f8ef}.group{display:flex;gap:4px;padding:8px;border:1px dashed #177245;border-radius:10px;background:#ffffffaa;cursor:pointer}.card{width:72px;height:102px;box-sizing:border-box;border:2px solid #203048;border-radius:9px;background:#fff;color:#17243a;padding:6px;display:flex;flex-direction:column;justify-content:space-between;font-weight:800;font-size:18px;text-align:left}.card.red{color:#c0263d}.card.selected{outline:4px solid #f59e0b;transform:translateY(-8px)}.card.joker{background:conic-gradient(#ef4444,#f59e0b,#22c55e,#3b82f6,#ef4444);color:#fff;text-shadow:0 1px 2px #000}.pile{width:88px;height:116px;border:3px solid #203048;border-radius:11px;display:grid;place-items:center;font-weight:900}.stock{background:repeating-linear-gradient(45deg,#14532d 0 8px,#dcfce7 8px 16px);color:#fff}.discard{background:#fff}.selection-order{min-height:26px;font-weight:700;color:#9a5b00}@media(prefers-color-scheme:dark){:root{background:#101827;color:#e8eef8}.panel,.player{background:#172235;border-color:#34445e}.muted,#log{color:#b5c1d1}button,a,select{background:#263447;color:#f1f5fb}.table{background:#123326}.group{background:#172235}.card,.discard{background:#f8fafc;color:#17243a}.card.red{color:#c0263d}}
+    .group.selected{outline:4px solid #f59e0b}
+  </style>
+</head>
+<body><main><section class="panel">
+  <div class="bar"><h1>Rami Cartes</h1><a href="../../../index.html">Hub</a><button id="newGame">Nouvelle partie</button><label>Joueurs <select id="players"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></label><label>Ouverture minimale <select id="openingMinimum"><option value="0">Aucune</option><option value="30" selected>30 points</option><option value="51">51 points</option></select></label><label><input id="jokers" type="checkbox" checked> jokers</label></div>
+  <p id="status" class="muted"></p><div id="playersView" class="players"></div>
+  <section class="table"><h2>Groupes posés</h2><div id="groups" class="groups"></div></section>
+  <div class="piles"><button id="stock" class="pile stock">PIOCHE</button><button id="discard" class="pile discard">—</button></div>
+  <div class="actions"><button id="lay">Poser la sélection</button><button id="addToGroup">Ajouter au groupe choisi</button><button id="discardSelected">Défausser et finir</button><button id="cancelTurn">Annuler le tour</button><button id="sortHand">Trier par valeur</button></div>
+  <div id="selectionOrder" class="selection-order"></div><h2>Votre main</h2><div id="hand" class="hand"></div><ul id="log"></ul>
+</section></main><script src="../../../shared/game-runtime.js?v=2"></script><script src="rami-cartes.js?v=2"></script><script src="../../../shared/records.js?v=3"></script></body>
+</html>

@@ -4,6 +4,8 @@ const pairsElement = document.getElementById('pairs');
 const freeElement = document.getElementById('free');
 const layoutNameElement = document.getElementById('layoutName');
 const layoutSelect = document.getElementById('layout');
+const tileCountSelect = document.getElementById('tileCount');
+const difficultySelect = document.getElementById('difficulty');
 const hintButton = document.getElementById('hint');
 const solveButton = document.getElementById('solve');
 const undoButton = document.getElementById('undo');
@@ -93,11 +95,11 @@ function connectedBlob(count, width, height, x, y, z) {
   });
 }
 
-function finalizeLayout(coordinates) {
+function finalizeLayout(coordinates, expectedCount = 72) {
   const unique = new Map();
   coordinates.forEach(position => unique.set(`${position.x},${position.y},${position.z}`, position));
   const positions = [...unique.values()];
-  if (positions.length !== 72) throw new Error(`Disposition invalide : ${positions.length} tuiles au lieu de 72.`);
+  if (positions.length !== expectedCount) throw new Error(`Disposition invalide : ${positions.length} tuiles au lieu de ${expectedCount}.`);
   const minimumX = Math.min(...positions.map(position => position.x));
   const minimumY = Math.min(...positions.map(position => position.y));
   return positions.map((position, id) => ({ id, x: position.x - minimumX, y: position.y - minimumY, z: position.z }));
@@ -197,7 +199,7 @@ function randomLayout() {
   ]);
 }
 
-function createLayout(type) {
+function createLayout(type, tileCount = 72) {
   const creators = {
     turtle: turtleLayout,
     pyramid: pyramidLayout,
@@ -211,7 +213,18 @@ function createLayout(type) {
     spiral: spiralLayout,
     random: randomLayout,
   };
-  return (creators[type] || randomLayout)();
+  const creator = creators[type] || randomLayout;
+  if (tileCount === 72) return creator();
+  const copies = tileCount / 72;
+  const columns = copies > 2 ? 2 : copies;
+  const expanded = [];
+  for (let copy = 0; copy < copies; copy += 1) {
+    const base = creator();
+    const offsetX = (copy % columns) * 16;
+    const offsetY = Math.floor(copy / columns) * 11;
+    base.forEach(position => expanded.push({ x: position.x + offsetX, y: position.y + offsetY, z: position.z }));
+  }
+  return finalizeLayout(expanded, tileCount);
 }
 
 function activePositions(ids) {
@@ -237,7 +250,8 @@ function freePositions(ids) {
 }
 
 function solvableAssignment() {
-  for (let attempt = 0; attempt < 240; attempt += 1) {
+  const maximumAttempts = Math.max(240, game.tileCount * 5);
+  for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
     const remaining = new Set(game.positions.map(position => position.id));
     const pairs = [];
     let valid = true;
@@ -256,13 +270,13 @@ function solvableAssignment() {
 function buildSolvableLayout(type) {
   const attempts = type === 'random' ? 24 : 2;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const positions = createLayout(type);
+    const positions = createLayout(type, game.tileCount);
     game.positions = positions;
     const pairs = solvableAssignment();
     if (pairs) return pairs;
   }
   if (type !== 'turtle') {
-    game.positions = turtleLayout();
+    game.positions = createLayout('turtle', game.tileCount);
     const fallback = solvableAssignment();
     if (fallback) {
       game.layoutType = 'turtle';
@@ -292,6 +306,8 @@ function matching(left, right) {
 function newGame() {
   game = {
     layoutType: layoutSelect.value,
+    tileCount: Number(tileCountSelect.value),
+    difficulty: difficultySelect.value,
     positions: [],
     tiles: new Map(),
     removed: new Set(),
@@ -302,7 +318,14 @@ function newGame() {
     trace: null,
   };
   const pairs = buildSolvableLayout(game.layoutType);
-  const values = shuffle(faces);
+  const pairFaces = Array.from({ length: pairs.length }, (_, index) => faces[index % faces.length]);
+  const values = game.difficulty === 'easy'
+    ? pairFaces
+    : game.difficulty === 'extreme'
+      ? shuffle(pairFaces.map((_, index) => faces[index % Math.min(10, faces.length)]))
+      : game.difficulty === 'hard'
+      ? shuffle(pairFaces).sort((left, right) => left.id.localeCompare(right.id))
+      : shuffle(pairFaces);
   pairs.forEach((pair, index) => {
     game.solution.push(pair.map(position => position.id));
     pair.forEach(position => game.tiles.set(position.id, { ...values[index], pair: index }));
@@ -310,7 +333,7 @@ function newGame() {
   const requested = layoutNames[layoutSelect.value];
   const actual = layoutNames[game.layoutType];
   statusElement.textContent = requested === actual
-    ? `${actual} vérifiée : 72 tuiles, 36 paires et un ordre complet de retrait garanti.`
+    ? `${actual} vérifiée : ${game.tileCount} tuiles, ${game.tileCount / 2} paires, difficulté ${difficultySelect.selectedOptions[0].textContent.toLowerCase()} et retrait complet garanti.`
     : `${requested} n’a pas pu être validée cette fois : une Tortue solvable a été générée.`;
   render();
 }
@@ -335,6 +358,7 @@ function choose(id) {
   window.GameEffects?.play('success');
   if (game.removed.size === game.positions.length) {
     statusElement.textContent = 'Mahjong ! Le plateau est entièrement vidé.';
+    window.GameRecords?.finish({ score: game.history.length, scoreLabel: `${game.history.length} paires`, lowerIsBetter: true, won: true });
     window.GameEffects?.play('win');
   } else statusElement.textContent = 'Paire retirée. De nouvelles tuiles peuvent être libres.';
   render();
@@ -355,9 +379,10 @@ function solveRemaining() {
   const initial = new Set(game.positions.map(position => position.id).filter(id => !game.removed.has(id)));
   const memo = new Set();
   let visits = 0;
+  const visitLimit = 240000 * Math.max(1, game.tileCount / 72);
   function search(remaining) {
     if (!remaining.size) return [];
-    if (visits++ > 240000) return null;
+    if (visits++ > visitLimit) return null;
     const key = [...remaining].sort((left, right) => left - right).join(',');
     if (memo.has(key)) return null;
     const free = freePositions(remaining);
@@ -484,7 +509,7 @@ function render() {
   const tracePair = game.trace?.steps[game.trace.index] || [];
   pairsElement.textContent = String(removed.size / 2);
   freeElement.textContent = String(free.length);
-  layoutNameElement.textContent = layoutNames[game.layoutType];
+  layoutNameElement.textContent = `${layoutNames[game.layoutType]} · ${game.tileCount}`;
   const maximumX = Math.max(...game.positions.map(position => position.x + position.z * .12));
   const maximumY = Math.max(...game.positions.map(position => position.y));
   stage.style.width = `${Math.max(760, 130 + (maximumX + 1) * 52)}px`;
@@ -506,8 +531,31 @@ function render() {
   updateTraceControls();
 }
 
+function verifyGeneratedSolution() {
+  const remaining = new Set(game.positions.map(position => position.id));
+  for (const pair of game.solution) {
+    if (pair.length !== 2 || !pair.every(id => remaining.has(id) && freePosition(game.positions.find(position => position.id === id), remaining))) return false;
+    if (!matching(game.tiles.get(pair[0]), game.tiles.get(pair[1]))) return false;
+    pair.forEach(id => remaining.delete(id));
+  }
+  return remaining.size === 0;
+}
+
+window.MahjongTestAPI = Object.freeze({
+  summary: () => ({
+    layout: game.layoutType,
+    tileCount: game.tileCount,
+    difficulty: game.difficulty,
+    solutionPairs: game.solution.length,
+    generatedSolutionValid: verifyGeneratedSolution(),
+  }),
+  solveRemaining: () => solveRemaining()?.map(pair => pair.slice()) || null,
+});
+
 document.getElementById('newGame').onclick = newGame;
 layoutSelect.onchange = newGame;
+tileCountSelect.onchange = newGame;
+difficultySelect.onchange = newGame;
 hintButton.onclick = hint;
 solveButton.onclick = solveStep;
 undoButton.onclick = undo;
@@ -515,9 +563,8 @@ traceToggleButton.onclick = toggleTrace;
 tracePreviousButton.onclick = previousTraceStep;
 traceNextButton.onclick = nextTraceStep;
 document.addEventListener('keydown', event => {
-  if (!game.trace) return;
-  if (event.key === 'ArrowLeft') { event.preventDefault(); previousTraceStep(); }
-  if (event.key === 'ArrowRight') { event.preventDefault(); nextTraceStep(); }
+  if (event.key === 'ArrowLeft' && game.trace) { event.preventDefault(); previousTraceStep(); }
+  if (event.key === 'ArrowRight') { event.preventDefault(); if (game.trace) nextTraceStep(); else startTrace(); }
   if (event.key === 'Escape') stopTrace();
 });
 if (!window.GameEffects) {

@@ -78,6 +78,7 @@
     .world-map.galaxy { background: radial-gradient(circle at 50% 45%, #462a77, #111827 68%, #020617); }
     .world-map.fantasy { background: radial-gradient(ellipse, #d8b762, #657c41 58%, #294936); }
     .world-map.academy { background: radial-gradient(circle, #e6d08a, #4c275d 62%, #1d1635); }
+    .world-map.pirates { background: radial-gradient(circle at 55% 45%, #f5d38a 0 9%, #2685a1 10% 48%, #173e58 72%); }
     .payday-board { border-color: #1e4f81; background: linear-gradient(135deg, #53a7dc, #bde7f7); }
     .payday-ring { grid-template: repeat(var(--rows), 1fr) / repeat(var(--columns), 1fr); }
     .payday-ring.outer { inset: 4%; }
@@ -109,10 +110,21 @@
     .board-modal .modal-actions { display: flex; justify-content: center; gap: 9px; flex-wrap: wrap; margin-top: 16px; }
     .trade-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; text-align: left; }
     .trade-grid label { display: grid; gap: 4px; }
+    .board-option[hidden] { display: none !important; }
+    .asset-zone { margin-top: 18px; padding: 14px; border: 1px solid #d5e0ec; border-radius: 13px; background: #f7fafc; }
+    #assets { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; align-items: start; }
+    .resource-stack { position: relative; min-height: 128px; padding: 8px 8px 8px 42px; border-radius: 11px; background: #e8eef7; overflow: visible; }
+    .resource-stack h3 { margin: 0 0 7px; font-size: 14px; }
+    .resource-stack h3 i { display: inline-block; width: 11px; height: 11px; margin-right: 6px; border-radius: 50%; background: var(--resource); }
+    .resource-stack-cards { position: relative; min-height: 86px; }
+    .resource-title-card { position: absolute; top: 0; width: 126px; min-height: 76px; box-sizing: border-box; padding: 8px 7px 7px 34px; border: 2px solid #36516f; border-top: 10px solid var(--resource); border-radius: 9px; background: #fff; color: #17243a; box-shadow: 2px 3px 5px #0004; font-size: 11px; }
+    .resource-title-card .share-tab { position: absolute; left: -31px; top: 13px; width: 38px; height: 38px; display: grid; place-items: center; border: 2px solid #36516f; border-right: 0; border-radius: 7px 0 0 7px; background: var(--resource); color: #fff; font-weight: 900; }
+    details.rules-panel { margin: 10px 0 14px; padding: 9px 12px; border: 1px solid #c3d1e1; border-radius: 10px; background: #f7fafc; }
+    details.rules-panel summary { cursor: pointer; font-weight: 900; }
     @media (max-width: 900px) { .game-layout { grid-template-columns: 1fr; } .side { order: -1; max-height: none; } }
     @media (prefers-color-scheme: dark) {
       :root { background: #101827; color: #e8eef8; }
-      .panel, .side, .player { background: #172235; border-color: #3b4d69; }
+      .panel, .side, .player, .asset-zone, details.rules-panel { background: #172235; border-color: #3b4d69; }
       .muted, #log, .player small { color: #b6c4d6; }
       .notice { background: #20385d; color: #d8e8ff; }
       button, a, select, input { background: #263447; color: #f1f5fb; border-color: #60718a; }
@@ -138,13 +150,19 @@
           <select id="variant"><option value="estate">Empire Immobilier</option><option value="world">Marchés du Monde</option><option value="payday">Fin de Mois</option></select>
         </label>
         <label class="muted">Thème
-          <select id="boardSkin"><option value="france">France · villes</option><option value="usa">États-Unis</option><option value="uk">Royaume-Uni</option><option value="galaxy">Galaxie lointaine</option><option value="fantasy">Royaumes anciens</option><option value="academy">Académie des arcanes</option></select>
+          <select id="boardSkin"><option value="france">France · villes</option></select>
         </label>
         <label class="muted">Joueurs
           <select id="playerCount"><option>2</option><option selected>3</option><option>4</option></select>
         </label>
+        <label class="board-option" data-for="estate"><input id="estateAuctions" type="checkbox" checked> enchères des propriétés refusées</label>
+        <label class="board-option" data-for="estate"><input id="estateParkingPot" type="checkbox"> cagnotte du parc gratuit</label>
+        <label class="board-option" data-for="world">Titres par pays <select id="worldCountryMode"><option value="multiple" selected>jusqu’à 6 productions</option><option value="single">une seule ressource</option></select></label>
+        <label class="board-option" data-for="world">Royalties dès <select id="worldRoyaltyThreshold"><option value="20">20 %</option><option value="30" selected>30 %</option><option value="40">40 %</option></select></label>
+        <label class="board-option" data-for="world"><input id="worldEarlyTrades" type="checkbox"> associations et échanges anticipés</label>
+        <label class="board-option" data-for="payday">Mois <select id="paydayMonths"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="6">6</option></select></label>
       </div>
-      <p id="rules" class="muted"></p>
+      <details class="rules-panel" open><summary>Règles du jeu</summary><p id="rules" class="muted"></p></details>
       <div id="status" class="notice"></div>
       <div class="game-layout">
         <section>
@@ -159,18 +177,18 @@
             <button id="trade" hidden>Proposer un échange</button>
           </div>
           <div id="offers" class="cards"></div>
+          <section class="asset-zone"><h2 id="assetsTitle">Vos actifs</h2><div id="assets"></div></section>
           <ul id="log"></ul>
         </section>
         <aside class="side">
           <h2>Joueurs et possessions</h2>
           <div id="players" class="players"></div>
-          <h2 id="assetsTitle">Vos actifs</h2>
-          <div id="assets" class="cards"></div>
         </aside>
       </div>
     </section>
   </main>
   <div id="modalHost"></div>
-  <script src="board-games.js?v=6"></script>
+  <script src="../../shared/game-runtime.js?v=3"></script>
+  <script type="module" src="board-games.js?v=8"></script>
 </body>
 </html>

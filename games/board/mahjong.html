@@ -71,6 +71,22 @@
             <option value="spiral">Spirale</option>
           </select>
         </label>
+        <label class="muted">Taille
+          <select id="tileCount">
+            <option value="72" selected>Compacte · 72</option>
+            <option value="144">Classique · 144</option>
+            <option value="216">Grande · 216</option>
+            <option value="288">Monumentale · 288</option>
+          </select>
+        </label>
+        <label class="muted">Difficulté
+          <select id="difficulty">
+            <option value="easy">Facile</option>
+            <option value="normal" selected>Normale</option>
+            <option value="hard">Difficile</option>
+            <option value="extreme">Extrême</option>
+          </select>
+        </label>
         <button id="hint">Indice</button>
         <button id="solve">Résoudre une paire</button>
         <button id="undo">Annuler</button>
@@ -81,13 +97,14 @@
         <span>Associez deux tuiles identiques.</span>
         <span>Chaque génération possède au moins un ordre complet de retrait.</span>
       </div>
+      <details open><summary><strong>Règles du jeu</strong></summary><p id="rules" class="muted">Retirez deux tuiles identiques lorsqu’elles sont libres : aucune tuile ne les couvre et leur côté gauche ou droit est ouvert. La génération conserve toujours au moins un ordre complet de retrait. En mode résolution, utilisez ← et → pour parcourir les paires.</p></details>
       <div class="stats">
         <span>Paires retirées <strong id="pairs">0</strong></span>
         <span>Tuiles libres <strong id="free">0</strong></span>
         <span>Disposition <strong id="layoutName">—</strong></span>
       </div>
       <div class="trace-controls">
-        <button id="traceToggle">Voir la résolution</button>
+        <button id="traceToggle">Résolution pas à pas</button>
         <button id="tracePrev" hidden>← Étape précédente</button>
         <button id="traceNext" hidden>Étape suivante →</button>
         <span id="traceComment" class="muted">La trace ne modifie pas votre partie.</span>
@@ -95,6 +112,8 @@
       <div class="stage-wrap"><div id="stage" class="stage" aria-label="Plateau de Mahjong"></div></div>
     </section>
   </main>
-  <script src="mahjong.js?v=5"></script>
+  <script src="../../shared/game-runtime.js?v=3"></script>
+  <script src="../../shared/options-help.js?v=3"></script>
+  <script src="mahjong.js?v=7"></script>
 </body>
 </html>

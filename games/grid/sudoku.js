@@ -2172,6 +2172,7 @@ function renderManual() {
             : 'Aucune contrainte sélectionnée';
   const highlightedDigits = [...lockedHighlightDigits].sort((left, right) => left - right);
   errorCount.textContent = `Erreurs : ${errorCellIndexes(manualSnapshot).size}`;
+  if (isSolved(manualSnapshot) && errorCellIndexes(manualSnapshot).size === 0) window.GameRecords?.finish({ won: true });
   eventChanges.innerHTML = `<div>${pencilMode ? 'Saisie de possibilités activée.' : 'Saisie de valeurs finales activée.'}</div><div>${capsLockActive ? `Verr. Maj. actif${highlightedDigits.length ? ` : ${highlightedDigits.join(', ')}` : ''}.` : 'Verr. Maj. inactif.'}</div>`;
   updateKeypadHighlight();
   renderActiveGame({ snapshot: manualSnapshot, removals: [], assignments: [] });
@@ -2307,6 +2308,24 @@ function updateVariantChoice() {
     ? `Variantes cumulées : ${[...selectedVariants].sort().map(variant => VARIANT_DEFINITIONS[variant].choice).join(' + ')}.`
     : 'Sudoku classique.';
 }
+
+function sudokuDiagnosticSummary() {
+  if (!traceData) return null;
+  const finalSnapshot = traceData.steps[traceData.steps.length - 1]?.snapshot || traceData.initialSnapshot;
+  return {
+    variants: traceData.puzzleType,
+    clueCount: traceData.initialSnapshot.cells.filter(cell => cell.value).length,
+    stepCount: traceData.steps.length,
+    solved: isSolved(finalSnapshot),
+    unique: countSolutions(traceData.initialSnapshot, traceData, 2) === 1,
+  };
+}
+
+window.SudokuTestAPI = Object.freeze({
+  summary: sudokuDiagnosticSummary,
+  variants: () => VARIANT_KEYS.slice(),
+  countCurrentSolutions: () => traceData ? countSolutions(traceData.initialSnapshot, traceData, 2) : 0,
+});
 
 typeSudoku.addEventListener('click', () => {
   selectedVariants.clear();

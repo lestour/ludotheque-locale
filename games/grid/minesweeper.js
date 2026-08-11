@@ -21,8 +21,25 @@ boardCanvas.appendChild(board);
 newGame.parentElement.appendChild(zoomControls);
 document.head.insertAdjacentHTML('beforeend', '<style>#boardViewport{max-width:100%;max-height:70vh;overflow:auto;overscroll-behavior:contain;border-radius:8px;cursor:grab}#boardViewport:active{cursor:grabbing}#boardCanvas{position:relative}#board{max-width:none!important;transform-origin:top left}.zoom-controls{display:inline-flex;gap:4px;align-items:center}.zoom-controls button{min-width:38px;padding-inline:8px}</style>');
 
+const TOUCH_FLAG_DELAY = 420;
+const TOUCH_MOVE_TOLERANCE = 10;
+let touchHold = null;
+let suppressTouchClickUntil = 0;
+
+function cancelTouchHold(pointerId = null) {
+  if (!touchHold || (pointerId !== null && touchHold.pointerId !== pointerId)) return;
+  clearTimeout(touchHold.timer);
+  touchHold = null;
+}
+
 const settings = { easy: { width: 9, height: 9, mines: 10 }, medium: { width: 16, height: 16, mines: 40 }, hard: { width: 30, height: 16, mines: 99 }, expert: { width: 40, height: 22, mines: 180 }, giant: { width: 50, height: 30, mines: 400 }, colossal: { width: 60, height: 36, mines: 600 }, titan: { width: 80, height: 48, mines: 900 } };
 let game = null;
+let lanFinished = false;
+
+function finishGame(result) {
+  if (window.GameRecords) window.GameRecords.finish(result);
+  else window.LanMultiplayer?.finish(result);
+}
 
 function updateBoardZoom() {
   const width = board.offsetWidth;
@@ -65,6 +82,7 @@ function isLogicallySolvableFrom(firstIndex) {
     started: true,
     over: false,
     lost: false,
+    simulating: true,
     cells: original.cells.map(cell => ({ ...cell, revealed: false, flagged: false, autoFlagged: false, exploded: false })),
     solverMistakes: new Set()
   };
@@ -110,6 +128,7 @@ async function placeMines(firstIndex) {
     if (game.logicalStart) break;
   }
   game.generating = false;
+  if (lanFinished || game.over) return;
   if (!game.generationMessage) game.generationMessage = game.logicalStart
     ? `Grille vérifiée sans supposition : ${game.mines} mines.${game.mines !== game.requestedMines ? ' Densité adaptée au grand format.' : ''}`
     : (noGuess.checked ? `Aucune grille entièrement déductible trouvée après ${attempts} essais : réessayez ou désactivez ce mode.` : 'Grille aléatoire non vérifiée.');
@@ -121,13 +140,14 @@ function revealCovered(index) {
     const current = queue.pop(); const cell = game.cells[current];
     if (cell.revealed || cell.flagged) continue;
     cell.revealed = true;
-    if (cell.mine) { cell.exploded = true; game.over = true; game.lost = true; break; }
+    if (cell.mine) { cell.exploded = true; game.over = true; game.lost = true; if (!game.simulating) finishGame({ won: false, scoreLabel: 'Mine touchée' }); break; }
     if (!cell.count) neighbours(current).forEach(next => { if (!game.cells[next].revealed && !game.cells[next].flagged) queue.push(next); });
   }
 }
 async function reveal(index) {
   if (game.over || game.generating || game.cells[index].flagged) return;
   if (!game.started) await placeMines(index);
+  if (lanFinished || game.over) { render(); return; }
   const cell = game.cells[index];
   if (cell.revealed) {
     if (!cell.count) return;
@@ -138,7 +158,10 @@ async function reveal(index) {
   checkWin(); render();
 }
 function checkWin() {
-  if (!game.over && game.cells.filter(cell => !cell.mine).every(cell => cell.revealed)) game.over = true;
+  if (!game.over && game.cells.filter(cell => !cell.mine).every(cell => cell.revealed)) {
+    game.over = true;
+    if (!game.simulating) finishGame({ score: 1, scoreLabel: 'Grille terminée', won: true, raceWinner: true });
+  }
 }
 function toggleFlag(index) {
   if (game.over || game.cells[index].revealed) return;
@@ -421,23 +444,83 @@ function render() {
       element.textContent = '⚑';
       element.classList.add(cell.mine ? 'found-flag' : 'wrong-flag');
     } else if (cell.flagged) element.textContent = '⚑';
-    element.addEventListener('click', () => reveal(index));
-    element.addEventListener('contextmenu', event => { event.preventDefault(); toggleFlag(index); });
+    element.addEventListener('pointerdown', event => {
+      if (event.pointerType !== 'touch' || event.button !== 0 || cell.revealed || game.over) return;
+      cancelTouchHold();
+      const hold = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, timer: 0 };
+      hold.timer = window.setTimeout(() => {
+        if (touchHold !== hold) return;
+        touchHold = null;
+        suppressTouchClickUntil = performance.now() + 650;
+        navigator.vibrate?.(24);
+        toggleFlag(index);
+      }, TOUCH_FLAG_DELAY);
+      touchHold = hold;
+    });
+    element.addEventListener('pointermove', event => {
+      if (!touchHold || touchHold.pointerId !== event.pointerId) return;
+      if (Math.hypot(event.clientX - touchHold.startX, event.clientY - touchHold.startY) > TOUCH_MOVE_TOLERANCE) cancelTouchHold(event.pointerId);
+    });
+    element.addEventListener('pointerup', event => cancelTouchHold(event.pointerId));
+    element.addEventListener('pointercancel', event => cancelTouchHold(event.pointerId));
+    element.addEventListener('click', event => {
+      if (performance.now() < suppressTouchClickUntil) { event.preventDefault(); return; }
+      reveal(index);
+    });
+    element.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      if (performance.now() < suppressTouchClickUntil) return;
+      toggleFlag(index);
+    });
     board.appendChild(element);
   });
   const flags = game.cells.filter(cell => cell.flagged).length;
   status.textContent = game.solverMistakes.size
     ? `Erreur du solveur détectée : ${game.solverMistakes.size} drapeau${game.solverMistakes.size > 1 ? 'x' : ''} est orange.`
-    : (game.generating ? 'Recherche d’une grille sans supposition…' : (game.lost ? 'Mine touchée : partie perdue.' : (game.over ? 'Grille terminée !' : (game.generationMessage || `Mines restantes : ${Math.max(0, game.mines - flags)}.${game.logicalStart ? ' Départ entièrement déductible.' : ''}`))));
+    : (lanFinished ? 'Partie LAN terminée : un joueur a remporté la course.' : (game.generating ? 'Recherche d’une grille sans supposition…' : (game.lost ? 'Mine touchée : partie perdue.' : (game.over ? 'Grille terminée !' : (game.generationMessage || `Mines restantes : ${Math.max(0, game.mines - flags)}.${game.logicalStart ? ' Départ entièrement déductible.' : ''}`)))));
   solveStepButton.disabled = !game.started || game.over || game.generating;
   solveAllButton.disabled = !game.started || game.over || game.generating;
   window.requestAnimationFrame(updateBoardZoom);
 }
 function createGame() {
   const config = settings[difficulty.value];
-  game = { ...config, requestedMines: config.mines, started: false, over: false, lost: false, generating: false, logicalStart: false, generationMessage: '', lastDeduction: '', solverMistakes: new Set(), cells: Array.from({ length: config.width * config.height }, () => ({ mine: false, count: 0, revealed: false, flagged: false, autoFlagged: false })) };
+  game = { ...config, requestedMines: config.mines, started: false, over: false, lost: false, simulating: false, generating: false, logicalStart: false, generationMessage: '', lastDeduction: '', solverMistakes: new Set(), cells: Array.from({ length: config.width * config.height }, () => ({ mine: false, count: 0, revealed: false, flagged: false, autoFlagged: false })) };
   render();
 }
+
+window.MinesweeperTestAPI = Object.freeze({
+  diagnostics: () => {
+    const currentGame = game;
+    game = {
+      width: 3,
+      height: 2,
+      mines: 1,
+      started: true,
+      over: false,
+      lost: false,
+      solverMistakes: new Set(),
+      cells: Array.from({ length: 6 }, (_, index) => ({
+        mine: index === 3,
+        count: index < 2 ? 1 : 0,
+        revealed: index < 2,
+        flagged: false,
+        autoFlagged: false,
+      })),
+    };
+    const reduced = reducedConstraintDeductions();
+    const frontier = frontierDeductions();
+    game = currentGame;
+    return {
+      settings: Object.fromEntries(Object.entries(settings).map(([name, value]) => [name, { ...value }])),
+      overlapSafe: reduced.safe.has(2) && reduced.safe.has(5),
+      overlapDoesNotInventMine: reduced.mines.size === 0,
+      frontierSafe: frontier.safe.has(2) && frontier.safe.has(5),
+      frontierDoesNotInventMine: frontier.mines.size === 0,
+      touchFlagDelay: TOUCH_FLAG_DELAY,
+      squareCells: (() => { const cell = board.querySelector('.cell'); return !cell || Math.abs(cell.getBoundingClientRect().width - cell.getBoundingClientRect().height) < .5; })(),
+    };
+  },
+});
 newGame.addEventListener('click', createGame);
 difficulty.addEventListener('change', createGame);
 noGuess.addEventListener('change', createGame);
@@ -454,3 +537,15 @@ solveStepButton.addEventListener('click', () => {
 solveAllButton.addEventListener('click', solveLogically);
 localStorage.setItem('game-hub:last-game', 'minesweeper');
 createGame();
+window.addEventListener('lan:start', () => {
+  lanFinished = false;
+  if (!game.started && !game.generating) reveal(indexOf(Math.floor(game.height / 2), Math.floor(game.width / 2)));
+});
+window.addEventListener('lan:finished', () => {
+  if (!game) return;
+  lanFinished = true;
+  game.over = true;
+  game.generating = false;
+  cancelTouchHold();
+  render();
+});

@@ -24,12 +24,12 @@ function deckStackMarkup(count) {
   return `<div class="deck-stack" style="--stack-offset:${(count * .45).toFixed(2)}px" aria-label="${count} cartes restantes">${layers}<span class="deck-count">${count}</span></div>`;
 }
 
-function playerName(index) { return `Joueur ${index + 1}`; }
+function playerName(index) { return window.LanMultiplayer?.room?.seats?.[index]?.label || window.LanMultiplayer?.room?.players?.[index]?.name || `Joueur ${index + 1}`; }
 function log(message) { game.logs.unshift(message); game.logs = game.logs.slice(0, 8); }
 function drawFrom(player) { return game.hands[player].shift(); }
 function eligiblePlayers() { return game.hands.map((hand, player) => hand.length ? player : -1).filter(player => player >= 0); }
 function awardPot(winner) { const cardsWon = game.pot.length; game.hands[winner].push(...CardTools.shuffle(game.pot)); game.pot = []; return cardsWon; }
-function finish(winner) { game.over = true; drawButton.disabled = true; status.textContent = winner === null ? 'Partie nulle.' : `${playerName(winner)} gagne la partie.`; }
+function finish(winner) { const localPlayer = window.LanMultiplayer?.active ? window.LanMultiplayer.playerIndex : 0; game.over = true; drawButton.disabled = true; status.textContent = winner === null ? 'Partie nulle.' : `${playerName(winner)} gagne la partie.`; window.GameRecords?.finish({ score: game.hands[localPlayer]?.length || 0, scoreLabel: `${game.hands[localPlayer]?.length || 0} cartes`, won: winner === localPlayer, winnerSeat: winner }); }
 
 function battle(tied, revealed) {
   let contenders = tied;
@@ -99,11 +99,42 @@ function createGame() {
   render();
 }
 
-drawButton.addEventListener('click', playRound);
+function registerLanAdapter() {
+  if (!window.LanMultiplayer || registerLanAdapter.done) return;
+  registerLanAdapter.done = true;
+  window.LanMultiplayer.registerAdapter({
+    receive(action) {
+      if (action?.type !== 'draw' || game.over || game.animating || Number(action.round) !== game.round + 1) return;
+      playRound();
+    }
+  });
+}
+
+window.BatailleTestAPI = {
+  diagnostics() {
+    const handCards = game.hands.reduce((total, hand) => total + hand.length, 0);
+    const handSizes = game.hands.map(hand => hand.length);
+    return {
+      players: game.players,
+      totalCards: handCards + game.pot.length,
+      distributionBalanced: Math.max(...handSizes) - Math.min(...handSizes) <= 1,
+      validTurnState: game.over || eligiblePlayers().length >= 2
+    };
+  }
+};
+
+drawButton.addEventListener('click', () => {
+  if (game.over || game.animating) return;
+  playRound();
+  if (window.LanMultiplayer?.active) window.LanMultiplayer.sendAction({ type: 'draw', round: game.round }).catch(error => { status.textContent = `Synchronisation LAN interrompue : ${error.message}`; });
+});
 newGameButton.addEventListener('click', createGame);
 playerCountSelect.addEventListener('change', createGame);
 localStorage.setItem('game-hub:last-game', 'bataille');
 createGame();
+registerLanAdapter();
+window.addEventListener('lan:available', registerLanAdapter);
+window.addEventListener('lan:room', render);
 
 if (new URLSearchParams(location.search).has('battleTest')) {
   const checks = [document.querySelectorAll('.deck-layer').length === 52];

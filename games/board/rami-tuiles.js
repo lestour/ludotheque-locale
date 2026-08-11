@@ -324,6 +324,7 @@ function finishStalemate() {
   const lowest = Math.min(...totals);
   const winner = totals.indexOf(lowest);
   statusEl.textContent = `Pioche épuisée et table bloquée : ${name(winner)} gagne avec ${lowest} points restants.`;
+  window.GameRecords?.finish({ score: lowest, scoreLabel: `${lowest} points`, lowerIsBetter: true, won: winner === 0 });
   log(`Partie bloquée : ${totals.map((total, index) => `${name(index)} ${total}`).join(' · ')}.`);
   render();
 }
@@ -363,10 +364,25 @@ function botMove() {
   next();
 }
 function next() { game.turn = (game.turn + 1) % game.people.length; game.selected = []; game.changed = false; game.openingPoints = 0; if (game.turn === 0) game.turnSnapshot = cloneState(); statusEl.textContent = game.turn ? 'Le bot examine son chevalet.' : 'À vous : posez plusieurs groupes, réorganisez la table, puis validez.'; render(); clearTimeout(timer); if (game.turn) timer = setTimeout(botMove, 650 + Math.random() * 650); }
-function finish(winner) { game.over = true; game.people.forEach((person, index) => { const remaining = person.rack.reduce((sum, tile) => sum + tileValue(tile), 0); person.score += index === winner ? game.people.reduce((sum, other, otherIndex) => sum + (otherIndex === winner ? 0 : other.rack.reduce((total, tile) => total + tileValue(tile), 0)), 0) : -remaining; }); statusEl.textContent = `${name(winner)} termine son chevalet et gagne !`; window.GameEffects?.play('win'); render(); }
+function finish(winner) { game.over = true; game.people.forEach((person, index) => { const remaining = person.rack.reduce((sum, tile) => sum + tileValue(tile), 0); person.score += index === winner ? game.people.reduce((sum, other, otherIndex) => sum + (otherIndex === winner ? 0 : other.rack.reduce((total, tile) => total + tileValue(tile), 0)), 0) : -remaining; }); statusEl.textContent = `${name(winner)} termine son chevalet et gagne !`; window.GameRecords?.finish({ score: game.people[winner].score, scoreLabel: `${game.people[winner].score} points`, won: winner === 0 }); window.GameEffects?.play('win'); render(); }
 function sortRack() { const rack = game.people[0].rack; const colorOrder = Object.fromEntries(colors.map((color, index) => [color, index])); rack.sort((left, right) => sortMode === 'value' ? (tileValue(left) - tileValue(right) || (colorOrder[left.color] ?? 9) - (colorOrder[right.color] ?? 9)) : ((colorOrder[left.color] ?? 9) - (colorOrder[right.color] ?? 9) || tileValue(left) - tileValue(right))); sortMode = sortMode === 'value' ? 'color' : 'value'; render(); }
 function tileMarkup(tile, source) { const selected = game.selected.some(item => item.source === source && sameTile(item.tile, tile)); const content = tile.joker ? `★${tile.representedValue ? `<small>${tile.representedValue}</small>` : ''}` : tile.value; return `<button class="tile ${tileClass(tile)}${selected ? ' selected' : ''}${tile.pending ? ' pending' : ''}${tile.reclaimed ? ' reclaimed' : ''}" data-source="${source}" data-id="${tile.id}"${tile.joker && tile.representedValue ? ` title="Joker : ${tile.representedColor} ${tile.representedValue}"` : ''}>${content}</button>`; }
 function render() { const person = game.people[0]; playersView.innerHTML = game.people.map((player, index) => `<article class="player${index === game.turn && !game.over ? ' active' : ''}"><strong>${name(index)}</strong><br><small>${player.rack.length} tuiles · ${player.opened ? 'ouvert' : 'pas encore ouvert'} · score ${player.score}</small></article>`).join(''); boardEl.innerHTML = game.table.length ? game.table.map((meld, groupIndex) => `<div class="meld" data-group="${groupIndex}">${meld.map(tile => tileMarkup(tile, 'table')).join('')}</div>`).join('') : '<span class="muted">Aucune combinaison posée.</span>'; rackEl.innerHTML = person.rack.map(tile => tileMarkup(tile, 'rack')).join(''); const findTile = id => [...person.rack, ...game.table.flat()].find(tile => tile.id === Number(id)); document.querySelectorAll('[data-source]').forEach(button => button.onclick = () => selectTile(button.dataset.source, findTile(button.dataset.id))); selectionEl.textContent = game.selected.length ? `${game.selected.length} tuile(s), dans l’ordre de sélection · ${selectedTiles().map(tileText).join(' · ')}` : 'Sélectionnez dans l’ordre de pose ; ★ peut représenter une tuile manquante.'; drawBtn.textContent = game.changed ? `${game.pool.length ? 'ANNULER ET PIOCHER' : 'ANNULER ET PASSER'} · ${game.pool.length}` : game.pool.length ? `PIOCHER · ${game.pool.length}` : 'PASSER · PIOCHE VIDE'; drawBtn.disabled = game.turn !== 0 || game.over; endTurnButton.disabled = game.turn !== 0 || game.over || !game.changed; undoTurnButton.disabled = game.turn !== 0 || game.over || !game.turnSnapshot; sortRackButton.textContent = sortMode === 'value' ? 'Trier par couleur' : 'Trier par valeur'; document.getElementById('log').innerHTML = game.log.map(entry => `<li>${entry}</li>`).join(''); }
+
+window.RamiTuilesTestAPI = Object.freeze({
+  diagnostics: () => {
+    const group = [{ id: 1001, color: 'red', value: 7 }, { id: 1002, color: 'blue', value: 7 }, { id: 1003, color: 'black', value: 7 }];
+    const runWithJoker = [{ id: 1004, color: 'orange', value: 4 }, { id: 1005, joker: true }, { id: 1006, color: 'orange', value: 6 }];
+    const invalid = [{ id: 1007, color: 'red', value: 7 }, { id: 1008, color: 'red', value: 7 }, { id: 1009, color: 'black', value: 7 }];
+    return {
+      poolSize: makePool().length,
+      groupValid: validMeld(group),
+      jokerRunValid: validMeld(runWithJoker),
+      duplicateColorRejected: !validMeld(invalid),
+      currentTileCount: game.pool.length + game.people.reduce((total, person) => total + person.rack.length, 0) + game.table.reduce((total, meld) => total + meld.length, 0),
+    };
+  },
+});
 
 function drawOrPass() {
   if (game.turn !== 0 || game.over) return;
