@@ -18,9 +18,10 @@
     .draw-pile, #foundations { display: flex; gap: 12px; }
     .foundation-slot, .tableau-slot, #stock, #waste { position: relative; width: 92px; min-height: 130px; border: 2px dashed #a5b4c8; border-radius: 12px; padding: 0; background: #eef3f9; }
     .foundation-slot { border-style: solid; }
-    #stock { display: grid; place-items: center; --stock-layers: 0; }
-    #stock.has-cards::before { content: ''; position: absolute; inset: 0; z-index: 0; border: 2px solid #506b9a; border-radius: 12px; transform: translate(calc(var(--stock-layers) * 1px), calc(var(--stock-layers) * 1px)); background: #d5e1f4; }
-    #stock .card { position: relative; z-index: 1; }
+    #stock { display: grid; place-items: center; overflow: visible; }
+    #stock.has-cards { border-color: transparent; background: transparent; }
+    #stock .stock-layer { position: absolute; left: 0; top: 0; width: 92px; height: 130px; box-sizing: border-box; border: 2px solid #203048; border-radius: 11px; background: repeating-linear-gradient(45deg, #294c9c, #294c9c 8px, #e7efff 8px, #e7efff 16px); box-shadow: 1px 1px 0 rgba(32,48,72,.2); pointer-events: none; }
+    #stock .card { position: absolute; left: 0; top: 0; }
     .stock-draw-animation { position: fixed; z-index: 50; width: 92px; height: 130px; box-sizing: border-box; perspective: 500px; pointer-events: none; transition: transform .52s ease-in-out, opacity .52s ease-in-out; }
     .stock-draw-animation .flip-inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .24s ease-in-out; }
     .stock-draw-animation .flip-face { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; padding: 8px; border: 2px solid #203048; border-radius: 11px; box-shadow: 2px 3px 0 rgba(32,48,72,.18); backface-visibility: hidden; font-size: 22px; }
@@ -75,8 +76,8 @@
       <div id="tableau" aria-label="Tableau du Solitaire"></div>
     </div>
   </section></main>
-  <script src="../../../shared/cards.js?v=17"></script>
-  <script src="klondike.js?v=20"></script>
-  <script src="../../../shared/records.js?v=1"></script>
+  <script src="../../../shared/cards.js?v=18"></script>
+  <script src="klondike.js?v=21"></script>
+  <script src="../../../shared/records.js?v=2"></script>
 </body>
 </html>

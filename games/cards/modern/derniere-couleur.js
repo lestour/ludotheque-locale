@@ -1,3 +1,4 @@
+import('../../../shared/options-help.js?v=2');
 const playersElement = document.getElementById('players');
 document.title = 'Dernière Couleur';
 document.querySelector('h1').textContent = 'Dernière Couleur';
@@ -71,7 +72,7 @@ document.head.insertAdjacentHTML('beforeend', `<style>
   .deck,.pile-layer,.card-transfer-back,.player .mini-stack i{background:radial-gradient(ellipse at 50% 50%,#ef4444 0 33%,#facc15 34% 38%,#111827 39% 100%)!important}
   .light-card-backs .deck,.light-card-backs .pile-layer,.light-card-backs .card-transfer-back,.light-card-backs .player .mini-stack i{background:radial-gradient(ellipse at 50% 50%,#ef4444 0 31%,#facc15 32% 37%,#f8fafc 38% 100%)!important}
   .light-card-backs .pile-layer,.light-card-backs .card-transfer-back,.light-card-backs .player .mini-stack i{border-color:#475569!important}
-  .pile-layer::after,.card-transfer-back::after,.player .mini-stack i::after{content:'COULEUR';position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-weight:900;font-style:italic;font-family:Arial,sans-serif;font-size:12px;letter-spacing:-1px;text-shadow:2px 2px 0 #111827;transform:skew(-13deg);pointer-events:none}
+  .pile-layer::after,.card-transfer-back::after,.player .mini-stack i::after{content:'DC';position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-weight:900;font-style:italic;font-family:Arial,sans-serif;font-size:12px;letter-spacing:-1px;text-shadow:2px 2px 0 #111827;transform:skew(-13deg);pointer-events:none}
   .pile-layer::after{font-size:25px}.card-transfer-back{container-type:inline-size}.card-transfer-back::after{font-size:40cqw}.player .mini-stack i{position:relative}.player .mini-stack i::after{font-size:10px;letter-spacing:-1px;text-shadow:1px 1px 0 #111827}
 </style>`);
 

@@ -77,6 +77,8 @@ try { JSON.parse(localStorage.getItem('rhythm-unknown-musescore-symbols') || '[]
 
 document.querySelector('.toolbar').insertAdjacentHTML('beforeend', '<button id="pauseGame" type="button">Pause</button><button id="restartGame" type="button">Recommencer</button><label class="muted speed-control">Vitesse <input id="speed" type="range" min="50" max="150" step="5" value="100"><output id="speedValue">100 %</output></label><label class="muted">Commande <select id="inputStyle"><option value="keyboard">Notes au clavier</option><option value="organ">Orgue · deux rangées</option><option value="valves">Pistons</option><option value="slide">Coulisse</option><option value="midi-device">Clavier MIDI</option><option value="microphone">Microphone</option><option value="rhythm">Rythme seul · 1 touche</option></select></label><label id="midiDeviceLabel" class="muted" hidden>MIDI <select id="midiDevice"></select></label><button id="enableMidi" type="button" hidden>Activer MIDI</button><label id="microphoneLabel" class="muted" hidden>Sensibilité micro <input id="microphoneSensitivity" type="range" min="1" max="20" value="8"></label><label class="muted">Disposition <select id="keyboardLayout"><option value="azerty">AZERTY français</option><option value="qwerty">QWERTY</option><option value="qwertz">QWERTZ</option><option value="auto">Détection navigateur</option></select></label><label class="muted"><input id="verticalSlide" type="checkbox" checked> Coulisse verticale à gauche</label><label class="muted">Style audio <select id="audioStyle"><option value="soundfont" selected>MS Basic · MuseScore</option><option value="realistic">Réaliste synthétique</option><option value="midi">MIDI classique</option><option value="retro">Rétro</option></select></label><button id="testSoundFont" type="button">Tester MS Basic</button><label class="muted"><input id="breathEnabled" type="checkbox" checked> Bouton de souffle</label><label class="muted"><input id="requireHold" type="checkbox" checked> Maintenir selon la durée</label><button id="configureInputs" type="button">Mapper les commandes</button><label class="muted"><input id="showFingering" type="checkbox" checked> Doigté sous les notes</label><label class="muted"><input id="metronome" type="checkbox"> Métronome pendant le morceau</label><label class="muted"><input id="colorNotes" type="checkbox" checked> Notes colorées</label><label class="muted"><input id="accompaniment" type="checkbox" checked> Autres pistes</label><label class="muted"><input id="currentTrackPlayback" type="checkbox"> Piste actuelle automatique</label><label class="volume-control muted">Volume global <input id="masterVolume" type="range" min="0" max="100" value="75"></label><label class="volume-control muted">Piste actuelle <span class="volume-slider"><input id="trackVolume" type="range" min="0" max="400" value="100"><span class="midpoint">×1</span></span></label><button id="clickMetronome">Écouter le métronome</button>');
 document.querySelector('.toolbar').insertAdjacentHTML('afterend', '<section id="inputMappingPanel" class="input-mapping" hidden><div><strong>Remappage des commandes</strong><button id="closeInputMapping" type="button">Fermer</button><button id="resetInputMapping" type="button">Valeurs par défaut</button></div><div id="mappingControls"></div><small class="muted">Cliquez une commande, puis appuyez sur la nouvelle touche. Les réglages restent locaux.</small></section>');
+document.getElementById('microphoneLabel').insertAdjacentHTML('afterend', '<button id="toggleTuner" type="button" hidden>Accordeur</button><button id="calibrateMicrophone" type="button" hidden>Calibrer le microphone</button><span id="microphoneStatus" class="tuner-display muted" hidden></span>');
+document.getElementById('keyboardLayout').parentElement.insertAdjacentHTML('afterend', '<label id="valveHandednessLabel" class="muted">Main des pistons <select id="valveHandedness"><option value="left">Gauche · Q/S/D</option><option value="right">Droite · J/K/L</option><option value="custom">Personnalisée</option></select></label>');
 document.getElementById('restartGame').insertAdjacentHTML('afterend', '<label class="muted">Difficulté <select id="practicePreset"><option value="discovery">Découverte</option><option value="normal" selected>Normal</option><option value="difficult">Difficile</option><option value="expert">Expert</option><option value="custom">Personnalisée</option></select></label><label class="muted"><input id="loopEnabled" type="checkbox"> Boucle de mesures</label><label class="muted">Début <input id="loopStart" type="number" min="1" value="1"></label><label class="muted">Fin <input id="loopEnd" type="number" min="1" value="1"></label><label class="muted"><input id="adaptiveSpeed" type="checkbox"> Vitesse adaptative</label><button id="retryBeforeError" type="button" disabled>Rejouer avant l’erreur</button>');
 document.getElementById('restartGame').insertAdjacentHTML('afterend', '<label class="muted">Clé <select id="clefOverride"><option value="auto">Automatique</option><option value="G">Sol</option><option value="G8VA">Sol 8va</option><option value="G8VB">Sol 8vb</option><option value="F">Fa</option><option value="F8VA">Fa 8va</option><option value="F8VB">Fa 8vb</option><option value="C1">Ut 1</option><option value="C2">Ut 2</option><option value="C3">Ut 3</option><option value="C4">Ut 4</option><option value="C5">Ut 5</option><option value="PERC">Percussion</option></select></label>');
 document.getElementById('clefOverride').parentElement.insertAdjacentHTML('afterend', '<label class="muted" title="Décoché : notes écrites pour l’instrument. Coché : hauteurs réellement entendues."><input id="concertPitch" type="checkbox"> Tonalité réelle (concert)</label>');
@@ -93,7 +95,7 @@ function optionGroup(title, elements, open = false) { const group = document.cre
 const parentOf = id => document.getElementById(id)?.closest('label') || document.getElementById(id);
 optionGroup('Partie', [document.getElementById('pauseGame'), document.getElementById('restartGame'), parentOf('practicePreset'), parentOf('speed'), parentOf('requireHold'), parentOf('loopEnabled'), parentOf('loopStart'), parentOf('loopEnd'), parentOf('adaptiveSpeed'), document.getElementById('retryBeforeError')], true);
 optionGroup('Partition', [parentOf('scoreDocument'), parentOf('trackSort'), parentOf('clefOverride'), parentOf('concertPitch')], true);
-optionGroup('Commande', [parentOf('inputStyle'), parentOf('midiDevice'), document.getElementById('enableMidi'), parentOf('microphoneSensitivity'), parentOf('keyboardLayout'), parentOf('breathEnabled'), parentOf('verticalSlide'), document.getElementById('configureInputs')]);
+optionGroup('Commande', [parentOf('inputStyle'), parentOf('midiDevice'), document.getElementById('enableMidi'), parentOf('microphoneSensitivity'), document.getElementById('toggleTuner'), document.getElementById('calibrateMicrophone'), document.getElementById('microphoneStatus'), parentOf('keyboardLayout'), parentOf('valveHandedness'), parentOf('breathEnabled'), parentOf('verticalSlide'), document.getElementById('configureInputs')]);
 optionGroup('Son', [parentOf('audioStyle'), document.getElementById('testSoundFont'), parentOf('metronome'), document.getElementById('clickMetronome'), parentOf('accompaniment'), parentOf('currentTrackPlayback'), parentOf('masterVolume'), parentOf('trackVolume')]);
 optionGroup('Affichage', [parentOf('accidentals'), parentOf('showFingering'), parentOf('colorNotes'), parentOf('showRests'), parentOf('showMeasures'), parentOf('scoreScale'), parentOf('noteSpacing'), parentOf('approachTime')]);
 optionGroup('Outils', [document.getElementById('calibrateLatency'), document.getElementById('latencyStatus'), document.getElementById('runRhythmTests'), document.getElementById('exportTrackDiagnostics'), document.getElementById('exportUnknownSymbols')]);
@@ -135,6 +137,12 @@ const midiDeviceLabel = document.getElementById('midiDeviceLabel');
 const enableMidiButton = document.getElementById('enableMidi');
 const microphoneLabel = document.getElementById('microphoneLabel');
 const microphoneSensitivity = document.getElementById('microphoneSensitivity');
+const valveHandedness = document.getElementById('valveHandedness');
+const valveHandednessLabel = document.getElementById('valveHandednessLabel');
+const toggleTunerButton = document.getElementById('toggleTuner');
+const calibrateMicrophoneButton = document.getElementById('calibrateMicrophone');
+const microphoneStatus = document.getElementById('microphoneStatus');
+valveHandednessLabel.hidden = inputStyle.value !== 'valves';
 const practiceHistory = document.createElement('div');
 practiceHistory.className = 'practice-history muted';
 recordsElement.after(practiceHistory);
@@ -160,6 +168,16 @@ let microphoneTimer = 0;
 let microphoneCandidate = null;
 let microphoneStableFrames = 0;
 let microphoneActiveInput = '';
+let microphonePitch = null;
+let microphoneFrequency = 0;
+let microphoneLatencyMs = 0;
+let microphoneCalibration = null;
+let tunerEnabled = false;
+try { microphoneLatencyMs = Number(localStorage.getItem('rhythm-microphone-latency') || 0); } catch {}
+const rightHandValveCodes = ['KeyJ', 'KeyK', 'KeyL'];
+const leftHandValveCodes = ['KeyA', 'KeyS', 'KeyD'];
+const sameCodes = (left, right) => left.length === right.length && left.every((code, index) => code === right[index]);
+valveHandedness.value = sameCodes(inputMappings.valves, rightHandValveCodes) ? 'right' : sameCodes(inputMappings.valves, leftHandValveCodes) ? 'left' : 'custom';
 
 function setTextIfChanged(element, value) {
   if (element.textContent !== value) element.textContent = value;
@@ -257,6 +275,12 @@ function scoreGeometry(track) {
   const shift = Math.max(0, 54 - minimum);
   return { shift, height: Math.max(300, Math.ceil(maximum + shift + 76)) };
 }
+function microphoneDisplayNote(track) {
+  if (microphonePitch === null) return null;
+  const transpose = track?.transpose || 0;
+  const pitch = Math.round(microphonePitch);
+  return { pitch, writtenPitch: pitch - transpose, displayPitch: pitch - transpose, transpose, clef: effectiveClef(track), writtenClef: effectiveClef(track), concertClef: effectiveClef(track) };
+}
 function durationClass(beats, beamed = false) { if (beats >= 4) return 'whole open'; if (beats >= 2) return 'open'; if (beats >= 1 || beamed) return ''; if (beats >= .5) return 'flag-1'; if (beats >= .25) return 'flag-2'; return 'flag-3'; }
 function durationLabel(note) { const beats = note.beats || 1; const names = [[16,'longue'],[8,'brève'],[4,'ronde'],[2,'blanche'],[1,'noire'],[.5,'croche'],[.25,'double croche'],[.125,'triple croche'],[.0625,'quadruple croche']]; const base = names.find(([value]) => Math.abs(beats - value) < .001)?.[1] || `${beats} temps`; return `${base}${note.dots ? ' pointée'.repeat(note.dots) : ''}${note.tuplet ? ` · triolet ${note.tuplet}` : ''}`; }
 function restGlyph(beats) {
@@ -275,7 +299,7 @@ function expandedRests(track) {
     const nextBeat = measureStarts[index + 1];
     const beats = nextBeat === undefined ? measureLengthAt(track, beat) : Math.max(.001, nextBeat - beat);
     const hasNote = events.some(event => event.beat < beat + beats - .001 && event.beat + (event.beats || 1) > beat + .001);
-    return hasNote ? null : { beat, beats };
+    return hasNote ? null : { beat, beats, displayBeat: beat + beats / 2 };
   });
   for (let index = 0; index < emptyMeasures.length;) {
     if (!emptyMeasures[index]) { index += 1; continue; }
@@ -284,8 +308,8 @@ function expandedRests(track) {
     for (let cursor = index; cursor < end; cursor += 1) emptyMeasures[cursor].measuresRemaining = end - cursor;
     index = end;
   }
-  const inferred = emptyMeasures.filter(Boolean);
-  const partial = explicitRests.filter(rest => !inferred.some(measure => rest.beat >= measure.beat - .001 && rest.beat < measure.beat + measure.beats - .001));
+  const inferred = emptyMeasures.filter(Boolean).map(measure => { const explicit = explicitRests.find(rest => Math.abs(rest.beat - measure.beat) < .001); return explicit ? { ...measure, symbols: explicit.symbols || [] } : measure; });
+  const partial = explicitRests.filter(rest => !inferred.some(measure => rest.beat >= measure.beat - .001 && rest.beat < measure.beat + measure.beats - .001)).map(rest => ({ ...rest, displayBeat: rest.beat + rest.beats / 2 }));
   return [...partial, ...inferred].sort((left, right) => left.beat - right.beat);
 }
 function articulationGlyph(articulation = '') { if (/stacc/i.test(articulation)) return '·'; if (/accent|marcato|sforz/i.test(articulation)) return '>'; if (/tenuto|portato/i.test(articulation)) return '—'; return ''; }
@@ -308,9 +332,11 @@ function fingeringPitch(note) { return typeof note === 'number' ? note : note.pi
 function controlLabel(note, track = tracks[trackIndex] || tracks[0]) { const source = typeof note === 'number' ? (game?.notes.find(candidate => !candidate.done) || note) : note; const pitch = fingeringPitch(source); if (inputStyle.value === 'rhythm') return keyLabel(inputMappings.rhythm); if (inputStyle.value === 'valves') { const fingering = valveFingeringsFor(source, track); return fingering.display || fingering.primary; } if (inputStyle.value === 'slide') { const positions = slidePositionsFor(pitch); return positions.length ? positions.join('/') : '—'; } if (inputStyle.value === 'midi-device' || inputStyle.value === 'microphone') return noteName(notationPitch(source)); const codes = activeCodes(); const lanePitch = typeof source === 'number' ? source : source.pitch; return keyLabel(codes[laneFor(lanePitch)]); }
 function timingFor(track, speed = game?.speed || 1) {
   const tempos = [{ beat: 0, bpm: track.tempo || 100 }, ...(track.changes || []).filter(change => change.type === 'tempo')].sort((left, right) => left.beat - right.beat);
-  const beatToMs = targetBeat => { let elapsed = 0; let cursor = 0; let bpm = tempos[0].bpm; for (const change of tempos.slice(1)) { if (change.beat >= targetBeat) break; elapsed += (change.beat - cursor) * 60000 / bpm; cursor = change.beat; bpm = change.bpm; } return (elapsed + (targetBeat - cursor) * 60000 / bpm) / speed; };
+  const bpmAt = beat => tempos.filter(change => change.beat <= beat).at(-1)?.bpm || tempos[0].bpm;
+  const beatToMs = targetBeat => { let elapsed = 0; let cursor = 0; let bpm = tempos[0].bpm; for (const change of tempos.slice(1)) { if (change.beat >= targetBeat) break; elapsed += (change.beat - cursor) * 60000 / bpm; cursor = change.beat; bpm = change.bpm; } elapsed += (targetBeat - cursor) * 60000 / bpm; const pauses = (track.pauses || []).filter(pause => pause.beat < targetBeat - .001).reduce((sum, pause) => sum + (pause.beats || 0) * 60000 / bpmAt(pause.beat), 0); return (elapsed + pauses) / speed; };
   return { tempos, beatToMs };
 }
+function mergedPauses(trackList) { const pauses = new Map(); trackList.flatMap(track => track.pauses || []).forEach(pause => { const key = Math.round(pause.beat * 1000) / 1000; const previous = pauses.get(key); if (!previous || pause.beats > previous.beats) pauses.set(key, { ...pause, beat: key }); }); return [...pauses.values()].sort((left, right) => left.beat - right.beat); }
 function ensureAudio() { const AudioContextClass = window.AudioContext || window.webkitAudioContext; if (!AudioContextClass) throw new Error('Web Audio indisponible'); audio ??= new AudioContextClass(); if (audio.state === 'suspended') audio.resume().catch(() => {}); return audio; }
 async function ensureSoundFontEngine() {
   if (location.protocol === 'file:') throw new Error('ouverture directe interdite : lancez « Lancer le Hub Windows.bat » puis utilisez http://127.0.0.1:8765');
@@ -388,9 +414,34 @@ function renderInstrumentGuide() { const breathText = breathEnabled.checked ? `S
 document.addEventListener('pointerup', () => { if (!slideInteracting) return; slideInteracting = false; renderInstrumentGuide(); render(); });
 
 async function detectLayout() { if (keyboardLayout !== 'auto') return; try { const map = await navigator.keyboard?.getLayoutMap?.(); if (!map) return; const codes = new Set(Object.values(inputMappings).flatMap(value => Array.isArray(value) ? value : [value])); codes.forEach(code => { const label = map.get(code); if (label && label !== 'Dead') learnedKeyLabels.base[code] = /\p{L}/u.test(label) ? label.toLocaleUpperCase(navigator.language || 'fr') : label; }); refreshKeyLabels(); try { localStorage.setItem('rhythm-key-labels', JSON.stringify(learnedKeyLabels)); } catch {} renderMappingControls(); render(); } catch {} }
-function playableNotes(track, timing, countIn, codes, elapsed = -Infinity, bounds = practiceBounds(track), timelineOffset = timing.beatToMs(bounds.startBeat)) { return track.events.filter(event => event.beat >= bounds.startBeat - .001 && event.beat < bounds.endBeat - .001).map((event, index) => { const time = countIn + timing.beatToMs(event.beat) - timelineOffset + latencyOffsetMs; const durationMs = Math.max(80, timing.beatToMs(event.beat + (event.audibleBeats || event.beats || 1)) - timing.beatToMs(event.beat)); return { ...event, visualId: event.sourceElementId || `${event.beat}:${event.pitch}:${index}`, beats: event.beats || 1, lane: Math.abs(event.pitch) % codes.length, label: keyLabel(codes[Math.abs(event.pitch) % codes.length]), time, durationMs, done: time + durationMs < elapsed, active: false }; }); }
+function playableNotes(track, timing, countIn, codes, elapsed = -Infinity, bounds = practiceBounds(track), timelineOffset = timing.beatToMs(bounds.startBeat)) { return track.events.filter(event => event.beat >= bounds.startBeat - .001 && event.beat < bounds.endBeat - .001).map((event, index) => { const time = countIn + timing.beatToMs(event.beat) - timelineOffset + latencyOffsetMs; const durationMs = Math.max(80, (timing.beatToMs(event.beat + (event.audibleBeats || event.beats || 1)) - timing.beatToMs(event.beat)) * (event.playbackStretch || 1)); return { ...event, visualId: event.sourceElementId || `${event.beat}:${event.pitch}:${index}`, beats: event.beats || 1, lane: Math.abs(event.pitch) % codes.length, label: keyLabel(codes[Math.abs(event.pitch) % codes.length]), time, durationMs, done: time + durationMs < elapsed, active: false }; }); }
 function instrumentFamily(track) { const value = `${track.instrumentId || ''} ${track.instrument || track.name || ''}`.toLowerCase(); if (/voice|vocal|choir|chor|soprano|mezzo|contralto/.test(value)) return 'Voix'; if (/drum|percussion|batterie|timpani|xylophone|marimba|vibraphone/.test(value)) return 'Percussions'; if (/trump|trombon|tuba|sousaph|euphon|horn|brass|cuivre|cornet/.test(value)) return 'Cuivres'; if (/flute|flûte|clarinet|sax|oboe|hautbois|bassoon|basson|wind|reed/.test(value)) return 'Bois'; if (/violin|viola|cello|contrabass|string|corde|harp/.test(value)) return 'Cordes'; if (/piano|keyboard|organ|orgue|accordion|clavecin/.test(value)) return 'Claviers'; if (/guitar|guitare|banjo|mandolin|pluck/.test(value)) return 'Cordes pincées'; return 'Autres'; }
 function syncPlaybackIndexes(elapsed = game ? (game.pausedAt || performance.now()) - game.started : 0) { if (!game) return; const indexes = tracks.map(track => { const timing = timingFor(track, game.speed); const timelineOffset = timing.beatToMs(game.bounds.startBeat); const firstFuture = track.events.findIndex(event => event.beat >= game.bounds.startBeat - .001 && event.beat < game.bounds.endBeat - .001 && game.countIn + timing.beatToMs(event.beat) - timelineOffset > elapsed); return firstFuture < 0 ? track.events.length : firstFuture; }); game.backIndexes = indexes.slice(); game.guideIndexes = indexes.slice(); }
+function applyLiveSpeed() {
+  if (!game) return;
+  const nextSpeed = Number(speedControl.value) / 100;
+  if (!Number.isFinite(nextSpeed) || Math.abs(nextSpeed - game.speed) < .001) return;
+  const now = (game.pausedAt || performance.now()) - game.started;
+  const factor = game.speed / nextSpeed;
+  const retime = time => now + (time - now) * factor;
+  stopAllAudio();
+  game.notes.forEach(note => { note.time = retime(note.time); note.durationMs *= factor; if (note.active) { note.active = false; note.pressedAt = 0; } });
+  game.activeInputs.clear();
+  game.clicks.forEach(click => { click.time = retime(click.time); });
+  game.changes.forEach(change => { change.time = retime(change.time); });
+  game.countIn = retime(game.countIn);
+  game.initialBeatMs *= factor;
+  game.speed = nextSpeed;
+  const track = tracks[trackIndex];
+  const timing = timingFor(track, nextSpeed);
+  game.timelineOffset = timing.beatToMs(game.bounds.startBeat);
+  game.msToBeat = milliseconds => { let low = game.bounds.startBeat; let high = game.bounds.endBeat + 1; for (let iteration = 0; iteration < 22; iteration += 1) { const middle = (low + high) / 2; if (timing.beatToMs(middle) - game.timelineOffset < milliseconds) low = middle; else high = middle; } return (low + high) / 2; };
+  syncPlaybackIndexes(now);
+  game.clickIndex = game.clicks.findIndex(click => click.time > now);
+  if (game.clickIndex < 0) game.clickIndex = game.clicks.length;
+  statusElement.textContent = `Vitesse appliquée en direct : ${speedControl.value} %.`;
+  render();
+}
 function applyTrackSort() { const selected = tracks[trackIndex]; tracks.forEach((track, index) => { track.importOrder ??= index; }); const byName = (left, right) => left.name.localeCompare(right.name, 'fr', { sensitivity: 'base' }); if (trackSort.value === 'name') tracks.sort(byName); else if (trackSort.value === 'family') tracks.sort((left, right) => instrumentFamily(left).localeCompare(instrumentFamily(right), 'fr') || byName(left, right)); else if (trackSort.value === 'notes-desc') tracks.sort((left, right) => right.events.length - left.events.length || byName(left, right)); else if (trackSort.value === 'notes-asc') tracks.sort((left, right) => left.events.length - right.events.length || byName(left, right)); else tracks.sort((left, right) => left.importOrder - right.importOrder); trackIndex = Math.max(0, tracks.indexOf(selected)); syncPlaybackIndexes(); renderTracks(); renderRecord(); render(); }
 function selectTrack(index) {
   if (index === trackIndex) return;
@@ -445,16 +496,18 @@ function renderScorePreview() {
   const beams = source.map((note, index) => { if (!note.beam || note.done) return ''; const nextIndex = source.findIndex((candidate, candidateIndex) => candidateIndex > index && candidate.beam === note.beam && !candidate.done); if (nextIndex < 0 || nextIndex - index > 4) return ''; const next = source[nextIndex], from = positionFor(note, index), to = positionFor(next, nextIndex); if (from.left < 42 || to.left > rightEdge) return ''; const deltaX = to.left - from.left, deltaY = to.top - from.top; const layers = Math.max(1, Math.min(3, Math.round(-Math.log2(Math.max(note.baseBeats || .5, next.baseBeats || .5))))); return Array.from({ length: layers }, (_, layer) => `<span class="beam-segment" data-flow-start="${note.time}" data-flow-end="${next.time}" data-flow-range="beam" data-from-top="${from.top - 35 + layer * 7}" data-to-top="${to.top - 35 + layer * 7}" style="left:${from.left + 19}px;top:${from.top - 35 + layer * 7}px;width:${Math.hypot(deltaX, deltaY)}px;transform:rotate(${Math.atan2(deltaY, deltaX)}rad)"></span>`).join(''); }).join('');
   const ties = source.map((note, index) => { if (!note.tieStart || note.done) return ''; const nextIndex = source.findIndex((candidate, candidateIndex) => candidateIndex > index && candidate.tieEnd && candidate.pitch === note.pitch); if (nextIndex < 0) return ''; const next = source[nextIndex], from = positionFor(note, index), to = positionFor(next, nextIndex); if (from.left < target - 72 || to.left > rightEdge) return ''; const opacity = Math.max(0, Math.min(1, (from.left - target + 72) / 72)); return `<span class="tie-segment" data-flow-start="${note.time}" data-flow-end="${next.time}" data-flow-range="tie" style="left:${from.left + 8}px;top:${Math.max(from.top,to.top) + 12}px;width:${Math.max(18,to.left-from.left)}px;opacity:${opacity}" title="Liaison de tenue"></span>`; }).join('');
   const durations = source.map(note => { const left = game ? target + (note.time - now) / game.initialBeatMs * noteSpacing : target + source.indexOf(note) * noteSpacing / 3; if (left < 42 || left > rightEdge || note.done) return ''; const width = Math.min(rightEdge - left, Math.max(8, (note.beats || 1) * noteSpacing)); const tap = (note.beats || 1) <= 1 && !requireHoldToggle.checked; return `<span class="duration-mark${tap ? ' tap' : ''}" data-flow-time="${note.time}" style="--note:${colorNotesToggle.checked ? laneColor(laneFor(note.pitch)) : '#64748b'};left:${left}px;width:${width}px" data-label="${durationLabel(note)}"></span>`; }).join('');
-  const rests = showRestsToggle.checked ? expandedRests(track).map(rest => { const left = beatPosition(rest.beat); if (left < target - 72 || left > rightEdge) return ''; const opacity = Math.max(0, Math.min(1, (left - target + 72) / 72)); const remaining = Number(rest.measuresRemaining || 0); const label = remaining > 0 ? `<b>${remaining}</b>` : ''; return `<span class="score-rest" data-flow-time="${flowTimeForBeat(rest.beat)}" data-flow-kind="fade" style="left:${left}px;top:${geometry.shift + 126}px;opacity:${opacity}" title="Silence de ${rest.beats} temps">${restGlyph(rest.beats)}${label}</span>`; }).join('') : '';
+  const rests = showRestsToggle.checked ? expandedRests(track).map(rest => { const displayBeat = rest.displayBeat ?? rest.beat + rest.beats / 2; const left = beatPosition(displayBeat); if (left < target - 72 || left > rightEdge) return ''; const opacity = Math.max(0, Math.min(1, (left - target + 72) / 72)); const remaining = Number(rest.measuresRemaining || 0); const label = remaining > 0 ? `<b>${remaining}</b>` : ''; const annotations = rest.symbols?.length ? `<i class="rest-annotation">${rest.symbols.join(' ')}</i>` : ''; return `<span class="score-rest" data-flow-time="${flowTimeForBeat(displayBeat)}" data-flow-kind="fade" style="left:${left}px;top:${geometry.shift + 126}px;opacity:${opacity}" title="Silence de ${rest.beats} temps">${restGlyph(rest.beats)}${label}${annotations}</span>`; }).join('') : '';
   const measureLines = showMeasuresToggle.checked ? (track.measureBeats || []).map((beat, index) => { const left = beatPosition(beat); return left < 42 || left > rightEdge ? '' : `<span class="measure-line" data-flow-time="${flowTimeForBeat(beat)}" style="left:${left}px"><small>${index + 1}</small></span>`; }).join('') : '';
   const changes = game ? game.changes.map(change => { const left = target + (change.time - now) / game.initialBeatMs * noteSpacing; if (left < 70 || left > rightEdge) return ''; if (change.type === 'key') { const key = concertPitchToggle.checked ? (change.concertValue ?? change.value) : (change.writtenValue ?? change.value); return `<span class="score-change incoming-signature key-signature" data-flow-time="${change.time}" style="left:${left}px">${keySignatureMarkup(key, clefInfo(selectedClef))}</span>`; } if (change.type === 'time') return `<span class="score-change incoming-signature time-signature" data-flow-time="${change.time}" style="left:${left}px">${timeSignatureMarkup(change.value)}</span>`; if (change.type === 'clef') { const clef = concertPitchToggle.checked ? (change.concertValue ?? change.value) : (change.writtenValue ?? change.value); const info = clefInfo(clef); return clefOverride.value === 'auto' ? `<span class="score-change incoming-clef" data-flow-time="${change.time}" style="left:${left}px" title="Clef de ${info.label}">${clefMarkup(info)}</span>` : ''; } const label = change.type === 'tempo' ? `♩=${change.bpm}` : change.value; return `<span class="score-change" data-flow-time="${change.time}" style="left:${left}px">${label || ''}</span>`; }).join('') : '';
   stage.classList.add('score-stage');
   stage.style.setProperty('--score-scale', scoreScale);
   stage.style.setProperty('--score-content-width', `${100 / scoreScale}%`);
   const displayClef = clefInfo(clefOverride.value === 'auto' ? (musicalState.clef || selectedClef) : selectedClef);
+  const detectedNote = inputStyle.value === 'microphone' ? microphoneDisplayNote(track) : null;
+  const microphoneLine = detectedNote ? `<span class="microphone-pitch-line" style="left:${target}px;top:${scoreNoteTop(track, detectedNote, geometry.shift) + 8}px"><b>${noteName(Math.round(microphonePitch))}</b></span>` : '';
   const controls = inputStyle.value === 'valves' ? ['0','1','2','3'].map(value => { const active = value === '0' ? !pressedValves.size : pressedValves.has(Number(value)); return `<span class="${active ? 'pressed' : ''}${active && breathPressed ? ' breathing' : ''}">${value}</span>`; }).join('') : inputStyle.value === 'slide' ? Array.from({ length: 7 }, (_, index) => `<span class="${slidePosition === index + 1 ? 'pressed' : ''}${slidePosition === index + 1 && breathPressed ? ' breathing' : ''}">${index + 1}</span>`).join('') : inputStyle.value === 'midi-device' || inputStyle.value === 'microphone' ? `<span class="${inputStyle.value === 'midi-device' ? midiPressed.size : microphoneCandidate !== null ? 'pressed' : ''}">${game?.notes.find(note => !note.done) ? controlLabel(game.notes.find(note => !note.done), track) : '—'}</span>` : codes.map((code, index) => `<span class="${pressedKeys.has(code) ? 'pressed' : ''}" style="--lane:${laneColor(index)}">${keyLabel(code)}</span>`).join('');
   const valveProfile = inputStyle.value === 'valves' ? valveFingeringsFor(game?.notes.find(note => !note.done) || track.events[0], track).profile.name : '';
-  stage.innerHTML = `<div class="staff-meta"><strong>${track.name} · ${track.instrument || 'instrument synthétique'}</strong><span>Clef de ${displayClef.label} · ♩ = ${musicalState.tempo || 100}${valveProfile ? ` · Profil ${valveProfile}` : ''}</span></div><div class="staff-lines" style="height:${geometry.height}px;--staff-shift:${geometry.shift}px"><span class="clef">${clefMarkup(displayClef)}</span><span class="key-signature">${keySignatureMarkup(musicalState.key, displayClef)}</span><span class="time-signature">${timeSignatureMarkup(musicalState.time)}</span><span class="hit-line" style="left:${target}px"></span>${measureLines}${changes}${rests}${beams}${ties}${notes}</div><div class="duration-track"><span class="duration-label">Tenue attendue</span>${durations}</div><div class="score-keys">${controls}</div>`;
+  stage.innerHTML = `<div class="staff-meta"><strong>${track.name} · ${track.instrument || 'instrument synthétique'}</strong><span>Clef de ${displayClef.label} · ♩ = ${musicalState.tempo || 100}${valveProfile ? ` · Profil ${valveProfile}` : ''}</span></div><div class="staff-lines" style="height:${geometry.height}px;--staff-shift:${geometry.shift}px"><span class="clef">${clefMarkup(displayClef)}</span><span class="key-signature">${keySignatureMarkup(musicalState.key, displayClef)}</span><span class="time-signature">${timeSignatureMarkup(musicalState.time)}</span><span class="hit-line" style="left:${target}px"></span>${microphoneLine}${measureLines}${changes}${rests}${beams}${ties}${notes}</div><div class="duration-track"><span class="duration-label">Tenue attendue</span>${durations}</div><div class="score-keys">${controls}</div>`;
   if (game) game.lastSceneRefresh = now;
   renderInstrumentGuide();
 }
@@ -547,7 +600,26 @@ function sound(pitch, volume = .1, duration = .24, instrument = '', delayMs = 0)
     syntheticSound(pitch, volume, duration, instrument, delayMs);
   });
 }
-function playEventSound(note, volumeLimit = .18, currentTrack = false, delayMs = 0) { if (note.silentTie) return; const pitches = note.chord?.length ? note.chord : [note.pitch]; const articulation = note.articulation || ''; const durationFactor = /stacc/i.test(articulation) ? .46 : /tenuto|portato/i.test(articulation) ? 1.015 : note.tieStart ? 1.01 : .965; const accent = /accent|marcato|sforz/i.test(articulation) ? 1.3 : 1; const trackGain = Number(currentTrack ? trackVolume.value : masterVolume.value) / 100; const writtenDuration = note.durationMs ? note.durationMs / 1000 : note.playbackDuration || note.beats * .6; const instrument = `${note.instrumentId || ''} ${note.instrument || ''}`.trim(); pitches.forEach(pitch => sound(pitch, Math.min(volumeLimit, (note.volume || .1) * accent / Math.sqrt(pitches.length)) * trackGain, Math.max(.06, Math.min(8, writtenDuration * durationFactor)), instrument, delayMs)); }
+function diatonicNeighbor(pitch, direction, fifths = 0) { const tonicByFifths = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5]; const tonic = tonicByFifths[((Number(fifths) % 12) + 12) % 12]; const scale = new Set([0,2,4,5,7,9,11].map(interval => (tonic + interval) % 12)); for (let distance = 1; distance <= 3; distance += 1) { const candidate = pitch + direction * distance; if (scale.has(((candidate % 12) + 12) % 12)) return candidate; } return pitch + direction * 2; }
+function ornamentPitches(note) { const value = String(note.ornament || '').toLowerCase(); const upper = Number.isFinite(note.ornamentAbove) ? note.pitch + note.ornamentAbove : diatonicNeighbor(note.pitch, 1, note.keyFifths); const lower = Number.isFinite(note.ornamentBelow) ? note.pitch - note.ornamentBelow : diatonicNeighbor(note.pitch, -1, note.keyFifths); if (/trill/.test(value)) return [note.pitch, upper, note.pitch, upper]; if (/mordent/.test(value)) return [note.pitch, lower, note.pitch]; if (/turn|gruppetto/.test(value)) return [upper, note.pitch, lower, note.pitch]; return []; }
+function tremoloCount(value = '') { const text = String(value).toLowerCase(); if (/32|3|r32/.test(text)) return 8; if (/16|2|r16/.test(text)) return 4; if (/8|1|r8/.test(text)) return 2; return text ? 4 : 0; }
+function playEventSound(note, volumeLimit = .18, currentTrack = false, delayMs = 0, automaticPlayback = false) {
+  if (note.silentTie || (automaticPlayback && note.tremoloContinuation)) return;
+  const pitches = note.tremoloPitches?.length ? note.tremoloPitches : note.chord?.length ? note.chord : [note.pitch];
+  const articulation = note.articulation || '';
+  const durationFactor = /stacc/i.test(articulation) ? .46 : /tenuto|portato/i.test(articulation) ? 1.015 : note.tieStart ? 1.01 : .965;
+  const accent = /accent|marcato|sforz/i.test(articulation) ? 1.3 : 1;
+  const trackGain = Number(currentTrack ? trackVolume.value : masterVolume.value) / 100;
+  const writtenDuration = (note.durationMs ? note.durationMs / 1000 : note.playbackDuration || note.beats * .6) * (note.playbackStretch || 1);
+  const instrument = `${note.instrumentId || ''} ${note.instrument || ''}`.trim();
+  const volume = Math.min(volumeLimit, (note.volume || .1) * accent / Math.sqrt(pitches.length)) * trackGain;
+  const ornaments = ornamentPitches(note);
+  const tremolos = tremoloCount(note.tremolo);
+  if (ornaments.length) { const slice = Math.max(.05, Math.min(.18, writtenDuration / ornaments.length)); ornaments.forEach((pitch, index) => sound(pitch, volume, slice * .9, instrument, delayMs + index * slice * 1000)); return; }
+  if (tremolos) { const slice = Math.max(.035, writtenDuration / tremolos); Array.from({ length: tremolos }, (_, index) => sound(pitches[index % pitches.length], volume, slice * .82, instrument, delayMs + index * slice * 1000)); return; }
+  pitches.forEach((pitch, index) => sound(pitch, volume, Math.max(.06, Math.min(8, writtenDuration * durationFactor)), instrument, delayMs + (note.arpeggio ? index * 38 : 0)));
+  if (note.glissandoTarget && pitches.length === 1) { const steps = Math.min(18, Math.max(2, Math.abs(note.glissandoTarget - note.pitch))); const slice = writtenDuration / steps; Array.from({ length: steps - 1 }, (_, index) => { const ratio = (index + 1) / steps; sound(note.pitch + (note.glissandoTarget - note.pitch) * ratio, volume * .7, Math.max(.035, slice * .9), instrument, delayMs + ratio * writtenDuration * 1000); }); }
+}
 function metronomeClick(accent = false, delayMs = 0) { ensureAudio(); const oscillator = trackAudioSource(audio.createOscillator()); const gain = audio.createGain(); const startAt = audio.currentTime + Math.max(0, delayMs) / 1000; oscillator.type = 'square'; oscillator.frequency.value = accent ? 1320 : 880; gain.gain.setValueAtTime(.075, startAt); gain.gain.exponentialRampToValueAtTime(.001, startAt + .045); oscillator.connect(gain).connect(audio.destination); oscillator.start(startAt); oscillator.stop(startAt + .05); }
 function audioSchedulerTick() {
   if (!game || game.pausedAt) return;
@@ -569,7 +641,7 @@ function audioSchedulerTick() {
       const when = game.countIn + timing.beatToMs(event.beat) - timelineOffset;
       if (when > horizon) break;
       const audibleBeats = event.audibleBeats || event.beats;
-      playEventSound({ ...event, playbackDuration: Math.max(.04, (timing.beatToMs(event.beat + audibleBeats) - timing.beatToMs(event.beat)) / 1000) }, .055, false, when - now);
+      playEventSound({ ...event, playbackDuration: Math.max(.04, (timing.beatToMs(event.beat + audibleBeats) - timing.beatToMs(event.beat)) / 1000) }, .055, false, when - now, true);
       cursor += 1;
     }
     game.backIndexes[index] = cursor;
@@ -584,7 +656,7 @@ function audioSchedulerTick() {
       const when = game.countIn + timing.beatToMs(event.beat) - game.timelineOffset;
       if (when > horizon) break;
       const audibleBeats = event.audibleBeats || event.beats;
-      playEventSound({ ...event, playbackDuration: Math.max(.04, (timing.beatToMs(event.beat + audibleBeats) - timing.beatToMs(event.beat)) / 1000) }, .12, true, when - now);
+      playEventSound({ ...event, playbackDuration: Math.max(.04, (timing.beatToMs(event.beat + audibleBeats) - timing.beatToMs(event.beat)) / 1000) }, .12, true, when - now, true);
       cursor += 1;
     }
     game.guideIndexes[trackIndex] = cursor;
@@ -675,8 +747,8 @@ async function start() {
 }
 function stop() { stopMetronomePreview(); stopAudioScheduler(); if (game?.frame) cancelAnimationFrame(game.frame); stopAllAudio(); clearPressedInputs(); game = null; pauseButton.textContent = 'Pause'; document.getElementById('clickMetronome').textContent = 'Écouter le métronome'; render(); }
 function togglePause() { if (!game) { statusElement.textContent = 'Démarrez une partie avant de la mettre en pause.'; return; } if (game.pausedAt) { const pause = performance.now() - game.pausedAt; game.started += pause; game.pausedTotal += pause; game.pausedAt = 0; game.visibilityPaused = false; ensureAudio(); window.SoundFontEngine?.resume(); syncPlaybackIndexes(); game.clickIndex = game.clicks.findIndex(click => click.time > performance.now() - game.started); if (game.clickIndex < 0) game.clickIndex = game.clicks.length; startAudioScheduler(); pauseButton.textContent = 'Pause'; statusElement.textContent = 'Partie reprise.'; game.frame = requestAnimationFrame(loop); return; } game.pausedAt = performance.now(); stopAudioScheduler(); cancelAnimationFrame(game.frame); stopAllAudio(); clearPressedInputs(); audio?.suspend().catch(() => {}); pauseButton.textContent = 'Reprendre'; statusElement.textContent = 'Partie en pause.'; }
-function beginNote(note, inputId) { const now = performance.now() - game.started; if (!note || Math.abs(note.time - now) >= 220) { statusElement.textContent = 'Aucune note jouable dans la fenêtre de précision.'; return; } const offset = now - note.time; const timingScore = Math.max(50, 250 - Math.round(Math.abs(offset))); if (!requireHoldToggle.checked || note.beats <= .5 || /stacc/i.test(note.articulation || '')) { note.done = true; game.hits += 1; game.score += timingScore; registerJudgement(note, 'hit', offset); playEventSound(note, .18, true); statusElement.textContent = `Juste : +${timingScore} points.`; } else { note.active = true; note.pressedAt = now; note.attackOffset = offset; note.timingScore = timingScore; game.score += timingScore; game.activeInputs.set(inputId, note); playEventSound({ ...note, beats: Math.min(note.beats, 2) }, .18, true); statusElement.textContent = `Attaque juste : +${timingScore}. Maintenez la note.`; } scoreElement.textContent = game.score; }
-function releaseNote(inputId) { const note = game?.activeInputs.get(inputId); if (!note) return; if (game.pausedAt) { note.active = false; game.activeInputs.delete(inputId); return; } const held = performance.now() - game.started - note.pressedAt; const target = note.durationMs * (/tenuto|portato/i.test(note.articulation || '') ? .9 : .72); const ratio = held / target; note.active = false; note.done = true; game.activeInputs.delete(inputId); if (ratio >= .72 && ratio <= 1.55) { const holdScore = Math.max(80, 300 - Math.round(Math.abs(1 - ratio) * 220)); game.hits += 1; game.score += holdScore; registerJudgement(note, 'hit', note.attackOffset || 0); statusElement.textContent = `Tenue réussie : +${holdScore} points.`; } else { game.misses += 1; registerJudgement(note, 'miss', held - target); statusElement.textContent = `Tenue ${ratio < .72 ? 'trop courte' : 'trop longue'} (${Math.round(held)} ms pour ${Math.round(target)} ms attendues).`; } scoreElement.textContent = game.score; }
+function beginNote(note, inputId, inputLatencyMs = 0) { const now = performance.now() - game.started - inputLatencyMs; if (!note || Math.abs(note.time - now) >= 220) { statusElement.textContent = 'Aucune note jouable dans la fenêtre de précision.'; return; } const offset = now - note.time; const timingScore = Math.max(50, 250 - Math.round(Math.abs(offset))); if (!requireHoldToggle.checked || note.beats <= .5 || /stacc/i.test(note.articulation || '')) { note.done = true; game.hits += 1; game.score += timingScore; registerJudgement(note, 'hit', offset); playEventSound(note, .18, true); statusElement.textContent = `Juste : +${timingScore} points.`; } else { note.active = true; note.inputLatencyMs = inputLatencyMs; note.pressedAt = now; note.attackOffset = offset; note.timingScore = timingScore; game.score += timingScore; game.activeInputs.set(inputId, note); playEventSound({ ...note, beats: Math.min(note.beats, 2) }, .18, true); statusElement.textContent = `Attaque juste : +${timingScore}. Maintenez la note.`; } scoreElement.textContent = game.score; }
+function releaseNote(inputId) { const note = game?.activeInputs.get(inputId); if (!note) return; if (game.pausedAt) { note.active = false; game.activeInputs.delete(inputId); return; } const held = performance.now() - game.started - (note.inputLatencyMs || 0) - note.pressedAt; const target = note.durationMs * (/tenuto|portato/i.test(note.articulation || '') ? .9 : .72); const ratio = held / target; note.active = false; note.done = true; game.activeInputs.delete(inputId); if (ratio >= .72 && ratio <= 1.55) { const holdScore = Math.max(80, 300 - Math.round(Math.abs(1 - ratio) * 220)); game.hits += 1; game.score += holdScore; registerJudgement(note, 'hit', note.attackOffset || 0); statusElement.textContent = `Tenue réussie : +${holdScore} points.`; } else { game.misses += 1; registerJudgement(note, 'miss', held - target); statusElement.textContent = `Tenue ${ratio < .72 ? 'trop courte' : 'trop longue'} (${Math.round(held)} ms pour ${Math.round(target)} ms attendues).`; } scoreElement.textContent = game.score; }
 function press(code) {
   if (!game || game.pausedAt) return;
   const lane = activeCodes().indexOf(code);
@@ -711,9 +783,9 @@ async function enableMidi() {
     statusElement.textContent = `${midiAccess.inputs.size} entrée(s) MIDI disponible(s).`;
   } catch (error) { statusElement.textContent = `MIDI inaccessible : ${error.message}`; }
 }
-function pendingInputNote() {
+function pendingInputNote(inputLatencyMs = 0) {
   if (!game || game.pausedAt) return null;
-  const now = performance.now() - game.started;
+  const now = performance.now() - game.started - inputLatencyMs;
   return game.notes.filter(note => !note.done && !note.active && !note.silentTie && Math.abs(note.time - now) <= 420).sort((left, right) => Math.abs(left.time - now) - Math.abs(right.time - now))[0] || null;
 }
 function handleMidiMessage(event) {
@@ -750,15 +822,74 @@ function detectedFrequency(buffer, sampleRate) {
   }
   return bestCorrelation > .72 && bestLag ? sampleRate / bestLag : 0;
 }
+function updateMicrophoneStatus() {
+  const rounded = microphonePitch === null ? null : Math.round(microphonePitch);
+  const cents = microphonePitch === null ? 0 : Math.round((microphonePitch - rounded) * 100);
+  const calibrationText = microphoneCalibration ? ` · calibrage ${microphoneCalibration.samples.length}/${microphoneCalibration.expected.length - 2}` : ` · latence ${microphoneLatencyMs} ms`;
+  microphoneStatus.textContent = rounded === null ? `Aucun son stable${calibrationText}` : `${noteName(rounded)} · ${microphoneFrequency.toFixed(1)} Hz · ${cents >= 0 ? '+' : ''}${cents} cents${calibrationText}`;
+}
+function updateMicrophonePitchVisual() {
+  const line = stage.querySelector('.microphone-pitch-line');
+  if (!line || microphonePitch === null) return;
+  const track = tracks[trackIndex] || tracks[0];
+  const note = microphoneDisplayNote(track);
+  line.style.top = `${scoreNoteTop(track, note, scoreGeometry(track).shift) + 8}px`;
+  const label = line.querySelector('b');
+  if (label) label.textContent = noteName(Math.round(microphonePitch));
+}
+function microphoneCalibrationTone(delayMs = 0) {
+  ensureAudio();
+  const oscillator = trackAudioSource(audio.createOscillator());
+  const gain = audio.createGain();
+  const startsAt = audio.currentTime + Math.max(0, delayMs) / 1000;
+  oscillator.type = 'sine'; oscillator.frequency.value = 440;
+  gain.gain.setValueAtTime(.0001, startsAt); gain.gain.linearRampToValueAtTime(.13, startsAt + .015); gain.gain.setValueAtTime(.13, startsAt + .14); gain.gain.linearRampToValueAtTime(.0001, startsAt + .2);
+  oscillator.connect(gain).connect(audio.destination); oscillator.start(startsAt); oscillator.stop(startsAt + .22);
+}
+function finishMicrophoneCalibration(cancelled = false) {
+  if (!microphoneCalibration) return;
+  microphoneCalibration.timers.forEach(clearTimeout);
+  const samples = microphoneCalibration.samples.slice().sort((left, right) => left - right);
+  microphoneCalibration = null;
+  calibrateMicrophoneButton.textContent = 'Calibrer le microphone';
+  if (!cancelled && samples.length >= 3) {
+    const trimmed = samples.length > 4 ? samples.slice(1, -1) : samples;
+    microphoneLatencyMs = Math.max(0, Math.min(600, Math.round(trimmed.reduce((sum, value) => sum + value, 0) / trimmed.length)));
+    try { localStorage.setItem('rhythm-microphone-latency', microphoneLatencyMs); } catch {}
+    statusElement.textContent = `Latence microphone enregistrée : ${microphoneLatencyMs} ms.`;
+  } else statusElement.textContent = cancelled ? 'Calibrage microphone annulé.' : 'Calibrage impossible. Utilisez les haut-parleurs, rapprochez le microphone et recommencez.';
+  updateMicrophoneStatus();
+}
+async function startMicrophoneCalibration() {
+  if (microphoneCalibration) { finishMicrophoneCalibration(true); return; }
+  stop();
+  if (!microphoneAnalyser) await startMicrophone();
+  if (!microphoneAnalyser) return;
+  const startsAt = performance.now() + 900;
+  const expected = Array.from({ length: 8 }, (_, index) => startsAt + index * 700);
+  const timers = expected.map(time => setTimeout(() => microphoneCalibrationTone(), Math.max(0, time - performance.now())));
+  microphoneCalibration = { expected, samples: [], used: new Set(), timers };
+  timers.push(setTimeout(() => finishMicrophoneCalibration(false), expected.at(-1) - performance.now() + 700));
+  calibrateMicrophoneButton.textContent = 'Annuler le calibrage';
+  microphoneStatus.hidden = false;
+  statusElement.textContent = 'Calibrage acoustique : laissez les haut-parleurs jouer huit La sans produire de son.';
+}
 function microphoneTick() {
   if (!microphoneAnalyser || inputStyle.value !== 'microphone') return;
   const buffer = new Float32Array(microphoneAnalyser.fftSize);
   microphoneAnalyser.getFloatTimeDomainData(buffer);
   const frequency = detectedFrequency(buffer, audio.sampleRate);
   const pitch = frequency ? 69 + 12 * Math.log2(frequency / 440) : null;
+  microphonePitch = pitch;
+  microphoneFrequency = frequency;
   const rounded = pitch === null ? null : Math.round(pitch);
   if (rounded === microphoneCandidate && pitch !== null && Math.abs(pitch - rounded) < .48) microphoneStableFrames += 1;
   else { microphoneCandidate = rounded; microphoneStableFrames = 1; }
+  if (microphoneCalibration && pitch !== null && Math.abs(pitch - 69) < .45) {
+    const now = performance.now();
+    const index = microphoneCalibration.expected.findIndex((time, candidate) => candidate >= 2 && !microphoneCalibration.used.has(candidate) && now >= time && now - time < 500);
+    if (index >= 0) { microphoneCalibration.used.add(index); microphoneCalibration.samples.push(now - microphoneCalibration.expected[index]); }
+  }
   const activeNote = game?.activeInputs.get('microphone');
   const activePitches = activeNote ? (activeNote.chord?.length ? activeNote.chord : [activeNote.pitch]) : [];
   if (activeNote && (pitch === null || !activePitches.some(value => Math.abs(value - pitch) < .72))) {
@@ -766,10 +897,12 @@ function microphoneTick() {
     microphoneActiveInput = '';
   }
   if (microphoneStableFrames >= 2 && rounded !== null) {
-    const note = pendingInputNote();
+    const note = pendingInputNote(microphoneLatencyMs);
     const required = note?.chord?.length ? note.chord : note ? [note.pitch] : [];
-    if (note && required.some(value => Math.abs(value - pitch) < .55) && !game.activeInputs.has('microphone')) { microphoneActiveInput = note.visualId; beginNote(note, 'microphone'); }
+    if (note && required.some(value => Math.abs(value - pitch) < .55) && !game.activeInputs.has('microphone')) { microphoneActiveInput = note.visualId; beginNote(note, 'microphone', microphoneLatencyMs); }
   }
+  updateMicrophoneStatus();
+  updateMicrophonePitchVisual();
   renderInstrumentGuide();
 }
 async function startMicrophone() {
@@ -784,7 +917,7 @@ async function startMicrophone() {
     statusElement.textContent = 'Microphone actif : la hauteur est analysée uniquement dans ce navigateur.';
   } catch (error) { statusElement.textContent = `Microphone inaccessible : ${error.message}`; }
 }
-function stopMicrophone() { clearInterval(microphoneTimer); microphoneTimer = 0; microphoneStream?.getTracks().forEach(track => track.stop()); microphoneStream = null; microphoneAnalyser = null; microphoneCandidate = null; microphoneStableFrames = 0; microphoneActiveInput = ''; }
+function stopMicrophone() { if (microphoneCalibration) finishMicrophoneCalibration(true); clearInterval(microphoneTimer); microphoneTimer = 0; microphoneStream?.getTracks().forEach(track => track.stop()); microphoneStream = null; microphoneAnalyser = null; microphoneCandidate = null; microphonePitch = null; microphoneFrequency = 0; microphoneStableFrames = 0; microphoneActiveInput = ''; }
 document.addEventListener('keydown', event => {
   rememberKeyLabel(event);
   if (calibration) { event.preventDefault(); if (!event.repeat) registerCalibrationTap(); return; }
@@ -792,6 +925,7 @@ document.addEventListener('keydown', event => {
     event.preventDefault();
     if (mappingTarget.index === null) inputMappings[mappingTarget.group] = event.code;
     else inputMappings[mappingTarget.group][mappingTarget.index] = event.code;
+    if (mappingTarget.group === 'valves') valveHandedness.value = 'custom';
     mappingTarget = null; saveInputMappings(); renderMappingControls(); renderInstrumentGuide(); render(); return;
   }
   if (event.code === inputMappings.pause) { event.preventDefault(); if (!event.repeat) togglePause(); return; }
@@ -817,8 +951,8 @@ modeSelect.onchange = () => { stop(); renderRecord(); renderInstrumentGuide(); r
 startButton.onclick = () => { start().catch(error => { statusElement.textContent = `Démarrage impossible : ${error.message}`; }); };
 pauseButton.onclick = togglePause;
 document.getElementById('restartGame').onclick = () => startButton.click();
-speedControl.oninput = () => { document.getElementById('speedValue').value = `${speedControl.value} %`; };
-speedControl.onchange = () => { renderRecord(); if (game) statusElement.textContent = 'La nouvelle vitesse sera appliquée en recommençant la partie.'; };
+speedControl.oninput = () => { document.getElementById('speedValue').value = `${speedControl.value} %`; applyLiveSpeed(); };
+speedControl.onchange = renderRecord;
 practicePreset.onchange = applyPracticePreset;
 [loopEnabled, loopStart, loopEnd, adaptiveSpeed].forEach(control => control.addEventListener('change', () => { if (control === loopStart && Number(loopEnd.value) < Number(loopStart.value)) loopEnd.value = loopStart.value; refreshPracticeRange(); renderRecord(); }));
 retryBeforeError.onclick = () => {
@@ -838,11 +972,27 @@ inputStyle.onchange = async () => {
   pressedValves.clear(); midiPressed.clear();
   const midiMode = inputStyle.value === 'midi-device';
   const microphoneMode = inputStyle.value === 'microphone';
-  midiDeviceLabel.hidden = !midiMode; enableMidiButton.hidden = !midiMode; microphoneLabel.hidden = !microphoneMode;
+  midiDeviceLabel.hidden = !midiMode; enableMidiButton.hidden = !midiMode; valveHandednessLabel.hidden = inputStyle.value !== 'valves'; microphoneLabel.hidden = !microphoneMode; toggleTunerButton.hidden = !microphoneMode; calibrateMicrophoneButton.hidden = !microphoneMode; microphoneStatus.hidden = !microphoneMode || (!tunerEnabled && !microphoneCalibration);
   if (midiMode && !midiAccess) await enableMidi(); else if (midiMode) refreshMidiDevices();
   if (microphoneMode) await startMicrophone(); else stopMicrophone();
   renderRecord(); renderInstrumentGuide(); render();
 };
+valveHandedness.onchange = () => {
+  if (valveHandedness.value === 'right') inputMappings.valves = rightHandValveCodes.slice();
+  else if (valveHandedness.value === 'left') inputMappings.valves = leftHandValveCodes.slice();
+  saveInputMappings();
+  instrumentGuide.dataset.signature = '';
+  renderMappingControls(); renderInstrumentGuide(); render();
+  statusElement.textContent = valveHandedness.value === 'right' ? 'Pistons en mode droitier : J, K et L.' : valveHandedness.value === 'left' ? 'Pistons en mode main gauche : Q, S et D sur AZERTY.' : 'Commandes de pistons personnalisées.';
+};
+toggleTunerButton.onclick = async () => {
+  tunerEnabled = !tunerEnabled;
+  toggleTunerButton.textContent = tunerEnabled ? 'Masquer l’accordeur' : 'Accordeur';
+  microphoneStatus.hidden = !tunerEnabled && !microphoneCalibration;
+  if (tunerEnabled && !microphoneAnalyser) await startMicrophone();
+  updateMicrophoneStatus();
+};
+calibrateMicrophoneButton.onclick = startMicrophoneCalibration;
 midiDevice.onchange = refreshMidiDevices;
 enableMidiButton.onclick = enableMidi;
 keyboardLayoutSelect.onchange = async () => {
@@ -871,7 +1021,7 @@ function updateVisualControls() { scoreScaleControl.nextElementSibling.value = `
 breathEnabled.onchange = () => { renderRecord(); renderInstrumentGuide(); };
 document.getElementById('configureInputs').onclick = () => { mappingPanel.hidden = false; renderMappingControls(); };
 document.getElementById('closeInputMapping').onclick = () => { mappingPanel.hidden = true; mappingTarget = null; };
-document.getElementById('resetInputMapping').onclick = () => { inputMappings = structuredClone(defaultInputMappings); mappingTarget = null; saveInputMappings(); renderMappingControls(); render(); };
+document.getElementById('resetInputMapping').onclick = () => { inputMappings = structuredClone(defaultInputMappings); valveHandedness.value = 'left'; mappingTarget = null; saveInputMappings(); renderMappingControls(); render(); };
 showFingeringToggle.onchange = () => { renderRecord(); render(); };
 accidentalsToggle?.addEventListener('change', render);
 accompanimentToggle.onchange = () => { if (accompanimentToggle.checked) syncPlaybackIndexes(); renderRecord(); };
@@ -905,7 +1055,8 @@ function rememberUnknownMuseSymbol(symbol) { if (!symbol || unknownMuseSymbols.h
 function renderUnknownSymbolButton() { const button = document.getElementById('exportUnknownSymbols'); if (!button) return; button.hidden = unknownMuseSymbols.size === 0; button.textContent = `Exporter symboles inconnus (${unknownMuseSymbols.size})`; }
 function exportUnknownMuseSymbols() { const lines = ['Rhythm Lab · identifiants MuseScore inconnus', `Export : ${new Date().toLocaleString('fr-FR')}`, `Nombre : ${unknownMuseSymbols.size}`, '', ...[...unknownMuseSymbols].sort()]; const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })); const link = document.createElement('a'); link.href = url; link.download = 'rhythm-lab-symboles-musescore-inconnus.txt'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
 function normalizedMuseSymbol(value = '') { const clean = value.replace(/\*+I?/g, ' ').replace(/\s+/g, ' ').trim(); if (!clean) return ''; const mappings = [[/artic\w*stacc/i,'·'],[/artic\w*tenuto/i,'—'],[/artic\w*marcato/i,'^'],[/artic\w*accent/i,'>'],[/fermata/i,'𝄐'],[/trill/i,'tr'],[/mordent/i,'mordant'],[/turn/i,'gruppetto'],[/tremolo/i,'trémolo'],[/arpeggio/i,'arpège'],[/breath|caesura/i,'virgule respiratoire'],[/accidental\w*sharp/i,'♯'],[/accidental\w*flat/i,'♭'],[/accidental\w*natural/i,'♮'],[/gliss/i,'glissando']]; const technicalTokens = clean.match(/(?:artic|ornament|sym|accidental|notehead|flag|dynamic)[A-Za-z0-9_-]+/gi) || []; technicalTokens.filter(token => !mappings.some(([pattern]) => pattern.test(token))).forEach(rememberUnknownMuseSymbol); const mapped = [...new Set(mappings.filter(([pattern]) => pattern.test(clean)).map(([, symbol]) => symbol))]; if (mapped.length) return mapped.join(' '); if (technicalTokens.length) return ''; return clean; }
-function musicalSymbols(element) { const selectors = ['Articulation > subtype','Articulation > sym','Ornament > subtype','Ornament > sym','Tremolo > subtype','Fermata > subtype','Arpeggio > subtype','Breath > subtype','Glissando > text','Lyrics > text']; const symbols = selectors.flatMap(selector => [...element.querySelectorAll(selector)].map(node => normalizedMuseSymbol(node.textContent))).filter(Boolean); if (element.querySelector('Spanner[type="Tie"], Tie')) symbols.push('liaison de tenue'); if (element.querySelector('Spanner[type="Slur"], Slur')) symbols.push('liaison de phrasé'); if (element.querySelector('grace4, grace8, grace16, grace32')) symbols.push('appoggiature'); return [...new Set(symbols)]; }
+function musicalSymbols(element) { const selectors = ['Articulation > subtype','Articulation > sym','Ornament > subtype','Ornament > sym','Tremolo > subtype','Fermata > subtype','Arpeggio > subtype','Breath > subtype','Glissando > text','Note > Accidental > subtype','Lyrics > text']; const symbols = selectors.flatMap(selector => [...element.querySelectorAll(selector)].map(node => normalizedMuseSymbol(node.textContent))).filter(Boolean); if (element.querySelector('Spanner[type="Tie"], Tie')) symbols.push('liaison de tenue'); if (element.querySelector('Spanner[type="Slur"], Slur')) symbols.push('liaison de phrasé'); if (element.querySelector('grace, grace4, grace8, grace16, grace32, appoggiatura, acciaccatura')) symbols.push('appoggiature'); return [...new Set(symbols)]; }
+function dynamicVelocity(value = '', fallback = 80) { const levels = { pppp: 20, ppp: 28, pp: 38, p: 50, mp: 64, mf: 78, f: 94, ff: 108, fff: 120, ffff: 127, sfz: 116, sf: 108, fp: 72 }; return levels[String(value).toLowerCase().replace(/[^a-z]/g, '')] || fallback; }
 function trackDiagnosticSnapshot(list = tracks) {
   return list.map(track => ({
     name: track.name,
@@ -947,6 +1098,9 @@ function validateTracks(list = tracks) {
 function regressionFixture() {
   return `<?xml version="1.0"?><museScore version="4.0"><Score><Part><trackName>Sousaphone test</trackName><Instrument><instrumentId>brass.sousaphone</instrumentId><transposeChromatic>-14</transposeChromatic><transposeDiatonic>-8</transposeDiatonic></Instrument><Staff id="1"/></Part><Staff id="1"><Measure><startRepeat/><voice><TimeSig><sigN>4</sigN><sigD>4</sigD></TimeSig><Chord><durationType>half</durationType><dots>1</dots><Note><pitch>58</pitch></Note></Chord><Rest><durationType>quarter</durationType></Rest></voice></Measure><Measure><endRepeat>2</endRepeat><voice><Chord><durationType>quarter</durationType><Note><pitch>59</pitch></Note></Chord><Rest><durationType>half</durationType><dots>1</dots></Rest></voice></Measure></Staff></Score></museScore>`;
 }
+function advancedNotationFixture() {
+  return `<?xml version="1.0"?><museScore version="4.0"><Score><Part><trackName>Cuivre avancé</trackName><Instrument><instrumentId>brass.tuba</instrumentId></Instrument><Staff id="1"/></Part><Staff id="1"><Measure><voice><TimeSig><sigN>4</sigN><sigD>4</sigD></TimeSig><Dynamic><subtype>ff</subtype></Dynamic><Chord><durationType>quarter</durationType><Articulation><subtype>articStaccatoAbove</subtype></Articulation><Ornament><subtype>trill</subtype></Ornament><Tremolo><subtype>r16</subtype></Tremolo><Arpeggio><subtype>0</subtype></Arpeggio><Note><pitch>48</pitch><Accidental><subtype>accidentalSharp</subtype></Accidental><Spanner type="Glissando"><Glissando><subtype>1</subtype></Glissando></Spanner></Note></Chord><Fermata><subtype>fermataAbove</subtype></Fermata><Breath><subtype>breathComma</subtype></Breath><Chord><durationType>quarter</durationType><Note><pitch>52</pitch></Note></Chord><Rest><durationType>half</durationType></Rest></voice></Measure><Measure len="8/4"><multiMeasureRest>2</multiMeasureRest><voice><Rest><durationType>measure</durationType><duration>8/4</duration></Rest><Fermata><subtype>fermataAbove</subtype></Fermata></voice></Measure></Staff></Score></museScore>`;
+}
 function runRhythmTests() {
   const failures = [];
   const expected = ['123','13','23','12','1','2','0','123','13','23','12','1','2','0','23','12','1','2','0','12','1','2','0','1','2','0','23','12','1','2','0','2/12','1'];
@@ -962,9 +1116,22 @@ function runRhythmTests() {
     if (Math.abs(parsed[0]?.events[0]?.beats - 3) > .001) failures.push('Blanche pointée');
     failures.push(...validateTracks(parsed).errors.map(error => `Fixture : ${error}`));
   } catch (error) { failures.push(`Parseur fixture : ${error.message}`); }
+  try {
+    const track = parseScore(advancedNotationFixture(), 'fixture-notations.mscx', false)[0];
+    const first = track?.events[0];
+    if (!/stacc/i.test(first?.articulation || '')) failures.push('Articulation MuseScore');
+    if (first?.ornament !== 'trill') failures.push('Ornement MuseScore');
+    if (first?.tremolo !== 'r16') failures.push('Trémolo MuseScore');
+    if (!first?.arpeggio) failures.push('Arpège MuseScore');
+    if (first?.glissandoTarget !== 52) failures.push('Glissando MuseScore');
+    if (!first?.symbols.includes('𝄐') || !first?.symbols.includes('♯')) failures.push('Symboles expressifs MuseScore');
+    if (track?.pauses.length !== 2 || track.pauses[0].beats < .49 || !track.rests.some(rest => rest.symbols?.includes('𝄐'))) failures.push('Respiration et fermata MuseScore');
+    if (track?.measureBeats.join(',') !== '0,4,8') failures.push('Mesures multiples MuseScore');
+    if (Math.abs((first?.volume || 0) - 108 / 700) > .002) failures.push('Nuance MuseScore');
+  } catch (error) { failures.push(`Parseur avancé : ${error.message}`); }
   const current = validateTracks();
   failures.push(...current.errors.map(error => `Partition : ${error}`));
-  const total = 37;
+  const total = 46;
   const passed = Math.max(0, total - failures.length);
   statusElement.textContent = failures.length ? `Autotest : ${passed}/${total} réussis · ${failures.join(' · ')}` : `Autotest Rhythm Lab : ${total}/${total} réussis${current.warnings.length ? ` · avertissements : ${current.warnings.join(' · ')}` : ''}.`;
   return { passed, failures, warnings: current.warnings };
@@ -974,7 +1141,7 @@ function exportTrackDiagnostics() {
   const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }));
   const link = document.createElement('a'); link.href = url; link.download = `rhythm-lab-diagnostic-${(fileInput.files[0]?.name || 'demo').replace(/[^a-z0-9.-]+/gi, '-')}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-function timelineMeasureElements(staff) { return [...staff.children].filter(element => element.tagName === 'Measure' && !element.querySelector(':scope > multiMeasureRest')); }
+function timelineMeasureElements(staff) { return [...staff.children].filter(element => element.tagName === 'Measure'); }
 function structuralMeasureTimeline(staff) {
   let time = '4/4';
   return timelineMeasureElements(staff).map(measure => {
@@ -984,21 +1151,31 @@ function structuralMeasureTimeline(staff) {
     const normalBeats = (numerator || 4) * 4 / (denominator || 4);
     const measureFraction = measure.getAttribute('len')?.split('/').map(Number);
     const beats = measureFraction?.length === 2 && measureFraction[1] ? 4 * measureFraction[0] / measureFraction[1] : normalBeats;
-    return { beats, normalBeats, time };
+    const multiMeasureCount = Math.max(1, Number(measure.querySelector(':scope > multiMeasureRest')?.textContent || 1));
+    return { beats, normalBeats, time, multiMeasureCount };
   });
 }
-function markerName(measure) { return measure.querySelector('Marker > label, Marker > text, Marker > subtype')?.textContent.trim().toLowerCase() || ''; }
+function markerNames(measure) { return [...measure.querySelectorAll('Marker')].flatMap(marker => ['label','markerType','text','subtype'].map(tag => marker.querySelector(`:scope > ${tag}`)?.textContent.trim().toLowerCase()).filter(Boolean)); }
+function voltaCoverage(measures) {
+  const coverage = new Map();
+  measures.forEach((measure, start) => measure.querySelectorAll('Spanner[type="Volta"]').forEach(spanner => {
+    const endings = spanner.querySelector('Volta > endings')?.textContent.trim() || '';
+    const span = Math.max(1, Number(spanner.querySelector(':scope > next > location > measures')?.textContent || 1));
+    for (let index = start; index < Math.min(measures.length, start + span); index += 1) coverage.set(index, endings);
+  }));
+  return coverage;
+}
 function playbackOrder(referenceStaff) {
-  const measures = timelineMeasureElements(referenceStaff); const markers = new Map();
-  measures.forEach((measure, index) => { const name = markerName(measure); if (name) markers.set(name, index); });
+  const measures = timelineMeasureElements(referenceStaff); const markers = new Map(); const voltas = voltaCoverage(measures);
+  measures.forEach((measure, index) => markerNames(measure).forEach(name => markers.set(name, index)));
   const order = [], repeatCounts = new Map(), executedJumps = new Set();
   let index = 0, repeatStart = 0, jumped = false, playUntil = '', continueAt = '';
   while (index >= 0 && index < measures.length && order.length < measures.length * 12) {
     const measure = measures[index]; if (measure.querySelector('startRepeat')) repeatStart = index;
-    const volta = measure.querySelector('Volta endings, Spanner[type="Volta"] endings')?.textContent.trim(); const pass = (repeatCounts.get(repeatStart) || 0) + 1;
+    const volta = voltas.get(index) || measure.querySelector('Volta endings, Spanner[type="Volta"] endings')?.textContent.trim(); const pass = (repeatCounts.get(repeatStart) || 0) + 1;
     if (!volta || volta.split(/[,; ]+/).map(Number).includes(pass)) order.push(index);
-    const marker = markerName(measure); if (jumped && /fine/.test(marker)) break;
-    if (playUntil && marker === playUntil) { index = markers.get(continueAt) ?? index + 1; playUntil = ''; continueAt = ''; continue; }
+    const markerList = markerNames(measure); if (jumped && markerList.some(marker => /fine/.test(marker))) break;
+    if (playUntil && markerList.includes(playUntil)) { index = markers.get(continueAt) ?? index + 1; playUntil = ''; continueAt = ''; continue; }
     const jump = measure.querySelector('Jump');
     if (jump && !executedJumps.has(index)) { executedJumps.add(index); jumped = true; const destination = jump.querySelector('jumpTo')?.textContent.trim().toLowerCase() || 'start'; playUntil = jump.querySelector('playUntil')?.textContent.trim().toLowerCase() || ''; continueAt = jump.querySelector('continueAt')?.textContent.trim().toLowerCase() || ''; index = destination === 'start' ? 0 : (markers.get(destination) ?? 0); continue; }
     if (measure.querySelector('endRepeat')) { const repeats = Math.max(2, Number(measure.querySelector('endRepeat')?.textContent || measure.querySelector('repeatCount')?.textContent || 2)); const completed = repeatCounts.get(repeatStart) || 0; if (completed < repeats - 1) { repeatCounts.set(repeatStart, completed + 1); index = repeatStart; continue; } }
@@ -1063,21 +1240,32 @@ function parseScore(xml, name, commit = true) {
     const measureBeats = [];
     const changes = [];
     const ramps = [];
+    const pauses = [];
     const sourceMeasures = timelineMeasureElements(staff);
     sharedOrder.forEach((measureIndex, playbackIndex) => {
       const measureBeat = sharedMeasureStarts[playbackIndex];
-      measureBeats.push(measureBeat);
+      const measureStructure = structuralMeasures[measureIndex];
+      const representedMeasures = measureStructure?.multiMeasureCount || 1;
+      for (let represented = 0; represented < representedMeasures; represented += 1) measureBeats.push(measureBeat + represented * (measureStructure?.normalBeats || 4));
       const measure = sourceMeasures[measureIndex];
       if (!measure) return;
       const normalMeasureBeats = structuralMeasures[measureIndex]?.normalBeats || Number(currentTime.split('/')[0]) * 4 / Number(currentTime.split('/')[1]);
       const declaredMeasureBeats = structuralMeasures[measureIndex]?.beats || normalMeasureBeats;
+      markerNames(measure).forEach(marker => changes.push({ type: 'navigation', beat: measureBeat, value: marker }));
+      const jumpText = measure.querySelector(':scope > Jump > text')?.textContent.trim();
+      if (jumpText) changes.push({ type: 'navigation', beat: measureBeat, value: jumpText });
+      const voltaText = measure.querySelector('Spanner[type="Volta"] Volta > beginText')?.textContent.trim();
+      if (voltaText) changes.push({ type: 'navigation', beat: measureBeat, value: voltaText });
+      if (measure.querySelector(':scope > startRepeat')) changes.push({ type: 'navigation', beat: measureBeat, value: '𝄆' });
+      if (measure.querySelector(':scope > endRepeat')) changes.push({ type: 'navigation', beat: measureBeat + declaredMeasureBeats, value: '𝄇' });
       const voices = [...measure.children].filter(element => element.tagName === 'voice');
       voices.forEach(voice => {
         let localBeat = 0;
         let activeTuplet = null;
         let beamGroup = '';
         let autoBeamCluster = 0;
-        voice.querySelectorAll(':scope > location, :scope > Dynamic, :scope > Tempo, :scope > KeySig, :scope > TimeSig, :scope > Clef, :scope > InstrumentChange, :scope > Spanner[type="HairPin"], :scope > Tuplet, :scope > endTuplet, :scope > Beam, :scope > Chord, :scope > Rest').forEach(element => {
+        let previousTimedElement = null;
+        voice.querySelectorAll(':scope > location, :scope > Dynamic, :scope > Tempo, :scope > KeySig, :scope > TimeSig, :scope > Clef, :scope > InstrumentChange, :scope > Spanner[type="HairPin"], :scope > Tuplet, :scope > endTuplet, :scope > Beam, :scope > Fermata, :scope > Breath, :scope > Chord, :scope > Rest').forEach(element => {
           if (element.tagName.toLowerCase() === 'location') {
             const [numerator, denominator] = (element.querySelector(':scope > fractions')?.textContent || '0/1').split('/').map(Number);
             const measures = Number(element.querySelector(':scope > measures')?.textContent || 0);
@@ -1088,7 +1276,7 @@ function parseScore(xml, name, commit = true) {
           if (element.tagName === 'Tuplet') { const actual = Number(element.querySelector('actualNotes')?.textContent || 3); const normal = Number(element.querySelector('normalNotes')?.textContent || 2); activeTuplet = { actual, normal }; return; }
           if (element.tagName === 'endTuplet') { activeTuplet = null; return; }
           if (element.tagName === 'Beam') { beamGroup = element.querySelector('eid')?.textContent.trim() || `${measureIndex}:${beat}`; return; }
-          if (element.tagName === 'Dynamic') { velocity = Number(element.querySelector('velocity')?.textContent || velocity); const dynamic = element.querySelector('subtype')?.textContent.trim() || element.querySelector('text')?.textContent.trim(); if (dynamic) changes.push({ type: 'dynamic', beat, value: dynamic }); return; }
+          if (element.tagName === 'Dynamic') { const dynamic = element.querySelector('subtype')?.textContent.trim() || element.querySelector('text')?.textContent.trim(); velocity = Number(element.querySelector('velocity')?.textContent || dynamicVelocity(dynamic, velocity)); if (dynamic) changes.push({ type: 'dynamic', beat, value: dynamic }); return; }
           if (element.tagName === 'Tempo') { const bpm = Math.max(20, Math.min(400, Math.round(Number(element.querySelector('tempo')?.textContent || documentTempo / 60) * 60))); changes.push({ type: 'tempo', beat, bpm, value: bpm }); return; }
           if (element.tagName === 'KeySig') {
             const concertKeyText = element.querySelector(':scope > concertKey')?.textContent.trim();
@@ -1138,23 +1326,45 @@ function parseScore(xml, name, commit = true) {
             changes.push({ type: 'expression', beat, value: crescendo ? 'cresc.' : 'dim.' });
             return;
           }
+          if (element.tagName === 'Fermata' && previousTimedElement) {
+            const subtype = element.querySelector('subtype')?.textContent.trim() || 'fermata';
+            const stretch = Math.max(1.15, Number(element.querySelector('timeStretch')?.textContent || (/long|veryLong/i.test(subtype) ? 2 : /short/i.test(subtype) ? 1.25 : 1.5)));
+            previousTimedElement.playbackStretch = Math.max(previousTimedElement.playbackStretch || 1, stretch);
+            previousTimedElement.symbols = [...new Set([...(previousTimedElement.symbols || []), '𝄐'])];
+            pauses.push({ beat: previousTimedElement.beat + previousTimedElement.beats, beats: previousTimedElement.beats * (stretch - 1), type: 'fermata' });
+            return;
+          }
+          if (element.tagName === 'Breath' && previousTimedElement) {
+            const subtype = element.querySelector('subtype')?.textContent.trim() || 'breath';
+            const pauseBeats = /caesura|curved|straight/i.test(subtype) ? .5 : .25;
+            previousTimedElement.symbols = [...new Set([...(previousTimedElement.symbols || []), normalizedMuseSymbol(subtype) || 'virgule respiratoire'])];
+            pauses.push({ beat: previousTimedElement.beat + previousTimedElement.beats, beats: pauseBeats, type: 'breath' });
+            return;
+          }
           const duration = durationData(element, activeTuplet);
           if (element.tagName === 'Rest' && element.querySelector(':scope > durationType')?.textContent.trim() === 'measure') { duration.beats = declaredMeasureBeats; duration.baseBeats = normalMeasureBeats; }
           if (element.tagName === 'Chord') {
             const pitches = [...element.querySelectorAll('Note > pitch')].map(note => Number(note.textContent)).filter(Number.isFinite);
-            const articulation = element.querySelector('Articulation > subtype, Articulation')?.textContent.trim() || element.querySelector('Articulation')?.getAttribute('name') || '';
+            const articulation = [...element.querySelectorAll('Articulation')].map(node => node.querySelector('subtype, sym')?.textContent.trim() || node.getAttribute('name') || '').filter(Boolean).join(' ');
             const automaticBeam = duration.baseBeats < 1 ? `auto:${measureIndex}:${Math.floor(localBeat)}:${autoBeamCluster}` : '';
             const tieStart = Boolean(element.querySelector('Note > Spanner[type="Tie"] > Tie'));
             const tieEnd = Boolean(element.querySelector('Note > Spanner[type="Tie"] > prev'));
-            if (pitches.length) events.push({ pitch: pitches[0], writtenPitch: pitches[0] - currentTranspose, displayPitch: pitches[0] - currentTranspose, transpose: currentTranspose, transposeDiatonic: currentTransposeDiatonic, chord: pitches, writtenChord: pitches.map(pitch => pitch - currentTranspose), articulation, ...duration, symbols: musicalSymbols(element), beat, velocity, instrument: currentInstrument, instrumentId: currentInstrumentId, clef: currentWrittenClef, writtenClef: currentWrittenClef, concertClef: currentConcertClef, sourceElementId: element.querySelector(':scope > eid')?.textContent.trim() || '', linkedMasterElementId: element.querySelector(':scope > linkedTo')?.textContent.trim() || '', beam: duration.baseBeats < 1 ? (beamGroup || automaticBeam) : '', tieStart, tieEnd });
+            const tremolo = element.querySelector('Tremolo > subtype')?.textContent.trim() || '';
+            const ornament = element.querySelector('Ornament > subtype, Ornament > sym')?.textContent.trim() || '';
+            const ornamentAbove = Number(element.querySelector('Ornament > intervalAbove')?.textContent);
+            const ornamentBelow = Number(element.querySelector('Ornament > intervalBelow')?.textContent);
+            const arpeggio = element.querySelector('Arpeggio')?.textContent.trim() || element.querySelector('Arpeggio > subtype')?.textContent.trim() || '';
+            const glissando = Boolean(element.querySelector('Spanner[type="Glissando"], Glissando'));
+            if (pitches.length) { previousTimedElement = { pitch: pitches[0], writtenPitch: pitches[0] - currentTranspose, displayPitch: pitches[0] - currentTranspose, transpose: currentTranspose, transposeDiatonic: currentTransposeDiatonic, chord: pitches, writtenChord: pitches.map(pitch => pitch - currentTranspose), articulation, tremolo, ornament, ...(Number.isFinite(ornamentAbove) ? { ornamentAbove } : {}), ...(Number.isFinite(ornamentBelow) ? { ornamentBelow } : {}), arpeggio, glissando, keyFifths: currentConcertKey, ...duration, symbols: musicalSymbols(element), beat, velocity, instrument: currentInstrument, instrumentId: currentInstrumentId, clef: currentWrittenClef, writtenClef: currentWrittenClef, concertClef: currentConcertClef, sourceElementId: element.querySelector(':scope > eid')?.textContent.trim() || '', linkedMasterElementId: element.querySelector(':scope > linkedTo')?.textContent.trim() || '', beam: duration.baseBeats < 1 ? (beamGroup || automaticBeam) : '', tieStart, tieEnd }; events.push(previousTimedElement); }
           }
-          if (element.tagName === 'Rest') rests.push({ beat, beats: duration.beats });
+          if (element.tagName === 'Rest') { previousTimedElement = { beat, beats: duration.beats, symbols: musicalSymbols(element) }; rests.push(previousTimedElement); }
           if (!duration.grace) localBeat += duration.beats;
           if (element.tagName === 'Rest' || duration.baseBeats >= 1) { beamGroup = ''; autoBeamCluster += 1; }
         });
       });
     });
     events.sort((left, right) => left.beat - right.beat || left.pitch - right.pitch);
+    events.forEach((event, index) => { const next = events.find((candidate, candidateIndex) => candidateIndex > index && candidate.beat > event.beat + .001); if (event.glissando && next) event.glissandoTarget = next.pitch; if (/^c/i.test(event.tremolo || '') && next) { event.tremoloPitches = [event.pitch, next.pitch]; next.tremoloContinuation = true; } });
     events.forEach((event, index) => { if (!event.tieStart) return; const end = events.find((candidate, candidateIndex) => candidateIndex > index && candidate.tieEnd && candidate.pitch === event.pitch); if (end) { event.audibleBeats = end.beat + end.beats - event.beat; end.silentTie = true; } });
     events.forEach(event => {
       const ramp = ramps.find(candidate => event.beat >= candidate.start && event.beat <= candidate.end);
@@ -1171,13 +1381,14 @@ function parseScore(xml, name, commit = true) {
     const firstTime = changes.find(change => change.type === 'time')?.value || '4/4';
     const firstTempo = changes.find(change => change.type === 'tempo')?.bpm || documentTempo;
     const uniqueRests = rests.filter((rest, index) => rests.findIndex(candidate => Math.abs(candidate.beat - rest.beat) < .001 && Math.abs(candidate.beats - rest.beats) < .001) === index);
-    return { name: staffMetadata?.name || `Piste ${staff.getAttribute('id')}`, instrument: staffMetadata?.instrument || '', instrumentId: staffMetadata?.instrumentId || '', sourceStaffId: staffMetadata?.sourceStaffId || '', linkedMasterStaffId: staffMetadata?.linkedMasterStaffId || '', notes: events.map(event => event.pitch), events, rests: uniqueRests, measureBeats, changes: changes.filter(change => change.beat > 0), clef: writtenClefText, writtenClef: writtenClefText, concertClef: concertClefText, key: firstWrittenKey, writtenKey: firstWrittenKey, concertKey: firstConcertKey, tempo: firstTempo, time: firstTime };
+    return { name: staffMetadata?.name || `Piste ${staff.getAttribute('id')}`, instrument: staffMetadata?.instrument || '', instrumentId: staffMetadata?.instrumentId || '', sourceStaffId: staffMetadata?.sourceStaffId || '', linkedMasterStaffId: staffMetadata?.linkedMasterStaffId || '', notes: events.map(event => event.pitch), events, rests: uniqueRests, pauses, measureBeats, changes: changes.filter(change => change.beat > 0), clef: writtenClefText, writtenClef: writtenClefText, concertClef: concertClefText, key: firstWrittenKey, writtenKey: firstWrittenKey, concertKey: firstConcertKey, tempo: firstTempo, time: firstTime };
   }).filter(track => track.events.length);
   let parsedTracks = parsed;
   if (parsed.length) {
     const conductor = parsed[Math.max(0, staffs.indexOf(referenceStaff))] || parsed[0];
     const globalChanges = conductor.changes.filter(change => change.type === 'tempo' || change.type === 'time');
-    parsedTracks = parsed.map(track => ({ ...track, tempo: conductor.tempo, time: conductor.time, changes: [...track.changes.filter(change => change.type !== 'tempo' && change.type !== 'time'), ...globalChanges].sort((left, right) => left.beat - right.beat) }));
+    const globalPauses = mergedPauses(parsed);
+    parsedTracks = parsed.map(track => ({ ...track, tempo: conductor.tempo, time: conductor.time, pauses: globalPauses, changes: [...track.changes.filter(change => change.type !== 'tempo' && change.type !== 'time'), ...globalChanges].sort((left, right) => left.beat - right.beat) }));
   }
   if (!commit) return parsedTracks;
   tracks = parsedTracks;
@@ -1194,7 +1405,7 @@ function parseMusicXml(xml, name) {
   const definitions = new Map([...doc.querySelectorAll('part-list > score-part')].map(part => { const id = part.getAttribute('id'); return [id, { name: part.querySelector('part-name')?.textContent.trim() || id, instrument: part.querySelector('instrument-name')?.textContent.trim() || part.querySelector('part-name')?.textContent.trim() || '' }]; }));
   const semitones = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
   const parsed = [...doc.querySelectorAll('score-partwise > part')].map(part => {
-    const partId = part.getAttribute('id'); const definition = definitions.get(partId) || { name: partId, instrument: '' }; const events = [], rests = [], measureBeats = [], changes = []; let measureBeat = 0, divisions = 1, currentTime = '4/4', currentWrittenKey = 0, currentConcertKey = 0, currentWrittenClef = inferredClef(definition.instrument, []), currentConcertClef = inferredConcertClef(definition.instrument, currentWrittenClef), transpose = 0, transposeDiatonic = 0, tempo = 120;
+    const partId = part.getAttribute('id'); const definition = definitions.get(partId) || { name: partId, instrument: '' }; const events = [], rests = [], pauses = [], measureBeats = [], changes = []; let measureBeat = 0, divisions = 1, currentTime = '4/4', currentWrittenKey = 0, currentConcertKey = 0, currentWrittenClef = inferredClef(definition.instrument, []), currentConcertClef = inferredConcertClef(definition.instrument, currentWrittenClef), transpose = 0, transposeDiatonic = 0, tempo = 120;
     [...part.querySelectorAll(':scope > measure')].forEach(measure => {
       measureBeats.push(measureBeat);
       const attributes = measure.querySelector(':scope > attributes');
@@ -1231,19 +1442,19 @@ function parseMusicXml(xml, name) {
         if (element.tagName === 'forward') { cursor += Number(element.querySelector('duration')?.textContent || 0) / divisions; measureLength = Math.max(measureLength, cursor); return; }
         if (element.tagName !== 'note') return;
         const beats = Number(element.querySelector(':scope > duration')?.textContent || 0) / divisions; const chord = Boolean(element.querySelector(':scope > chord')); const start = chord ? previousStart : cursor; if (!chord) previousStart = start;
-        if (!element.querySelector(':scope > rest')) { const step = element.querySelector('pitch > step')?.textContent; const octave = Number(element.querySelector('pitch > octave')?.textContent); const alter = Number(element.querySelector('pitch > alter')?.textContent || 0); if (step && Number.isFinite(octave)) { const writtenPitch = (octave + 1) * 12 + semitones[step] + alter; const dots = element.querySelectorAll(':scope > dot').length; const dotFactor = dots ? 2 - 1 / 2 ** dots : 1; const instrumentId = element.querySelector(':scope > instrument')?.getAttribute('id') || ''; const instrument = instrumentDefinitions.get(instrumentId) || definition.instrument; events.push({ pitch: writtenPitch + transpose, writtenPitch, displayPitch: writtenPitch, transpose, transposeDiatonic, chord: [writtenPitch + transpose], writtenChord: [writtenPitch], beat: measureBeat + start, beats: beats || 1, baseBeats: beats / dotFactor || 1, dots, tieStart: Boolean(element.querySelector('tie[type="start"]')), tieEnd: Boolean(element.querySelector('tie[type="stop"]')), articulation: [...element.querySelectorAll('articulations > *')].map(node => node.tagName).join(' '), symbols: [], instrument, instrumentId, clef: currentWrittenClef, writtenClef: currentWrittenClef, concertClef: currentConcertClef }); } } else rests.push({ beat: measureBeat + start, beats: beats || measureLengthAt({ time: currentTime, changes: [] }, measureBeat + start) });
+        if (!element.querySelector(':scope > rest')) { const step = element.querySelector('pitch > step')?.textContent; const octave = Number(element.querySelector('pitch > octave')?.textContent); const alter = Number(element.querySelector('pitch > alter')?.textContent || 0); if (step && Number.isFinite(octave)) { const writtenPitch = (octave + 1) * 12 + semitones[step] + alter; const dots = element.querySelectorAll(':scope > dot').length; const dotFactor = dots ? 2 - 1 / 2 ** dots : 1; const instrumentId = element.querySelector(':scope > instrument')?.getAttribute('id') || ''; const instrument = instrumentDefinitions.get(instrumentId) || definition.instrument; const articulation = [...element.querySelectorAll('notations > articulations > *')].map(node => node.tagName).join(' '); const ornament = [...element.querySelectorAll('notations > ornaments > *')].map(node => node.tagName).join(' '); const tremolo = element.querySelector('notations tremolo')?.textContent.trim() || ''; const arpeggio = Boolean(element.querySelector('notations > arpeggiate')); const glissando = Boolean(element.querySelector('notations > glissando, notations > slide')); const fermata = element.querySelector('notations > fermata'); const playbackStretch = fermata ? 1.5 : 1; const event = { pitch: writtenPitch + transpose, writtenPitch, displayPitch: writtenPitch, transpose, transposeDiatonic, chord: [writtenPitch + transpose], writtenChord: [writtenPitch], beat: measureBeat + start, beats: beats || 1, baseBeats: beats / dotFactor || 1, dots, grace: Boolean(element.querySelector(':scope > grace')), tieStart: Boolean(element.querySelector('tie[type="start"]')), tieEnd: Boolean(element.querySelector('tie[type="stop"]')), articulation, ornament, tremolo, arpeggio, glissando, playbackStretch, symbols: [...new Set([...(alter ? [alter > 0 ? '♯' : '♭'] : []), ...(fermata ? ['𝄐'] : []), ...(ornament ? [normalizedMuseSymbol(ornament)] : [])].filter(Boolean))], instrument, instrumentId, clef: currentWrittenClef, writtenClef: currentWrittenClef, concertClef: currentConcertClef }; events.push(event); if (fermata) pauses.push({ beat: event.beat + event.beats, beats: event.beats * .5, type: 'fermata' }); } } else rests.push({ beat: measureBeat + start, beats: beats || measureLengthAt({ time: currentTime, changes: [] }, measureBeat + start) });
         if (!chord) cursor += beats; measureLength = Math.max(measureLength, cursor);
       });
       measureBeat += Math.max(measureLength, Number(currentTime.split('/')[0]) * 4 / Number(currentTime.split('/')[1]));
     });
-    events.sort((left, right) => left.beat - right.beat || left.pitch - right.pitch); events.forEach((event, index) => { if (!event.tieStart) return; const end = events.find((candidate, candidateIndex) => candidateIndex > index && candidate.tieEnd && candidate.pitch === event.pitch); if (end) { event.audibleBeats = end.beat + end.beats - event.beat; end.silentTie = true; } });
+    events.sort((left, right) => left.beat - right.beat || left.pitch - right.pitch); events.forEach((event, index) => { if (event.glissando) { const next = events.find((candidate, candidateIndex) => candidateIndex > index && candidate.beat > event.beat + .001); if (next) event.glissandoTarget = next.pitch; } if (!event.tieStart) return; const end = events.find((candidate, candidateIndex) => candidateIndex > index && candidate.tieEnd && candidate.pitch === event.pitch); if (end) { event.audibleBeats = end.beat + end.beats - event.beat; end.silentTie = true; } });
     const firstKeyChange = changes.find(change => change.type === 'key');
     const firstClefChange = changes.find(change => change.type === 'clef');
     const writtenKey = firstKeyChange?.writtenValue ?? currentWrittenKey;
     const concertKey = firstKeyChange?.concertValue ?? currentConcertKey;
     const writtenClef = firstClefChange?.writtenValue || currentWrittenClef || inferredClef(definition.instrument, events);
     const concertClef = firstClefChange?.concertValue || currentConcertClef || inferredConcertClef(definition.instrument, writtenClef);
-    return { name: definition.name, instrument: definition.instrument, notes: events.map(event => event.pitch), events, rests, measureBeats, changes: changes.filter(change => change.beat > 0), clef: writtenClef, writtenClef, concertClef, key: writtenKey, writtenKey, concertKey, tempo, time: currentTime };
+    return { name: definition.name, instrument: definition.instrument, notes: events.map(event => event.pitch), events, rests, pauses, measureBeats, changes: changes.filter(change => change.beat > 0), clef: writtenClef, writtenClef, concertClef, key: writtenKey, writtenKey, concertKey, tempo, time: currentTime };
   }).filter(track => track.events.length);
   if (!parsed.length) throw new Error('Aucune note MusicXML reconnue.'); tracks = parsed; trackIndex = 0; statusElement.textContent = `${tracks.length} partie(s) reconnue(s) dans ${name} (MusicXML).`; renderTracks(); render();
 }
@@ -1338,7 +1549,7 @@ function alignExcerptToMaster(excerpt, master) {
     if (Number.isFinite(event.audibleBeats)) aligned.audibleBeats = Math.max(.001, mapBeat(event.beat + event.audibleBeats) - mapBeat(event.beat));
     return aligned;
   }).sort((left, right) => left.beat - right.beat || left.pitch - right.pitch);
-  return { ...excerpt, events, rests: excerpt.rests.map(alignItem), changes: excerpt.changes.map(alignItem).sort((left, right) => left.beat - right.beat), measureBeats: [...new Set(excerpt.measureBeats.map(mapBeat).map(beat => Math.round(beat * 1000) / 1000))].sort((left, right) => left - right), timelineAnchors: anchors.length, timelineAnchorSource: linkedAnchors.length ? 'linked' : 'musical' };
+    return { ...excerpt, events, rests: excerpt.rests.map(alignItem), pauses: (excerpt.pauses || []).map(alignItem), changes: excerpt.changes.map(alignItem).sort((left, right) => left.beat - right.beat), measureBeats: [...new Set(excerpt.measureBeats.map(mapBeat).map(beat => Math.round(beat * 1000) / 1000))].sort((left, right) => left - right), timelineAnchors: anchors.length, timelineAnchorSource: linkedAnchors.length ? 'linked' : 'musical' };
 }
 function combineExcerptDocuments(documents) {
   const masterDocument = documents.find(document => !document.name.includes('/'));
@@ -1366,11 +1577,13 @@ function combineExcerptDocuments(documents) {
   const conductorPool = masterTracks.length ? masterTracks : combined;
   const conductor = conductorPool.reduce((best, track) => (track.measureBeats?.length || 0) > (best.measureBeats?.length || 0) ? track : best, conductorPool[0]);
   const globalChanges = conductor.changes.filter(change => change.type === 'tempo' || change.type === 'time');
+  const globalPauses = mergedPauses(combined);
   const synchronized = combined.map((track, importOrder) => ({
     ...track,
     importOrder,
     tempo: conductor.tempo,
     time: conductor.time,
+    pauses: globalPauses,
     changes: [...track.changes.filter(change => change.type !== 'tempo' && change.type !== 'time'), ...globalChanges].sort((left, right) => left.beat - right.beat)
   }));
   return { tracks: synchronized, excerptCount: usedExcerpts.size, fallbackCount: synchronized.filter(track => track.sourceKind === 'master').length };
@@ -1406,3 +1619,4 @@ renderLatencyStatus();
 renderUnknownSymbolButton();
 detectLayout(); renderTracks(); renderRecord(); render();
 if (location.protocol === 'file:') statusElement.textContent = 'Mode fichier détecté : MS Basic ne peut pas charger ainsi. Sous Windows, lancez « Lancer le Hub Windows.bat » et ouvrez http://127.0.0.1:8765.';
+if (new URLSearchParams(location.search).has('autotest')) window.setTimeout(() => { const result = runRhythmTests(); document.title = result.failures.length ? `Rhythm Lab · AUTOTEST ÉCHEC · ${result.failures.join(' | ')}` : `Rhythm Lab · AUTOTEST ${result.passed}/${result.passed}`; }, 50);

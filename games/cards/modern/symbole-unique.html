@@ -32,7 +32,7 @@
     .symbol.bot-card:hover { filter: none; scale: 1; }
     .round-stack { position: relative; width: 250px; height: var(--stack-height, 0px); margin: 8px auto 28px; transition: height .25s ease; }
     .round-stack.empty { margin-block: 0; }
-    .pile-layer { position: absolute; width: 250px; height: 250px; border: 5px solid #294c9c; border-radius: 50%; box-sizing: border-box; background: repeating-linear-gradient(45deg, #294c9c, #294c9c 7px, #e7efff 7px, #e7efff 14px); transform: translate(calc(var(--layer) * .16px), calc(var(--layer) * .72px)); box-shadow: 0 1px 0 rgba(32,48,72,.16); }
+    .pile-layer { position: absolute; width: 250px; height: 250px; border: 5px solid #294c9c; border-radius: 50%; box-sizing: border-box; background: repeating-linear-gradient(45deg, #294c9c, #294c9c 7px, #e7efff 7px, #e7efff 14px); box-shadow: 0 1px 0 rgba(32,48,72,.16); }
     .round-stack .pile-layer:last-of-type::after { content: '🂠'; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 64px; }
     .pile-count { position: absolute; right: 12px; bottom: 4px; z-index: 60; min-width: 30px; padding: 3px 7px; border-radius: 99px; background: #fff; color: #203048; text-align: center; }
     .center-pile { position: relative; width: 250px; height: var(--center-height, 250px); margin: 4px auto 8px; transition: height .25s ease; }
@@ -42,10 +42,10 @@
     .center-pile .pile-layer.next-card { border-color: #efab24; background: #fff; overflow: hidden; }
     .center-pile .pile-layer.next-card span { position: absolute; line-height: 1; transform: translate(-50%, -50%) rotate(var(--angle)); }
     .center-pile .card { position: relative; left: 0; z-index: 50; transform: translate(var(--top-x, 0px), var(--top-y, 0px)); }
-    .player-area > .card { z-index: 2; }
+    .player-area > .card { z-index: 2; transform: translate(var(--active-x, 0px), var(--active-y, 0px)); }
     .player-area > .card + .round-stack { z-index: 1; margin: -250px auto 14px; }
     .stack-label { text-align: center; font-weight: 700; }
-    .card-animation { position: fixed; z-index: 30; width: 250px; height: 250px; perspective: 700px; pointer-events: none; transition: transform .58s ease-in-out; }
+    .card-animation { position: fixed; z-index: 300; width: 250px; height: 250px; perspective: 700px; pointer-events: none; opacity: 1; transition: transform .68s cubic-bezier(.2,.72,.2,1); }
     .card-animation .flip-inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .27s ease-in-out; }
     .card-animation .face { position: absolute; inset: 0; display: grid; place-items: center; box-sizing: border-box; border: 6px solid #efab24; border-radius: 50%; background: #fff; box-shadow: 0 6px 0 rgba(32,48,72,.2); backface-visibility: hidden; overflow: hidden; }
     .card-animation .back { border-color: #294c9c; background: repeating-linear-gradient(45deg, #294c9c, #294c9c 7px, #e7efff 7px, #e7efff 14px); }
@@ -74,6 +74,6 @@
       <section class="player-area"><h2 id="opponentTitle">Bot</h2><div id="cardTwo" class="card"></div><div class="muted">Cartes sous la carte active</div><div id="stackTwo" class="round-stack"></div></section>
     </div>
   </section></main>
-  <script src="../../../shared/cards.js?v=17"></script><script src="symbole-unique.js?v=15"></script><script src="../../../shared/records.js?v=1"></script>
+  <script src="../../../shared/cards.js?v=18"></script><script src="symbole-unique.js?v=16"></script><script src="../../../shared/records.js?v=2"></script>
 </body>
 </html>

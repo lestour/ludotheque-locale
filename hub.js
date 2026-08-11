@@ -23,7 +23,10 @@ const games = [
       { id: 'parity', label: 'Pair / Impair' },
       { id: 'whisper', label: 'German Whispers' },
       { id: 'renban', label: 'Renban' },
-      { id: 'sandwich', label: 'Sandwich' }
+      { id: 'sandwich', label: 'Sandwich' },
+      { id: 'entropic', label: 'Lignes entropiques' },
+      { id: 'modular', label: 'Lignes modulaires' },
+      { id: 'quadruple', label: 'Quadruples' }
     ]
   },
   {

@@ -26,6 +26,8 @@ const stockCount = document.getElementById('stockCount');
 const wasteCount = document.getElementById('wasteCount');
 const hiddenCount = document.getElementById('hiddenCount');
 const rulesSummary = document.getElementById('rulesSummary');
+const stockLayerOffsetX = .22;
+const stockLayerOffsetY = .55;
 
 const launchOptions = new URLSearchParams(window.location.search);
 const requestedDrawCount = launchOptions.get('draw');
@@ -286,18 +288,26 @@ function drawStock() {
 }
 
 function animateStockDraw(cards, onFinish) {
-  const start = stockSlot.getBoundingClientRect();
+  const stockBox = stockSlot.getBoundingClientRect();
+  const renderedTop = stockSlot.querySelector('.card')?.getBoundingClientRect() || stockBox;
   const end = wasteSlot.getBoundingClientRect();
+  const previousCount = game.stock.length + cards.length;
+  const renderedTopLayer = Math.max(0, previousCount - 1);
+  const baseLeft = renderedTop.left - renderedTopLayer * stockLayerOffsetX;
+  const baseTop = renderedTop.top - renderedTopLayer * stockLayerOffsetY;
   cards.forEach((drawnCard, index) => {
+    const sourceLayer = Math.max(0, previousCount - 1 - index);
+    const startLeft = baseLeft + sourceLayer * stockLayerOffsetX;
+    const startTop = baseTop + sourceLayer * stockLayerOffsetY;
     const card = document.createElement('div');
     card.className = 'stock-draw-animation';
-    card.style.left = `${start.left}px`;
-    card.style.top = `${start.top}px`;
+    card.style.left = `${startLeft}px`;
+    card.style.top = `${startTop}px`;
     const axis = index % 2 ? 'flip-vertical' : 'flip-horizontal';
     card.innerHTML = `<div class="flip-inner ${axis}"><div class="flip-face flip-back">?</div><div class="flip-face flip-front ${drawnCard.suit.color}"><span>${drawnCard.label}</span><strong>${drawnCard.suit.symbol}</strong></div></div>`;
     document.body.appendChild(card);
     window.setTimeout(() => {
-      card.style.transform = `translate(${end.left - start.left + index * 20}px, ${end.top - start.top}px) rotate(${index * 3}deg)`;
+      card.style.transform = `translate(${end.left - startLeft + index * 20}px, ${end.top - startTop}px) rotate(${index * 3}deg)`;
       card.classList.add('move');
     }, index * 70);
     window.setTimeout(() => card.querySelector('.flip-inner')?.classList.add('revealed'), 220 + index * 70);
@@ -716,8 +726,14 @@ function enableDrag(cardButton, source, column = null, index = null) {
 
 function render() {
   stockSlot.classList.toggle('has-cards', game.stock.length > 0);
-  stockSlot.style.setProperty('--stock-layers', Math.min(8, game.stock.length));
-  stockSlot.innerHTML = game.stock.length ? cardMarkup(null, false, true) : '<span class="slot-empty">↻</span>';
+  if (game.stock.length) {
+    const layers = Array.from({ length: Math.max(0, game.stock.length - 1) }, (_, layer) => `<span class="stock-layer" style="transform:translate(${(layer * stockLayerOffsetX).toFixed(2)}px,${(layer * stockLayerOffsetY).toFixed(2)}px);z-index:${layer}"></span>`).join('');
+    stockSlot.innerHTML = `${layers}${cardMarkup(null, false, true)}`;
+    const topLayer = game.stock.length - 1;
+    const topCard = stockSlot.querySelector('.card');
+    topCard.style.transform = `translate(${(topLayer * stockLayerOffsetX).toFixed(2)}px,${(topLayer * stockLayerOffsetY).toFixed(2)}px)`;
+    topCard.style.zIndex = String(game.stock.length + 1);
+  } else stockSlot.innerHTML = '<span class="slot-empty">↻</span>';
   wasteSlot.innerHTML = '';
   const visibleWaste = game.waste.slice(-game.drawCount);
   wasteSlot.style.width = `${92 + Math.max(0, visibleWaste.length - 1) * 20}px`;
@@ -1013,3 +1029,24 @@ nextTraceButton.addEventListener('click', () => showTrace(traceIndex + 1));
 traceSlider.addEventListener('input', () => showTrace(Number(traceSlider.value)));
 localStorage.setItem('game-hub:last-game', 'klondike');
 createGame();
+
+if (new URLSearchParams(location.search).has('stockTest')) {
+  const checks = [];
+  const initialCount = game.stock.length;
+  const topCard = stockSlot.querySelector('.card');
+  const lastLayer = stockSlot.querySelector('.stock-layer:last-of-type');
+  checks.push(document.querySelectorAll('#stock .stock-layer').length === initialCount - 1);
+  if (lastLayer) {
+    const topBox = topCard.getBoundingClientRect();
+    const layerBox = lastLayer.getBoundingClientRect();
+    checks.push(Math.abs(topBox.left - layerBox.left - stockLayerOffsetX) < .6 && Math.abs(topBox.top - layerBox.top - stockLayerOffsetY) < .6);
+    drawStock();
+    const animationBox = document.querySelector('.stock-draw-animation')?.getBoundingClientRect();
+    checks.push(Boolean(animationBox) && Math.abs(animationBox.left - topBox.left) < .6 && Math.abs(animationBox.top - topBox.top) < .6);
+  }
+  window.setTimeout(() => {
+    checks.push(game.stock.length === initialCount - game.drawCount);
+    checks.push(document.querySelectorAll('#stock .stock-layer').length === Math.max(0, game.stock.length - 1));
+    document.title = `PIOCHE TEST · ${checks.filter(Boolean).length}/${checks.length}`;
+  }, 850);
+}

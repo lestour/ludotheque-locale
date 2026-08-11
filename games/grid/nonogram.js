@@ -15,13 +15,15 @@ const traceLabel = document.getElementById('traceLabel');
 const modeSelect = document.getElementById('mode');
 const imageInput = document.getElementById('imageInput');
 const paletteElement = document.getElementById('palette');
+const paletteSizeSelect = document.getElementById('paletteSize');
+const paletteSizeLabel = document.getElementById('paletteSizeLabel');
 const imageTools = document.createElement('div');
 imageTools.className = 'toolbar';
 paletteElement.after(imageTools);
 const imageOverview = document.createElement('div');
 imageOverview.id = 'imageOverview';
 imageOverview.hidden = true;
-board.after(imageOverview);
+board.parentNode.insertBefore(imageOverview, board);
 
 let size = Number(sizeSelect.value);
 let solution = [];
@@ -37,14 +39,15 @@ let isViewingTrace = false;
 let isColorMode = false;
 let colorSolution = [];
 let colorPlayer = [];
-let paletteColors = ['#e53e3e', '#dd8b16', '#e5c823', '#38a169', '#3182ce', '#805ad5'];
+let paletteColors = ['#e53e3e', '#dd8b16', '#e5c823', '#38a169', '#3182ce', '#805ad5', '#d53f8c', '#319795'];
 let selectedColor = paletteColors[0];
 let importedImage = null;
 let importedCrop = null;
 let imageBlocks = new Map();
 let imageGrid = { columns: 3, rows: 3 };
+let imageSuggestedSizes = new Map();
 let traceIsColor = false;
-let paletteLimit = 8;
+let paletteLimit = Number(paletteSizeSelect.value);
 
 function resizeBoardContainer(columns, rows) {
   const requiredWidth = Math.max(1180, columns * 30 + 74);
@@ -57,17 +60,8 @@ function renderImageTools() {
   if (!importedImage) return;
   const formats = imageSubdivisionFormats(importedImage);
   const currentKey = imageGridKey(imageGrid);
-  imageTools.innerHTML = `<span class="muted">Image ${importedImage.naturalWidth || importedImage.width} × ${importedImage.naturalHeight || importedImage.height} :</span><button id="removeImage">Supprimer l’image</button><label class="muted">Couleurs <select id="paletteLimit"><option value="3">3 · facile</option><option value="5">5 · normal</option><option value="8" selected>8 · précis</option></select></label><label class="muted">Découpage <select id="imageGridFormat">${formats.map(format => `<option value="${imageGridKey(format)}"${imageGridKey(format) === currentKey ? ' selected' : ''}>${format.columns} × ${format.rows}${format.recommended ? ' · recommandé' : ''} · ${format.columns * format.rows} blocs</option>`).join('')}</select></label><button id="showImageOverview">Image entière</button>`;
+  imageTools.innerHTML = `<span class="muted">Image ${importedImage.naturalWidth || importedImage.width} × ${importedImage.naturalHeight || importedImage.height} · ${paletteLimit} couleurs</span><strong id="imageCompletion">Progression : ${imageCompletionPercent()} %</strong><label class="muted">Découpage <select id="imageGridFormat">${formats.map(format => `<option value="${imageGridKey(format)}"${imageGridKey(format) === currentKey ? ' selected' : ''}>${format.columns} × ${format.rows}${format.recommended ? ' · recommandé' : ''} · ${format.columns * format.rows} blocs</option>`).join('')}</select></label><button id="showImageOverview">Image entière</button><button id="removeImage">Supprimer l’image</button>`;
   document.getElementById('removeImage').onclick = removeImportedImage;
-  const limitSelect = document.getElementById('paletteLimit');
-  limitSelect.value = String(paletteLimit);
-  limitSelect.onchange = () => {
-    paletteLimit = Number(limitSelect.value);
-    if (!importedImage) return;
-    imageBlocks = new Map();
-    if (importedCrop) quantizeImage(importedImage, importedCrop);
-    else showImageOverview(imageGrid);
-  };
   document.getElementById('imageGridFormat').onchange = event => {
     const [columns, rows] = event.target.value.split('x').map(Number);
     showImageSubgrids({ columns, rows });
@@ -111,13 +105,15 @@ function removeImportedImage() {
   importedImage = null;
   importedCrop = null;
   imageBlocks = new Map();
+  imageSuggestedSizes = new Map();
   imageOverview.hidden = true;
   board.hidden = false;
   imageInput.value = '';
   imageTools.hidden = true;
   isColorMode = false;
   modeSelect.value = 'mono';
-  paletteColors = ['#e53e3e', '#dd8b16', '#e5c823', '#38a169', '#3182ce', '#805ad5'];
+  paletteSizeLabel.hidden = true;
+  paletteColors = generatedPalette(paletteLimit);
   createSolution();
   clearTrace();
   render();
@@ -132,31 +128,58 @@ function saveCurrentImageBlock() {
   imageBlocks.set(cropKey(), { size, palette: paletteColors.slice(), solution: colorSolution.slice(), player: colorPlayer.slice() });
 }
 
+function currentImageBlockState() {
+  return importedCrop && isColorMode
+    ? { size, palette: paletteColors, solution: colorSolution, player: colorPlayer }
+    : null;
+}
+
+function blockCompletion(state) {
+  if (!state?.solution?.length || !state?.player?.length) return { completed: 0, total: state?.size ? state.size * state.size : 0 };
+  const completed = state.solution.reduce((total, expected, index) => {
+    const actual = state.player[index];
+    return total + Number(expected ? actual === expected : actual === -1);
+  }, 0);
+  return { completed, total: state.solution.length };
+}
+
+function imageCompletionPercent(format = imageGrid) {
+  if (!importedImage) return 0;
+  let completed = 0;
+  let total = 0;
+  for (let row = 0; row < format.rows; row += 1) for (let column = 0; column < format.columns; column += 1) {
+    const crop = { row, column, columns: format.columns, rows: format.rows };
+    const key = cropKey(crop);
+    const state = importedCrop && key === cropKey(importedCrop) ? currentImageBlockState() : imageBlocks.get(key);
+    const progress = blockCompletion(state);
+    completed += progress.completed;
+    total += progress.total || suggestedSizeForCrop(row, column, format.columns, format.rows) ** 2;
+  }
+  return total ? Math.round(completed * 1000 / total) / 10 : 0;
+}
+
+function updateImageProgressDisplays() {
+  const progress = imageCompletionPercent();
+  const toolbarProgress = document.getElementById('imageCompletion');
+  const overviewProgress = document.getElementById('overviewCompletion');
+  if (toolbarProgress) toolbarProgress.textContent = `Progression : ${progress} %`;
+  if (overviewProgress) overviewProgress.textContent = `Progression : ${progress} %`;
+}
+
 function paintOverviewCanvas(canvas, state, crop) {
   const context = canvas.getContext('2d');
   const resolution = state?.size || suggestedSizeForCrop(crop.row, crop.column, crop.columns, crop.rows);
-  const padding = 5;
-  const pixel = Math.max(2, Math.floor((canvas.width - padding * 2) / resolution));
   context.fillStyle = '#f8fafc';
   context.fillRect(0, 0, canvas.width, canvas.height);
   for (let row = 0; row < resolution; row += 1) for (let column = 0; column < resolution; column += 1) {
     const value = state?.player?.[row * resolution + column];
     context.fillStyle = value && value !== -1 ? value : '#ffffff';
-    context.fillRect(padding + column * pixel, padding + row * pixel, pixel - 1, pixel - 1);
-    if (value === -1) {
-      context.strokeStyle = '#94a3b8';
-      context.lineWidth = 1;
-      context.beginPath();
-      context.moveTo(padding + column * pixel + 2, padding + row * pixel + 2);
-      context.lineTo(padding + (column + 1) * pixel - 3, padding + (row + 1) * pixel - 3);
-      context.moveTo(padding + (column + 1) * pixel - 3, padding + row * pixel + 2);
-      context.lineTo(padding + column * pixel + 2, padding + (row + 1) * pixel - 3);
-      context.stroke();
-    }
+    const left = Math.floor(column * canvas.width / resolution);
+    const top = Math.floor(row * canvas.height / resolution);
+    const right = Math.ceil((column + 1) * canvas.width / resolution);
+    const bottom = Math.ceil((row + 1) * canvas.height / resolution);
+    context.fillRect(left, top, right - left, bottom - top);
   }
-  context.strokeStyle = '#334155';
-  context.lineWidth = 2;
-  context.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
 }
 
 function showImageOverview(format = imageGrid) {
@@ -165,7 +188,7 @@ function showImageOverview(format = imageGrid) {
   importedCrop = null;
   board.hidden = true;
   imageOverview.hidden = false;
-  imageOverview.innerHTML = `<div class="overview-title"><strong>Image entière · ${imageGrid.columns} × ${imageGrid.rows} · ${imageGrid.columns * imageGrid.rows} blocs</strong><span class="muted">Survolez un bloc puis cliquez pour continuer sa grille. Les blocs blancs ne sont pas encore commencés.</span></div><div class="image-mosaic" style="--columns:${imageGrid.columns}"></div>`;
+  imageOverview.innerHTML = `<div class="overview-title"><strong>Image entière · ${imageGrid.columns} × ${imageGrid.rows} · ${imageGrid.columns * imageGrid.rows} blocs</strong><strong id="overviewCompletion">Progression : ${imageCompletionPercent()} %</strong><span class="muted">Survolez puis cliquez sur une zone pour continuer sa grille.</span></div><div class="image-mosaic" style="--columns:${imageGrid.columns}"></div>`;
   const mosaic = imageOverview.querySelector('.image-mosaic');
   for (let row = 0; row < imageGrid.rows; row += 1) for (let column = 0; column < imageGrid.columns; column += 1) {
     const crop = { row, column, columns: imageGrid.columns, rows: imageGrid.rows };
@@ -173,7 +196,8 @@ function showImageOverview(format = imageGrid) {
     button.className = 'image-block';
     button.title = `Ouvrir le bloc ${row + 1}, ${column + 1}`;
     const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 160;
+    canvas.width = 240;
+    canvas.height = Math.max(60, Math.round(240 * ((importedImage.height / imageGrid.rows) / (importedImage.width / imageGrid.columns))));
     paintOverviewCanvas(canvas, imageBlocks.get(cropKey(crop)), crop);
     button.append(canvas);
     button.onclick = () => openImageCrop(crop);
@@ -205,6 +229,8 @@ function openImageCrop(crop) {
 }
 
 function suggestedSizeForCrop(row, column, columns, rows) {
+  const key = `${columns}x${rows}:${row}:${column}`;
+  if (imageSuggestedSizes.has(key)) return imageSuggestedSizes.get(key);
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 20;
   const context = canvas.getContext('2d', { willReadFrequently: true });
@@ -214,7 +240,9 @@ function suggestedSizeForCrop(row, column, columns, rows) {
   const data = context.getImageData(0, 0, 20, 20).data;
   let variation = 0;
   for (let index = 4; index < data.length; index += 4) variation += Math.abs(data[index] - data[index - 4]) + Math.abs(data[index + 1] - data[index - 3]) + Math.abs(data[index + 2] - data[index - 2]);
-  return variation > 29000 ? 25 : variation > 16000 ? 20 : variation > 7000 ? 15 : 10;
+  const suggested = variation > 52000 ? 40 : variation > 39000 ? 35 : variation > 29000 ? 30 : variation > 20000 ? 25 : variation > 13000 ? 20 : variation > 7000 ? 15 : 10;
+  imageSuggestedSizes.set(key, suggested);
+  return suggested;
 }
 
 function showImageSubgrids(format) {
@@ -353,39 +381,194 @@ function applyAutomaticCrosses() {
   return changes;
 }
 
-function linePatterns(clues, known) {
-  const blocks = normalizedClues(clues);
-  const patterns = [];
-  const compatible = pattern => pattern.every((filled, index) => (known[index] !== 1 || filled) && (known[index] !== -1 || !filled));
-  function place(blockIndex, minimumStart, pattern) {
-    if (blockIndex === blocks.length) {
-      if (compatible(pattern)) patterns.push(pattern);
-      return;
+const EMPTY_CELL = -1;
+const MONO_COLOR = '__mono__';
+const lineAutomatonCache = new Map();
+
+function lineAutomaton(clues) {
+  const key = clues.map(clue => `${clue.color}:${clue.length}`).join('|');
+  if (lineAutomatonCache.has(key)) return lineAutomatonCache.get(key);
+  const states = [];
+  const transitions = [];
+  const ids = new Map();
+  const stateId = (type, run = 0, progress = 0) => {
+    const stateKey = `${type}:${run}:${progress}`;
+    if (!ids.has(stateKey)) {
+      ids.set(stateKey, states.length);
+      states.push({ type, run, progress });
+      transitions.push([]);
     }
-    const remainingBlocks = blocks.slice(blockIndex + 1);
-    const remainingSpace = remainingBlocks.reduce((total, block) => total + block, 0) + remainingBlocks.length;
-    const blockLength = blocks[blockIndex];
-    const maximumStart = size - blockLength - remainingSpace;
-    for (let start = minimumStart; start <= maximumStart; start += 1) {
-      const next = pattern.slice();
-      for (let offset = 0; offset < blockLength; offset += 1) next[start + offset] = true;
-      place(blockIndex + 1, start + blockLength + 1, next);
+    return ids.get(stateKey);
+  };
+  const waiting = run => stateId('waiting', run);
+  const afterRun = run => {
+    const nextRun = run + 1;
+    if (nextRun >= clues.length) return waiting(clues.length);
+    return clues[nextRun].color === clues[run].color ? stateId('separator', nextRun) : waiting(nextRun);
+  };
+  const start = waiting(0);
+  for (let id = 0; id < states.length; id += 1) {
+    const state = states[id];
+    if (state.type === 'waiting') {
+      transitions[id].push({ value: EMPTY_CELL, next: id });
+      if (state.run < clues.length) {
+        const run = clues[state.run];
+        transitions[id].push({ value: run.color, next: run.length === 1 ? afterRun(state.run) : stateId('run', state.run, 1) });
+      }
+    } else if (state.type === 'separator') {
+      transitions[id].push({ value: EMPTY_CELL, next: waiting(state.run) });
+    } else {
+      const run = clues[state.run];
+      const progress = state.progress + 1;
+      transitions[id].push({ value: run.color, next: progress === run.length ? afterRun(state.run) : stateId('run', state.run, progress) });
     }
   }
-  place(0, 0, Array(size).fill(false));
-  return patterns;
+  const automaton = { start, accept: waiting(clues.length), transitions };
+  lineAutomatonCache.set(key, automaton);
+  return automaton;
+}
+
+function analyzeLineConstraints(clues, known) {
+  const automaton = lineAutomaton(clues);
+  const allows = (cell, value) => cell === null || cell === value;
+  const forward = Array.from({ length: known.length + 1 }, () => new Set());
+  forward[0].add(automaton.start);
+  for (let position = 0; position < known.length; position += 1) {
+    forward[position].forEach(state => automaton.transitions[state].forEach(transition => {
+      if (allows(known[position], transition.value)) forward[position + 1].add(transition.next);
+    }));
+  }
+  if (!forward[known.length].has(automaton.accept)) return { contradiction: true, possibleValues: known.map(() => new Set()) };
+  const backward = Array.from({ length: known.length + 1 }, () => new Set());
+  backward[known.length].add(automaton.accept);
+  for (let position = known.length - 1; position >= 0; position -= 1) {
+    forward[position].forEach(state => {
+      if (automaton.transitions[state].some(transition => allows(known[position], transition.value) && backward[position + 1].has(transition.next))) backward[position].add(state);
+    });
+  }
+  const possibleValues = known.map(() => new Set());
+  known.forEach((cell, position) => {
+    forward[position].forEach(state => automaton.transitions[state].forEach(transition => {
+      if (allows(cell, transition.value) && backward[position + 1].has(transition.next)) possibleValues[position].add(transition.value);
+    }));
+  });
+  return { contradiction: false, possibleValues };
+}
+
+function intersectValues(first, second) {
+  return new Set([...first].filter(value => second.has(value)));
+}
+
+function propagateConstraintState(initialState, rowClues, columnClues) {
+  const state = initialState.slice();
+  const analyses = Array(size * 2);
+  const queued = Array(size * 2).fill(true);
+  const queue = Array.from({ length: size * 2 }, (_, index) => index);
+  let cursor = 0;
+  let changes = 0;
+  const enqueue = line => {
+    if (queued[line]) return;
+    queued[line] = true;
+    queue.push(line);
+  };
+  while (true) {
+    while (cursor < queue.length) {
+      const line = queue[cursor++];
+      queued[line] = false;
+      const isRow = line < size;
+      const lineIndex = isRow ? line : line - size;
+      const indexes = isRow ? rowLine(lineIndex) : columnLine(lineIndex);
+      const clues = isRow ? rowClues[lineIndex] : columnClues[lineIndex];
+      const analysis = analyzeLineConstraints(clues, indexes.map(index => state[index]));
+      analyses[line] = analysis;
+      if (analysis.contradiction) return { state, analyses, contradiction: true, changes, candidates: [] };
+      indexes.forEach((index, position) => {
+        if (state[index] !== null || analysis.possibleValues[position].size !== 1) return;
+        state[index] = analysis.possibleValues[position].values().next().value;
+        changes += 1;
+        const row = Math.floor(index / size);
+        const column = index % size;
+        enqueue(row);
+        enqueue(size + column);
+      });
+    }
+    const candidates = Array(size * size).fill(null);
+    let intersectionChanges = 0;
+    for (let index = 0; index < state.length; index += 1) {
+      if (state[index] !== null) continue;
+      const row = Math.floor(index / size);
+      const column = index % size;
+      const possible = intersectValues(analyses[row].possibleValues[column], analyses[size + column].possibleValues[row]);
+      candidates[index] = possible;
+      if (!possible.size) return { state, analyses, contradiction: true, changes, candidates };
+      if (possible.size !== 1) continue;
+      state[index] = possible.values().next().value;
+      changes += 1;
+      intersectionChanges += 1;
+      enqueue(row);
+      enqueue(size + column);
+    }
+    if (!intersectionChanges) return { state, analyses, contradiction: false, changes, candidates };
+  }
+}
+
+function searchConstraintSolution(initialState, rowClues, columnClues) {
+  const started = performance.now();
+  const deadline = started + Math.max(3000, Math.min(9000, size * 150));
+  const maximumNodes = Math.max(40000, Math.min(180000, size * size * 70));
+  let nodes = 0;
+  let cutoff = false;
+  const visit = state => {
+    nodes += 1;
+    if (nodes > maximumNodes || performance.now() > deadline) { cutoff = true; return null; }
+    const propagated = propagateConstraintState(state, rowClues, columnClues);
+    if (propagated.contradiction) return null;
+    let bestIndex = -1;
+    let bestValues = null;
+    propagated.candidates.forEach((possible, index) => {
+      if (!possible || possible.size < 2 || (bestValues && possible.size >= bestValues.size)) return;
+      bestIndex = index;
+      bestValues = possible;
+    });
+    if (bestIndex === -1) return propagated.state;
+    const orderedValues = [...bestValues].sort((left, right) => Number(left === EMPTY_CELL) - Number(right === EMPTY_CELL));
+    for (const value of orderedValues) {
+      const branch = propagated.state.slice();
+      branch[bestIndex] = value;
+      const result = visit(branch);
+      if (result) return result;
+      if (cutoff) break;
+    }
+    return null;
+  };
+  return { solution: visit(initialState.slice()), nodes, cutoff, elapsed: performance.now() - started };
+}
+
+function monoConstraintClues() {
+  const convert = indexes => normalizedClues(cluesFor(lineState(indexes))).map(length => ({ color: MONO_COLOR, length }));
+  return {
+    rows: Array.from({ length: size }, (_, row) => convert(rowLine(row))),
+    columns: Array.from({ length: size }, (_, column) => convert(columnLine(column)))
+  };
+}
+
+function colorConstraintClues() {
+  return {
+    rows: Array.from({ length: size }, (_, row) => colorRuns(colorLine(row, null))),
+    columns: Array.from({ length: size }, (_, column) => colorRuns(colorLine(null, column)))
+  };
 }
 
 function solveLine(indexes) {
-  const clues = cluesFor(lineState(indexes));
-  const known = playerLine(indexes);
-  const patterns = linePatterns(clues, known);
-  if (!patterns.length) return { changes: 0, contradiction: true };
+  const clues = normalizedClues(cluesFor(lineState(indexes))).map(length => ({ color: MONO_COLOR, length }));
+  const known = playerLine(indexes).map(value => value === 0 ? null : (value === 1 ? MONO_COLOR : EMPTY_CELL));
+  const analysis = analyzeLineConstraints(clues, known);
+  if (analysis.contradiction) return { changes: 0, contradiction: true };
   let changes = 0;
   indexes.forEach((index, position) => {
-    const alwaysFilled = patterns.every(pattern => pattern[position]);
-    const alwaysEmpty = patterns.every(pattern => !pattern[position]);
-    const value = alwaysFilled ? 1 : (alwaysEmpty ? -1 : 0);
+    const possible = analysis.possibleValues[position];
+    const fixed = possible.size === 1 ? possible.values().next().value : null;
+    const value = fixed === MONO_COLOR ? 1 : (fixed === EMPTY_CELL ? -1 : 0);
     if (value && player[index] !== value) {
       player[index] = value;
       changes += 1;
@@ -428,6 +611,8 @@ function buildLogicalTrace(startState) {
   const messages = ['État de départ.'];
   let totalChanges = 0;
   let contradictions = 0;
+  let usedSearch = false;
+  let searchCutoff = false;
   let progress = true;
   while (progress) {
     progress = false;
@@ -457,9 +642,31 @@ function buildLogicalTrace(startState) {
       messages.push(`${crosses} croix ajoutée${crosses > 1 ? 's' : ''} sur des lignes ou colonnes terminées.`);
     }
   }
+  if (!contradictions && player.some(value => value === 0)) {
+    const clues = monoConstraintClues();
+    const genericState = player.map(value => value === 0 ? null : (value === 1 ? MONO_COLOR : EMPTY_CELL));
+    const search = searchConstraintSolution(genericState, clues.rows, clues.columns);
+    searchCutoff = search.cutoff;
+    if (search.solution) {
+      usedSearch = true;
+      for (let row = 0; row < size; row += 1) {
+        let rowChanges = 0;
+        rowLine(row).forEach(index => {
+          const value = search.solution[index] === MONO_COLOR ? 1 : -1;
+          if (player[index] === value) return;
+          player[index] = value;
+          rowChanges += 1;
+        });
+        if (!rowChanges) continue;
+        totalChanges += rowChanges;
+        snapshots.push(player.slice());
+        messages.push(`Hypothèses et contradictions · ligne ${row + 1} : ${rowChanges} case${rowChanges > 1 ? 's' : ''} déterminée${rowChanges > 1 ? 's' : ''}.`);
+      }
+    }
+  }
   const finalState = player.slice();
   player = savedPlayer;
-  return { snapshots, messages, finalState, totalChanges, contradictions };
+  return { snapshots, messages, finalState, totalChanges, contradictions, usedSearch, searchCutoff };
 }
 
 function prepareTrace() {
@@ -482,7 +689,11 @@ function solveLogically() {
   isViewingTrace = false;
   solverMessage = result.contradictions
     ? 'Contradiction détectée : vérifie les cases déjà posées.'
-    : (result.totalChanges ? `${result.totalChanges} déduction${result.totalChanges > 1 ? 's' : ''} logique${result.totalChanges > 1 ? 's' : ''} appliquée${result.totalChanges > 1 ? 's' : ''}.` : 'Aucune déduction logique supplémentaire.');
+    : result.usedSearch
+      ? `${result.totalChanges} déductions appliquées, avec recherche par hypothèses et contradictions.`
+      : result.searchCutoff
+        ? 'Les déductions simples sont terminées ; la recherche avancée a atteint sa limite de calcul.'
+        : (result.totalChanges ? `${result.totalChanges} déduction${result.totalChanges > 1 ? 's' : ''} logique${result.totalChanges > 1 ? 's' : ''} appliquée${result.totalChanges > 1 ? 's' : ''}.` : 'Aucune déduction logique supplémentaire.');
   updateTraceControls();
   render();
 }
@@ -660,6 +871,27 @@ function renderPalette() {
   }));
 }
 
+function generatedPalette(count) {
+  const base = ['#e53e3e', '#dd8b16', '#d4b814', '#38a169', '#319795', '#3182ce', '#805ad5', '#d53f8c'];
+  if (count <= base.length) return base.slice(0, count);
+  const colors = base.slice();
+  const hslToHex = (hue, saturation, lightness) => {
+    saturation /= 100;
+    lightness /= 100;
+    const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+    const part = hue / 60;
+    const second = chroma * (1 - Math.abs(part % 2 - 1));
+    const [red, green, blue] = part < 1 ? [chroma, second, 0] : part < 2 ? [second, chroma, 0] : part < 3 ? [0, chroma, second] : part < 4 ? [0, second, chroma] : part < 5 ? [second, 0, chroma] : [chroma, 0, second];
+    const match = lightness - chroma / 2;
+    return `#${[red, green, blue].map(channel => Math.round((channel + match) * 255).toString(16).padStart(2, '0')).join('')}`;
+  };
+  while (colors.length < count) {
+    const index = colors.length - base.length;
+    colors.push(hslToHex((index * 137.508 + 18) % 360, index % 3 === 0 ? 78 : 66, index % 2 === 0 ? 42 : 58));
+  }
+  return colors;
+}
+
 function addColorSeparators(maxRowClues, maxColumnClues) {
   const totalColumns = maxRowClues + size;
   const totalRows = maxColumnClues + size;
@@ -723,6 +955,7 @@ function renderColor() {
         const error = showErrors.checked && ((value && value !== -1 && value !== colorSolution[cellIndex]) || (value === -1 && colorSolution[cellIndex]));
         element.className = `cell${value && value !== -1 ? ' color-filled' : (value === -1 ? ' marked' : '')}${error ? ' error' : ''}`;
         if (value && value !== -1) element.style.background = value;
+        if (error) element.title = value === -1 ? 'Cette case doit être colorée.' : 'Cette couleur est incorrecte.';
         element.dataset.index = cellIndex;
         element.addEventListener('pointerdown', event => {
           if (event.button !== 0 && event.button !== 2) return;
@@ -754,9 +987,11 @@ function renderColor() {
   const mistakes = colorPlayer.reduce((total, value, index) => total + Number((value && value !== -1 && value !== colorSolution[index]) || (value === -1 && colorSolution[index])), 0);
   errorCount.textContent = `Erreurs : ${mistakes}`;
   status.textContent = complete ? 'Nonogram couleur terminé !' : (solverMessage || 'Choisis une couleur dans la palette, puis remplis les indices colorés.');
+  updateImageProgressDisplays();
 }
 
 function createColorPuzzle() {
+  paletteColors = generatedPalette(paletteLimit);
   createRandomSolution();
   colorSolution = solution.map(value => value ? paletteColors[Math.floor(Math.random() * paletteColors.length)] : null);
   colorPlayer = Array(size * size).fill(null);
@@ -764,6 +999,7 @@ function createColorPuzzle() {
 }
 
 function quantizeImage(image, crop = importedCrop) {
+  paletteSizeLabel.hidden = false;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
@@ -810,9 +1046,11 @@ function importImage(file) {
   image.addEventListener('load', () => {
     isColorMode = true;
     modeSelect.value = 'color';
+    paletteSizeLabel.hidden = false;
     importedImage = image;
     importedCrop = null;
     imageBlocks = new Map();
+    imageSuggestedSizes = new Map();
     imageGrid = recommendedImageGrid(image);
     renderImageTools();
     showImageOverview(imageGrid);
@@ -820,35 +1058,17 @@ function importImage(file) {
   image.src = URL.createObjectURL(file);
 }
 
-function colorLinePatterns(clues, known) {
-  const patterns = [];
-  const compatible = pattern => pattern.every((value, index) => known[index] === null || (known[index] === -1 ? value === null : value === known[index]));
-  const minimumLength = start => clues.slice(start).reduce((total, clue, offset) => total + clue.length + Number(offset > 0 && clue.color === clues[start + offset - 1].color), 0);
-  const place = (runIndex, minimumStart, pattern) => {
-    if (runIndex === clues.length) { if (compatible(pattern)) patterns.push(pattern); return; }
-    const run = clues[runIndex];
-    const laterLength = minimumLength(runIndex + 1) + Number(clues[runIndex + 1]?.color === run.color);
-    for (let start = minimumStart; start <= size - run.length - laterLength; start += 1) {
-      const next = pattern.slice();
-      for (let offset = 0; offset < run.length; offset += 1) next[start + offset] = run.color;
-      const separator = clues[runIndex + 1]?.color === run.color ? 1 : 0;
-      place(runIndex + 1, start + run.length + separator, next);
-    }
-  };
-  place(0, 0, Array(size).fill(null));
-  return patterns;
-}
-
 function solveColorLine(indexes) {
   const clues = colorRuns(indexes.map(index => colorSolution[index]));
   const known = indexes.map(index => colorPlayer[index]);
-  const patterns = colorLinePatterns(clues, known);
-  if (!patterns.length) return { changes: 0, contradiction: true };
+  const analysis = analyzeLineConstraints(clues, known);
+  if (analysis.contradiction) return { changes: 0, contradiction: true };
   let changes = 0;
   indexes.forEach((index, position) => {
-    const fixed = patterns.every(pattern => pattern[position] === patterns[0][position]) ? patterns[0][position] : undefined;
-    const next = fixed === null ? -1 : fixed;
-    if (fixed !== undefined && colorPlayer[index] !== next) { colorPlayer[index] = next; changes += 1; }
+    const possible = analysis.possibleValues[position];
+    if (possible.size !== 1) return;
+    const next = possible.values().next().value;
+    if (colorPlayer[index] !== next) { colorPlayer[index] = next; changes += 1; }
   });
   return { changes, contradiction: false };
 }
@@ -877,6 +1097,8 @@ function buildColorTrace(startState) {
   const messages = ['État de départ.'];
   let totalChanges = 0;
   let contradictions = 0;
+  let usedSearch = false;
+  let searchCutoff = false;
   let progress = true;
   while (progress) {
     progress = false;
@@ -900,9 +1122,29 @@ function buildColorTrace(startState) {
     }
     if (contradictions) break;
   }
+  if (!contradictions && colorPlayer.some(value => value === null)) {
+    const clues = colorConstraintClues();
+    const search = searchConstraintSolution(colorPlayer, clues.rows, clues.columns);
+    searchCutoff = search.cutoff;
+    if (search.solution) {
+      usedSearch = true;
+      for (let row = 0; row < size; row += 1) {
+        let rowChanges = 0;
+        rowLine(row).forEach(index => {
+          if (colorPlayer[index] === search.solution[index]) return;
+          colorPlayer[index] = search.solution[index];
+          rowChanges += 1;
+        });
+        if (!rowChanges) continue;
+        totalChanges += rowChanges;
+        snapshots.push(colorPlayer.slice());
+        messages.push(`Hypothèses colorées et contradictions · ligne ${row + 1} : ${rowChanges} case${rowChanges > 1 ? 's' : ''} déterminée${rowChanges > 1 ? 's' : ''}.`);
+      }
+    }
+  }
   const finalState = colorPlayer.slice();
   colorPlayer = saved;
-  return { snapshots, messages, finalState, totalChanges, contradictions };
+  return { snapshots, messages, finalState, totalChanges, contradictions, usedSearch, searchCutoff };
 }
 
 document.addEventListener('pointerup', () => { isPainting = false; });
@@ -934,7 +1176,13 @@ solveAllButton.addEventListener('click', () => {
   colorPlayer = result.finalState;
   traceIndex = Math.max(0, solverTrace.length - 1);
   isViewingTrace = false;
-  solverMessage = result.contradictions ? 'Contradiction détectée : vérifie les couleurs déjà posées.' : (result.totalChanges ? `${result.totalChanges} déduction${result.totalChanges > 1 ? 's' : ''} colorée${result.totalChanges > 1 ? 's' : ''} appliquée${result.totalChanges > 1 ? 's' : ''}.` : 'Aucune déduction colorée supplémentaire.');
+  solverMessage = result.contradictions
+    ? 'Contradiction détectée : vérifie les couleurs déjà posées.'
+    : result.usedSearch
+      ? `${result.totalChanges} déductions colorées appliquées, avec recherche par hypothèses et contradictions.`
+      : result.searchCutoff
+        ? 'Les déductions colorées sont terminées ; la recherche avancée a atteint sa limite de calcul.'
+        : (result.totalChanges ? `${result.totalChanges} déduction${result.totalChanges > 1 ? 's' : ''} colorée${result.totalChanges > 1 ? 's' : ''} appliquée${result.totalChanges > 1 ? 's' : ''}.` : 'Aucune déduction colorée supplémentaire.');
   updateTraceControls();
   renderColor();
 });
@@ -945,14 +1193,67 @@ nextTrace.addEventListener('click', () => showTrace(traceIndex + 1));
 traceSlider.addEventListener('input', () => showTrace(Number(traceSlider.value)));
 modeSelect.addEventListener('change', () => {
   isColorMode = modeSelect.value === 'color';
+  paletteSizeLabel.hidden = !isColorMode;
   solverMessage = '';
   clearTrace();
   if (isColorMode) createColorPuzzle(); else { createSolution(); paletteElement.hidden = true; }
   render();
 });
+paletteSizeSelect.addEventListener('change', () => {
+  paletteLimit = Number(paletteSizeSelect.value);
+  imageBlocks = new Map();
+  solverMessage = '';
+  clearTrace();
+  if (importedImage) {
+    if (importedCrop) quantizeImage(importedImage, importedCrop);
+    else { renderImageTools(); showImageOverview(imageGrid); }
+    return;
+  }
+  if (isColorMode) { createColorPuzzle(); renderColor(); }
+});
 imageInput.addEventListener('change', () => importImage(imageInput.files[0]));
-sizeSelect.addEventListener('change', () => { if (!importedImage || !isColorMode || colorPlayer.some(value => value !== null && value !== -1)) return; size = Number(sizeSelect.value); quantizeImage(importedImage); });
+sizeSelect.addEventListener('change', () => { if (!importedImage || !isColorMode || !importedCrop || colorPlayer.some(value => value !== null && value !== -1)) return; size = Number(sizeSelect.value); quantizeImage(importedImage, importedCrop); });
 localStorage.setItem('game-hub:last-game', 'nonogram');
 createSolution();
 updateTraceControls();
 render();
+
+function runNonogramDiagnostics() {
+  const checks = [];
+  const differentColors = analyzeLineConstraints([{ color: '#f00', length: 1 }, { color: '#00f', length: 1 }], [null, null]);
+  checks.push(!differentColors.contradiction && differentColors.possibleValues[0].has('#f00') && differentColors.possibleValues[1].has('#00f'));
+  const sameColor = analyzeLineConstraints([{ color: '#f00', length: 1 }, { color: '#f00', length: 1 }], [null, null, null]);
+  checks.push(!sameColor.contradiction && sameColor.possibleValues[1].size === 1 && sameColor.possibleValues[1].has(EMPTY_CELL));
+  checks.push(analyzeLineConstraints([{ color: '#f00', length: 2 }], ['#00f', null]).contradiction);
+  const largeLine = analyzeLineConstraints([{ color: '#0a0', length: 50 }], Array(60).fill(null));
+  checks.push(!largeLine.contradiction && largeLine.possibleValues.slice(10, 50).every(values => values.size === 1 && values.has('#0a0')));
+  const previousSize = size;
+  size = 5;
+  const target = [
+    '#f00', '#00f', EMPTY_CELL, '#0a0', '#0a0',
+    '#f00', EMPTY_CELL, '#00f', '#0a0', EMPTY_CELL,
+    EMPTY_CELL, '#f00', '#00f', EMPTY_CELL, '#0a0',
+    '#ff0', '#ff0', EMPTY_CELL, '#00f', '#0a0',
+    EMPTY_CELL, '#ff0', '#f00', '#f00', EMPTY_CELL
+  ];
+  const rows = Array.from({ length: size }, (_, row) => colorRuns(target.slice(row * size, (row + 1) * size)));
+  const columns = Array.from({ length: size }, (_, column) => colorRuns(Array.from({ length: size }, (_, row) => target[row * size + column])));
+  const searched = searchConstraintSolution(Array(size * size).fill(null), rows, columns);
+  const valid = searched.solution && rows.every((clues, row) => JSON.stringify(colorRuns(searched.solution.slice(row * size, (row + 1) * size))) === JSON.stringify(clues)) && columns.every((clues, column) => JSON.stringify(colorRuns(Array.from({ length: size }, (_, row) => searched.solution[row * size + column]))) === JSON.stringify(clues));
+  checks.push(Boolean(valid));
+  const permutationClues = Array.from({ length: size }, () => [{ color: '#f00', length: 1 }]);
+  const permutation = searchConstraintSolution(Array(size * size).fill(null), permutationClues, permutationClues);
+  checks.push(Boolean(permutation.solution) && permutation.nodes > 1);
+  size = previousSize;
+  const previousBoardHidden = board.hidden;
+  const previousOverviewHidden = imageOverview.hidden;
+  board.hidden = true;
+  imageOverview.hidden = false;
+  checks.push(getComputedStyle(board).display === 'none' && getComputedStyle(imageOverview).display !== 'none');
+  board.hidden = previousBoardHidden;
+  imageOverview.hidden = previousOverviewHidden;
+  checks.push([...sizeSelect.options].some(option => option.value === '60') && [...paletteSizeSelect.options].some(option => option.value === '32'));
+  document.title = `NONOGRAM TEST · ${checks.filter(Boolean).length}/${checks.length}`;
+}
+
+if (new URLSearchParams(location.search).has('nonogramTest')) runNonogramDiagnostics();

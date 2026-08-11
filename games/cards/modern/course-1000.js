@@ -14,7 +14,7 @@ document.querySelector('h2').insertAdjacentHTML('beforeend', ' <button id="sortH
 const sortHandButton = document.getElementById('sortHand');
 drawButton.insertAdjacentHTML('afterend', ' <button id="discardMode">Défausser une carte</button>');
 const discardModeButton = document.getElementById('discardMode');
-document.head.insertAdjacentHTML('beforeend', '<style>.card.distance{background:linear-gradient(145deg,#fff 0 60%,#bbf7d0 61% 100%)}.card.attack{background:linear-gradient(145deg,#fff 0 60%,#fecaca 61% 100%)}.card.remedy{background:linear-gradient(145deg,#fff 0 60%,#bfdbfe 61% 100%)}.card.safety{background:linear-gradient(145deg,#fff 0 60%,#fde68a 61% 100%)}.hand .card:before{content:"🚗";display:block;font-size:20px;float:right}</style>');
+document.head.insertAdjacentHTML('beforeend', '<style>.card.distance{background:linear-gradient(145deg,#fff 0 60%,#bbf7d0 61% 100%);color:#17243a}.card.attack{background:linear-gradient(145deg,#fff 0 60%,#fecaca 61% 100%);color:#17243a}.card.remedy{background:linear-gradient(145deg,#fff 0 60%,#bfdbfe 61% 100%);color:#17243a}.card.safety{background:linear-gradient(145deg,#fff 0 60%,#fde68a 61% 100%);color:#17243a}.hand .card:before{content:"🚗";display:block;font-size:20px;float:right}</style>');
 document.head.insertAdjacentHTML('beforeend', '<style>.hand .card.discard-choice{outline:4px solid #dc2626;outline-offset:2px;filter:saturate(.75)}#discardMode{border-color:#dc2626}</style>');
 
 function shuffle(values) { for (let index = values.length - 1; index > 0; index -= 1) { const other = Math.floor(Math.random() * (index + 1)); [values[index], values[other]] = [values[other], values[index]]; } return values; }

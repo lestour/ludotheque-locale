@@ -1,3 +1,4 @@
+if (!document.querySelector('script[data-options-help]')) { const source = document.currentScript?.src; const script = document.createElement('script'); script.src = source ? new URL('options-help.js?v=2', source).href : '../../shared/options-help.js?v=2'; script.dataset.optionsHelp = 'true'; document.head.append(script); }
 window.CardTools = (() => {
   const suits = [
     { symbol: '♠', name: 'Pique', color: 'black' },

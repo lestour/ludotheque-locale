@@ -1,78 +1,1071 @@
-if(!window.GameEffects){const script=document.createElement('script');script.src='../../shared/effects.js?v=1';document.head.appendChild(script)}
-const board=document.getElementById('board'),title=document.getElementById('title'),rules=document.getElementById('rules'),status=document.getElementById('status'),variant=document.getElementById('variant'),boardSkin=document.getElementById('boardSkin'),playerCount=document.getElementById('playerCount'),rollButton=document.getElementById('roll'),buyButton=document.getElementById('buy'),skipButton=document.getElementById('skip'),buildButton=document.getElementById('build'),dice=document.getElementById('dice'),offers=document.getElementById('offers'),playersElement=document.getElementById('players'),assets=document.getElementById('assets'),assetsTitle=document.getElementById('assetsTitle');
-document.title='Jeux de plateau originaux';
-variant.querySelector('[value="estate"]').textContent='Empire Immobilier';
-variant.querySelector('[value="world"]').textContent='Marchés du Monde';
-variant.querySelector('[value="payday"]').textContent='Fin de Mois';
-boardSkin.querySelector('[value="galaxy"]').textContent='Galaxie';
-boardSkin.querySelector('[value="fantasy"]').textContent='Royaumes fantastiques';
-boardSkin.querySelector('[value="academy"]').textContent='Académie magique';
-const tokenColors=['#2563eb','#dc2626','#059669','#7c3aed']; let game,botTimer;
-const estateGroups=[['brun','#7a4b2b',2],['bleu ciel','#7bd2e8',3],['rose','#d56a9d',3],['orange','#ed9146',3],['rouge','#d94a4a',3],['jaune','#e9d34c',3],['vert','#54a56d',3],['bleu nuit','#335a9f',2]];
-const estatePropertyIndexes=[1,3,6,8,9,11,13,14,16,18,19,21,23,24,26,27,29,31,32,34,37,39];
-if(estatePropertyIndexes.length!==estateGroups.reduce((total,group)=>total+group[2],0))throw new Error('Configuration immobilière invalide : groupes de propriétés incomplets.');
-const estateNames=['Départ','Marcillac-Vallon','Caisse commune','Millau','Taxe sur le revenu','Gare de Lyon','Angers','Chance','Bordeaux','Toulouse','Prison / visite','Montpellier','Compagnie électrique','Rennes','Strasbourg','Gare de Paris','Lille','Caisse commune','Nice','Marseille','Parc gratuit','Lyon','Chance','Nantes','Reims','Gare du Nord','Chambéry','Grenoble','Compagnie des eaux','Annecy','Allez en prison','Dijon','Aix-en-Provence','Caisse commune','Biarritz','Gare Saint-Charles','Chance','Versailles','Taxe de luxe','Paris'];
-const chanceCards=[['Avancez au départ',0],['Avancez de trois cases',3],['Amende administrative',-80],['Prime exceptionnelle',120],['Allez en prison','jail'],['Réparations : 25 € par maison','repairs']]; const chestCards=[['Remboursement fiscal',100],['Facture médicale',-50],['Héritage',120],['Allez au départ',0],['Sortie de prison','card']];
-const resources=['Aluminium','Blé','Bois','Cacao','Café','Charbon','Cobalt','Coton','Cuivre','Diamant','Fer','Gaz','Hydraulique','Laine','Maïs','Or','Pétrole','Plomb','Riz','Solaire','Sucre','Thé','Tourisme','Uranium']; const countries=['France','Belgique','Royaume-Uni','Suède','Allemagne','Italie','Espagne','Maroc','Égypte','Ghana','Éthiopie','Inde','Chine','Japon','Vietnam','Indonésie','Australie','Nouvelle-Zélande','Canada','États-Unis','Mexique','Brésil','Pérou','Argentine','Colombie','Russie','Kazakhstan','Turquie','Iran','Afrique du Sud','Qatar','Corée'];
-const worldTrack=['Départ','France','Actualité','Blé','Belgique','Enchères','Cobalt','Royaume-Uni','Choix Europe','Suède','Bois','Allemagne','Joker','Italie','Tourisme','Espagne','Douane','Maroc','Cacao','Égypte','Choix Afrique','Ghana','Or','Éthiopie','Actualité','Inde','Thé','Chine','Choix Asie','Japon','Cuivre','Vietnam','Joker','Indonésie','Pétrole','Australie','Laine','Nouvelle-Zélande','Enchères','500 000 €','Canada','Fer','États-Unis','Choix Amérique','Mexique','Maïs','Brésil','Café','Pérou','Argentine','Cuivre','Colombie','Actualité','Venezuela','Pétrole','Choix mondial','Russie','Gaz','Kazakhstan','Uranium','Douane','Turquie','Coton','Iran','Joker','Afrique du Sud','Diamant','Actualité','Choix mondial','500 000 €','Enchères'];
-const paydayTypes=['start','mail','deal','lottery','bill','mail','deal','mail','lottery','bill','mail','deal','mail','mail','lottery','deal','bill','mail','deal','mail','lottery','mail','bill','deal','mail','lottery','deal','mail','bill','mail','payday'];
-function shuffle(a){for(let i=a.length-1;i;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}function log(t){game.log.unshift(t);game.log=game.log.slice(0,8)}function name(i){return i===0?'Vous':`Bot ${i}`}function next(){game.turn=(game.turn+1)%game.people.length}function active(){return game.people.filter(p=>!p.out)}function money(v){return `${v.toLocaleString('fr-FR')} €`}
-function estateSpace(index){if(estatePropertyIndexes.includes(index)){let order=estatePropertyIndexes.indexOf(index),group=estateGroups.findIndex(([, ,count],i)=>order<estateGroups.slice(0,i+1).reduce((s,g)=>s+g[2],0));return{type:'property',group,cost:60+group*40+(order%3)*20}}if([5,15,25,35].includes(index))return{type:'station',cost:200};if([12,28].includes(index))return{type:'utility',cost:150};if([2,17,33].includes(index))return{type:'chest'};if([7,22,36].includes(index))return{type:'chance'};if([4,38].includes(index))return{type:'tax',cost:index===4?200:100};if(index===30)return{type:'jail'};return{type:index===0?'start':index===10?'visit':index===20?'parking':'rest'}}
-function estateOwn(player){return player.assets.filter(a=>a.kind==='estate')}function estateWorth(p){return p.cash+p.assets.reduce((s,a)=>s+a.cost+(a.houses||0)*a.houseCost,0)}function hasSet(p,group){const needed=estateGroups[group][2];return estateOwn(p).filter(a=>a.group===group).length===needed}
-function createEstate(){game={kind:'estate',turn:0,log:[],pending:null,over:false,people:Array.from({length:+playerCount.value},()=>({cash:1500,pos:0,assets:[],jail:0,doubles:0,card:false}))};shuffle(chanceCards);shuffle(chestCards)}
-function enterJail(p){p.pos=10;p.jail=2;p.doubles=0;log(`${name(game.turn)} va en prison.`)}function estatePay(from,to,amount){from.cash-=amount;if(to!==null)game.people[to].cash+=amount;if(from.cash<0){from.out=true;log(`${name(game.turn)} est en faillite.`)}}function estateCard(type){const deck=type==='chance'?chanceCards:chestCards;const [text,effect]=deck.shift();deck.push([text,effect]);status.textContent=`${type==='chance'?'Chance':'Caisse commune'} : ${text}`;const p=game.people[game.turn];if(effect==='jail')enterJail(p);else if(effect==='repairs')estatePay(p,null,p.assets.reduce((s,a)=>s+(a.houses||0)*25,0));else if(effect==='card')p.card=true;else if(typeof effect==='number'){if(effect===0){p.pos=0;p.cash+=200}else if(effect===3){p.pos=(p.pos+3)%40;resolveEstate()}else p.cash+=effect}endTurn()}
-function resolveEstate(){const p=game.people[game.turn],space=estateSpace(p.pos);if(space.type==='property'||space.type==='station'||space.type==='utility'){const owner=game.people.findIndex(x=>x.assets.some(a=>a.index===p.pos));if(owner<0){game.pending={type:'buy',space};status.textContent=`${estateNames[p.pos]} est libre : ${money(space.cost)}.`;render();if(game.turn)botTimer=setTimeout(()=>decideBuy(true),500);return}if(owner!==game.turn){const asset=game.people[owner].assets.find(a=>a.index===p.pos);let rent=asset.rent*(asset.houses?asset.houses+1:1);if(space.type==='station')rent=25*2**(game.people[owner].assets.filter(a=>a.type==='station').length-1);if(space.type==='utility')rent=10*(game.lastDice||7)*game.people[owner].assets.filter(a=>a.type==='utility').length;estatePay(p,owner,rent);log(`${name(game.turn)} paie ${money(rent)} à ${name(owner)}.`)}endTurn();return}if(space.type==='chance'||space.type==='chest'){estateCard(space.type);return}if(space.type==='tax'){estatePay(p,null,space.cost);log(`${name(game.turn)} paie ${money(space.cost)} de taxe.`)}if(space.type==='jail')enterJail(p);endTurn()}
-function decideBuy(yes){const p=game.people[game.turn],pending=game.pending;if(!pending)return;if(yes&&p.cash>=pending.space.cost){const s=pending.space,asset={kind:'estate',index:p.pos,type:s.type,group:s.group,cost:s.cost,rent:Math.max(4,Math.round(s.cost*.1)),houses:0,houseCost:50};p.cash-=s.cost;p.assets.push(asset);log(`${name(game.turn)} achète ${estateNames[p.pos]}.`)}else log(`${name(game.turn)} laisse la propriété aux enchères : la banque la récupère.`);game.pending=null;endTurn()}
-function estateBuild(){const p=game.people[0],asset=p.assets.find(a=>a.type==='property'&&hasSet(p,a.group)&&a.houses<4&&p.cash>=a.houseCost);if(!asset)return;asset.houses++;p.cash-=asset.houseCost;log(`Vous construisez une maison sur ${estateNames[asset.index]}.`);render()}
-function rollEstate(){const p=game.people[game.turn];if(p.jail){if(p.card){p.card=false;p.jail=0}else{p.jail--;log(`${name(game.turn)} reste en prison.`);endTurn();return}}const a=1+Math.floor(Math.random()*6),b=1+Math.floor(Math.random()*6),sum=a+b;dice.textContent=`${a} + ${b}`;game.lastDice=sum;p.doubles=a===b?p.doubles+1:0;if(p.doubles===3){enterJail(p);endTurn();return}const before=p.pos;p.pos=(p.pos+sum)%40;if(p.pos<before){p.cash+=200;log(`${name(game.turn)} passe le départ : +200 €.`)}resolveEstate()}
-function createWorld(){const titles=[];resources.forEach((resource,r)=>{for(let i=0;i<6;i++)titles.push({resource,country:countries[(r*3+i*5)%countries.length],percent:[5,10,15,20,20,30][i],cost:(i+1)*500000,color:`hsl(${(r*47)%360} 62% 52%)`})});game={kind:'world',turn:0,log:[],pending:null,over:false,turns:0,people:Array.from({length:+playerCount.value},()=>({cash:66000000,pos:0,assets:[],jokers:0,skip:0,out:false})),titles:shuffle(titles),news:shuffle(['Hausse des cours : +1 500 000 €','Taxe environnementale : -1 000 000 €','Subvention industrielle : +2 000 000 €','Crise des marchés : -2 000 000 €','Contrat exceptionnel : +3 000 000 €'])}}
-function percent(p,res){return p.assets.filter(a=>a.resource===res).reduce((s,a)=>s+a.percent,0)}function royalty(p,res){const x=percent(p,res);return x>=90?18000000:x>=70?9000000:x>=50?4500000:x>=30?900000:0}function worldOffers(country){return game.titles.filter(t=>t.country===country).slice(0,6)}function resolveWorld(){const p=game.people[game.turn],space=worldTrack[p.pos];if(countries.includes(space)){game.pending={type:'worldBuy',offers:worldOffers(space),max:6};status.textContent=`${space} : choisissez jusqu’à six titres disponibles.`;render();if(game.turn)botTimer=setTimeout(botWorld,450);return}if(resources.includes(space)){game.people.forEach((owner,index)=>{if(index!==game.turn){const fee=royalty(owner,space);if(fee){p.cash-=fee;owner.cash+=fee;log(`${name(game.turn)} verse ${money(fee)} de royalties (${space}).`)}}});endTurn();return}if(space==='Actualité'){const card=game.news.shift();game.news.push(card);const amount=card.includes('+')?+card.match(/[\d ]+/)[0].replaceAll(' ',''):-+card.match(/[\d ]+/)[0].replaceAll(' ','');p.cash+=amount;status.textContent=`Actualité : ${card}`;endTurn();return}if(space==='500 000 €'){p.cash+=500000*(game.lastDice||7);endTurn();return}if(space==='Douane'){p.skip=1;endTurn();return}if(space==='Joker'){if(p.cash>=3000000){p.cash-=3000000;p.jokers++;log(`${name(game.turn)} achète un Joker.`)}endTurn();return}if(space.includes('Choix')){game.pending={type:'worldBuy',offers:game.titles.filter(t=>p.assets.some(a=>a.resource===t.resource)).slice(0,6),max:6};render();return}if(space==='Enchères'){const asset=p.assets.sort((a,b)=>a.cost-b.cost)[0];if(asset){p.assets.splice(p.assets.indexOf(asset),1);p.cash+=Math.round(asset.cost*.5);game.titles.push(asset);log(`${name(game.turn)} remet ${asset.resource} aux enchères.`)}endTurn();return}endTurn()}
-function buyWorld(index){const pending=game.pending,p=game.people[game.turn],asset=pending?.offers[index];if(!asset||p.cash<asset.cost)return;p.cash-=asset.cost;p.assets.push(asset);game.titles.splice(game.titles.indexOf(asset),1);pending.offers.splice(index,1);log(`${name(game.turn)} achète ${asset.resource} ${asset.percent}% (${asset.country}).`);render()}
-function botWorld(){const p=game.people[game.turn],possible=game.pending?.offers?.filter(a=>a.cost<p.cash).sort((a,b)=>percent(p,b.resource)-percent(p,a.resource)||b.percent-a.percent);if(possible?.[0])buyWorld(game.pending.offers.indexOf(possible[0]));game.pending=null;endTurn()}
-function createPayday(){game={kind:'payday',turn:0,log:[],pending:null,over:false,month:1,people:Array.from({length:+playerCount.value},()=>({cash:3500,pos:0,bills:0,loans:0,assets:[],out:false})),mail:shuffle(['Remboursement : +250 €','Réparation auto : -300 €','Bon anniversaire : -100 €','Billet de loterie','Ristourne : +180 €','Facture médicale : -250 €']),deals:shuffle([{name:'Vélo vintage',cost:300,value:550},{name:'Collection BD',cost:450,value:820},{name:'Appareil photo',cost:600,value:1000},{name:'Terrain',cost:900,value:1400}])}}
-function paydayCard(){const p=game.people[game.turn],card=game.mail.shift();game.mail.push(card);if(card==='Billet de loterie')p.assets.push({kind:'lottery'});else{const a=+card.match(/[\d]+/)[0]*(card.includes('+')?1:-1);p.cash+=a}status.textContent=`Courrier : ${card}`;log(`${name(game.turn)} reçoit un courrier.`)}function paydayDeal(){const p=game.people[game.turn],deal=game.deals.shift();game.deals.push(deal);game.pending={type:'deal',deal};status.textContent=`Transaction proposée : ${deal.name}, ${money(deal.cost)}.`;render();if(game.turn)botTimer=setTimeout(()=>decideDeal(true),450)}function decideDeal(yes){const p=game.people[game.turn],deal=game.pending?.deal;if(!deal)return;if(yes&&p.cash>=deal.cost){p.cash-=deal.cost;p.assets.push({kind:'deal',...deal});log(`${name(game.turn)} achète ${deal.name}.`)}game.pending=null;endTurn()}function payDay(){const p=game.people[game.turn],salary=3500;p.cash+=salary-p.bills-Math.round(p.loans*.1);p.bills=0;p.pos=0;p.assets.filter(a=>a.kind==='lottery').forEach(()=>{if(Math.random()<.14)p.cash+=2000});log(`${name(game.turn)} reçoit sa paye.`);if(game.turn===game.people.length-1){game.month++;if(game.month>2){game.over=true;const win=game.people.map((x,i)=>({i,value:x.cash+x.assets.filter(a=>a.value).reduce((s,a)=>s+a.value,0)-x.loans})).sort((a,b)=>b.value-a.value)[0];status.textContent=`${name(win.i)} gagne avec ${money(win.value)}.`;render();return}}endTurn()}function resolvePayday(){const p=game.people[game.turn],type=paydayTypes[p.pos];if(type==='mail')paydayCard();if(type==='bill'){p.bills+=250;log(`${name(game.turn)} ajoute une facture de 250 €.`)}if(type==='deal'){paydayDeal();return}if(type==='lottery'){p.cash-=100;p.assets.push({kind:'lottery'});log(`${name(game.turn)} achète un billet de loterie.`)}if(type==='payday'){payDay();return}endTurn()}function rollPayday(){const p=game.people[game.turn],value=1+Math.floor(Math.random()*6);dice.textContent=String(value);p.pos=Math.min(30,p.pos+value);resolvePayday()}
-function endTurn(){if(game.over)return;if(game.people[game.turn].cash<0){game.people[game.turn].loans+=1000;game.people[game.turn].cash+=1000;log(`${name(game.turn)} prend un prêt de 1 000 €.`)}next();game.turns=(game.turns||0)+1;if(game.kind==='world'&&game.turns>75){game.over=true;const win=game.people.map((p,i)=>({i,v:p.cash+p.assets.reduce((s,a)=>s+a.cost,0)})).sort((a,b)=>b.v-a.v)[0];status.textContent=`Fin de partie rapide : ${name(win.i)} est le plus riche.`}if(!game.over)status.textContent=game.turn?'Le bot joue.':'À vous de jouer.';render();clearTimeout(botTimer);if(!game.over&&game.turn)botTimer=setTimeout(()=>{if(game.kind==='world')rollWorld();else if(game.kind==='estate')rollEstate();else rollPayday()},650+Math.random()*500)}function rollWorld(){const a=1+Math.floor(Math.random()*6),b=1+Math.floor(Math.random()*6),p=game.people[game.turn];dice.textContent=`${a} + ${b}`;game.lastDice=a+b;if(a===b)p.cash-=a*1000000;if(p.skip){p.skip--;endTurn();return}p.pos=(p.pos+a+b)%worldTrack.length;resolveWorld()}
-function renderSquare(track,kind){const cells=[];for(let i=0;i<40;i++){const pos=i<11?[11-i,1]:i<20?[1,i-9]:i<30?[i-19,11]:[11,41-i];const text=track[i],info=kind==='estate'?estateSpace(i):null,players=game.people.map((p,j)=>p.pos===i?`<i class="token" style="--token:${tokenColors[j]}">${j+1}</i>`:'').join('');cells.push(`<div class="space ${info?.type||''}${[0,10,20,30].includes(i)?' corner':''}" style="grid-area:${pos[0]}/${pos[1]};--band:${info?.group!==undefined?estateGroups[info.group][1]:''}">${info?.group!==undefined?'<i class="band"></i>':''}<span class="name">${text}</span><span>${players}</span></div>`)}const center=kind==='world'?'<div class="center-art world-art"><h2>MARCHÉS<br>DU MONDE</h2><p>Investissez, réunissez les productions et réclamez vos royalties.</p></div>':'<div class="center-art"><h2>EMPIRE<br>IMMOBILIER</h2><p>Propriétés · gares · services · maisons · cartes · prison</p></div>';board.innerHTML=`<div class="square-board">${center}${cells.join('')}</div>`}
-function renderCalendar(){board.innerHTML=`<div class="calendar-board"><div class="calendar-title">FIN DE MOIS · MOIS ${game.month}</div><div class="weekdays">${['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].map(x=>`<div class="weekday">${x}</div>`).join('')}</div><div class="calendar">${paydayTypes.map((type,i)=>{const tokens=game.people.map((p,j)=>p.pos===i?`<i class="token" style="--token:${tokenColors[j]}">${j+1}</i>`:'').join('');return `<div class="day ${type}"><span class="daynum">${i+1}</span><br><span>${type==='mail'?'✉ Courrier':type==='deal'?'⇄ Transaction':type==='lottery'?'★ Loterie':type==='bill'?'! Facture':type==='payday'?'€ JOUR DE PAYE':'Départ'}</span><span class="tokens">${tokens}</span></div>`}).join('')}</div></div>`}
-function render(){const k=game.kind;title.textContent=k==='estate'?'Empire Immobilier':(k==='world'?'Marchés du Monde':'Fin de Mois');rules.textContent=k==='estate'?'Plateau de 40 cases : rues, gares, services, événements, fonds commun, taxes, prison et parc gratuit. Achète, perçois les loyers et construis une fois un groupe complet.':k==='world'?'Planisphère entouré de pays, richesses et cases spéciales : titres d’exploitation, pourcentages, royalties à partir de 30 %, actualités, choix, enchères et Joker.':'Calendrier de 31 jours : courriers, transactions, factures, loterie, prêts et jour de paye. Deux mois décident de la meilleure gestion.';if(k==='payday')renderCalendar();else renderSquare(k==='world'?worldTrack:estateNames,k);playersElement.innerHTML=game.people.map((p,i)=>`<div class="player${i===game.turn&&!game.over?' active':''}"><strong><i class="token" style="--token:${tokenColors[i]}">${i+1}</i> ${name(i)}</strong><small>Liquidités : ${money(p.cash)}</small><small>${k==='world'?'Titres':k==='estate'?'Propriétés':'Factures'} : ${k==='payday'?money(p.bills):p.assets.length}</small>${p.jail?`<small>Prison : ${p.jail} tour(s)</small>`:''}</div>`).join('');assetsTitle.textContent=k==='world'?'Titres d’exploitation':k==='estate'?'Titres de propriété':'Patrimoine';const p=game.people[0];assets.innerHTML=p.assets.filter(a=>a.kind!=='lottery').map(a=>k==='world'?`<div class="card resource" style="--resource:${a.color}"><strong>${a.resource}</strong><br>${a.country} · ${a.percent}%<br>${money(a.cost)}<br>Royalties actuelles : ${money(royalty(p,a.resource))}</div>`:k==='estate'?`<div class="card"><strong>${estateNames[a.index]}</strong><br>${a.houses?'🏠'.repeat(a.houses):'Terrain'}<br>Loyer ${money(a.rent*(a.houses+1))}</div>`:`<div class="card"><strong>${a.name}</strong><br>Valeur ${money(a.value)}</div>`).join('')||'<span class="muted">Aucun actif.</span>';offers.innerHTML='';if(game.pending?.type==='worldBuy')offers.innerHTML=game.pending.offers.map((a,i)=>`<button class="card resource" data-offer="${i}" style="--resource:${a.color}"><strong>${a.resource}</strong><br>${a.country} · ${a.percent}%<br>Acheter ${money(a.cost)}</button>`).join('');if(game.pending?.type==='deal')offers.innerHTML=`<div class="card"><strong>${game.pending.deal.name}</strong><br>Coût ${money(game.pending.deal.cost)} · valeur ${money(game.pending.deal.value)}</div>`;offers.querySelectorAll('[data-offer]').forEach(b=>b.addEventListener('click',()=>{if(game.turn===0)buyWorld(+b.dataset.offer)}));rollButton.disabled=game.over||game.turn!==0||!!game.pending;buyButton.hidden=!game.pending||game.turn!==0;skipButton.hidden=!game.pending||game.turn!==0;buyButton.textContent=game.pending?.type==='deal'?'Acheter la transaction':k==='world'?'Terminer les achats':'Acheter la propriété';buildButton.hidden=k!=='estate'||!p.assets.some(a=>a.type==='property'&&hasSet(p,a.group)&&a.houses<4);document.getElementById('log').innerHTML=game.log.map(x=>`<li>${x}</li>`).join('')}
-function newGame(){clearTimeout(botTimer);if(variant.value==='estate')createEstate();else if(variant.value==='world')createWorld();else createPayday();status.textContent='À vous de lancer les dés.';dice.textContent='—';render()}function roll(){if(game.kind==='estate')rollEstate();else if(game.kind==='world')rollWorld();else rollPayday()}function buy(){if(game.pending?.type==='buy')decideBuy(true);else if(game.pending?.type==='deal')decideDeal(true);else if(game.pending?.type==='worldBuy'){game.pending=null;endTurn()}}function skip(){if(game.pending?.type==='buy')decideBuy(false);else if(game.pending?.type==='deal')decideDeal(false);else if(game.pending?.type==='worldBuy'){game.pending=null;endTurn()}}
-const q=new URLSearchParams(location.search);if(q.get('variant'))variant.value=q.get('variant');document.getElementById('newGame').onclick=newGame;variant.onchange=newGame;playerCount.onchange=newGame;rollButton.onclick=roll;buyButton.onclick=buy;skipButton.onclick=skip;buildButton.onclick=estateBuild;localStorage.setItem('game-hub:last-game','board-games');newGame();
+const board = document.getElementById('board');
+const titleElement = document.getElementById('title');
+const rulesElement = document.getElementById('rules');
+const statusElement = document.getElementById('status');
+const variantSelect = document.getElementById('variant');
+const skinSelect = document.getElementById('boardSkin');
+const playerCountSelect = document.getElementById('playerCount');
+const rollButton = document.getElementById('roll');
+const buyButton = document.getElementById('buy');
+const skipButton = document.getElementById('skip');
+const buildButton = document.getElementById('build');
+const tradeButton = document.getElementById('trade');
+const wheelElement = document.getElementById('wheel');
+const diceElement = document.getElementById('dice');
+const offersElement = document.getElementById('offers');
+const playersElement = document.getElementById('players');
+const assetsElement = document.getElementById('assets');
+const assetsTitleElement = document.getElementById('assetsTitle');
+const logElement = document.getElementById('log');
+const modalHost = document.getElementById('modalHost');
 
-estateCard=function(type){const deck=type==='chance'?chanceCards:chestCards;const [text,effect]=deck.shift();deck.push([text,effect]);status.textContent=`${type==='chance'?'Chance':'Caisse commune'} : ${text}`;const p=game.people[game.turn];if(effect==='jail')enterJail(p);else if(effect==='repairs')estatePay(p,null,p.assets.reduce((sum,asset)=>sum+(asset.houses||0)*25,0));else if(effect==='card')p.card=true;else if(effect===0){p.pos=0;p.cash+=200}else if(effect===3){p.pos=(p.pos+3)%40;resolveEstate();return}else if(typeof effect==='number')p.cash+=effect;endTurn()};
+const tokenColors = ['#2563eb', '#dc2626', '#059669', '#7c3aed'];
+let game;
+let botTimer;
+let wheelRotation = 0;
+let flashSequence = 0;
 
-rollButton.addEventListener('click',()=>{window.GameEffects?.play('move');window.GameEffects?.animate(dice,'pulse')});buyButton.addEventListener('click',()=>window.GameEffects?.play('success'));skipButton.addEventListener('click',()=>window.GameEffects?.play('click'));buildButton.addEventListener('click',()=>window.GameEffects?.play('success'));
-
-function worldRingPosition(index,size){const edge=size-1;if(index<=edge)return[size,1+index];if(index<=edge*2)return[size-(index-edge),size];if(index<=edge*3)return[1,size-(index-edge*2)];return[1+(index-edge*3),1]}
-function renderWorldBoard(){if(!document.getElementById('worldBoardStyle'))document.head.insertAdjacentHTML('beforeend','<style id="worldBoardStyle">.world-board{position:relative;width:min(800px,92vw);aspect-ratio:1;margin:auto;border:5px solid #173b5d;background:#73b7d0;box-shadow:0 9px 22px #0003}.world-ring{position:absolute;display:grid;grid-template:repeat(var(--ring-size),1fr)/repeat(var(--ring-size),1fr);gap:1px}.world-ring.outer{inset:0}.world-ring.inner{inset:16%}.world-ring .space{background:#f9e6bf;border-color:#67564b}.world-core{position:absolute;inset:30%;display:grid;place-items:center;text-align:center;border:3px solid #e1c75f;background:radial-gradient(ellipse at 25% 45%,#61a960 0 18%,transparent 19%),radial-gradient(ellipse at 57% 28%,#dcbd50 0 17%,transparent 18%),radial-gradient(ellipse at 66% 57%,#d97951 0 19%,transparent 20%),linear-gradient(#76c4e0,#3085ad);color:#fff;text-shadow:0 2px 3px #183a50}.world-core h2{margin:0;font-size:clamp(20px,4vw,46px)}.world-core p{padding:0 10px;font-size:clamp(9px,1.3vw,15px)}</style>');const cell=(label,index,size)=>{const[posRow,posColumn]=worldRingPosition(index,size),players=game.people.map((p,j)=>p.pos===index?`<i class="token" style="--token:${tokenColors[j]}">${j+1}</i>`:'').join('');return`<div class="space" style="grid-area:${posRow}/${posColumn}"><span class="name">${label}</span><span>${players}</span></div>`};board.innerHTML=`<div class="world-board"><div class="world-ring outer" style="--ring-size:7">${worldTrack.slice(0,24).map((label,index)=>cell(label,index,7)).join('')}</div><div class="world-ring inner" style="--ring-size:5">${worldTrack.slice(24).map((label,index)=>cell(label,index+24,5)).join('')}</div><div class="world-core"><h2>MARCHÉS<br>DU MONDE</h2><p>Choisir · acheter · gérer · réclamer les royalties</p></div></div>`}
-const renderBoardGameBase=render;render=function(){renderBoardGameBase();if(game.kind==='world')renderWorldBoard()};if(game.kind==='world')renderWorldBoard();
-
-const estateSkins={
-  france:['Départ','Marcillac-Vallon','Caisse commune','Millau','Impôts','Gare de Lyon','Angers','Chance','Bordeaux','Toulouse','Prison / visite','Montpellier','Électricité','Rennes','Strasbourg','Gare de Paris','Lille','Caisse commune','Nice','Marseille','Parc gratuit','Lyon','Chance','Nantes','Reims','Gare du Nord','Chambéry','Grenoble','Eaux','Annecy','Allez en prison','Dijon','Aix-en-Provence','Caisse commune','Biarritz','Gare Saint-Charles','Chance','Versailles','Taxe de luxe','Paris'],
-  usa:['GO','Boston','Community chest','Chicago','Income tax','Penn Station','Seattle','Chance','Denver','Austin','Jail / visit','Miami','Electric Co.','Atlanta','Dallas','Union Station','San Francisco','Community chest','Las Vegas','New Orleans','Free parking','Phoenix','Chance','Los Angeles','Washington','Central Station','Portland','Detroit','Water Works','Philadelphia','Go to jail','Houston','Orlando','Community chest','Honolulu','Grand Central','Chance','San Diego','Luxury tax','New York'],
-  uk:['GO','Edinburgh','Community chest','Cardiff','Tax','King’s Cross','Bristol','Chance','Liverpool','Manchester','Jail / visit','Brighton','Electricity','Leeds','Birmingham','Waterloo','Glasgow','Community chest','Cambridge','York','Free parking','Sheffield','Chance','Oxford','Windsor','Paddington','Bath','Nottingham','Water','Canterbury','Go to jail','Belfast','Swansea','Community chest','Dover','Euston','Chance','Newcastle','Luxury tax','London'],
-  galaxy:['Départ','Auriga','Réseau stellaire','Nébula','Taxe orbitale','Navette centrale','Cérès','Destin','Orion','Cygnus','Cellule / visite','Hélios','Énergie','Vesper','Nova','Port spatial','Titan','Réseau stellaire','Kepler','Atlas','Repos orbital','Nyx','Destin','Zenith','Éclipse','Navette libre','Aster','Solaria','Eau','Polaris','Station pénitentiaire','Gaïa','Altair','Réseau stellaire','Lumen','Navette lointaine','Destin','Andromède','Taxe de luxe','Cosmos'],
-  fantasy:['Départ','Valbois','Conseil','Hauterive','Taxe royale','Gare des forges','Clairvallon','Destin','Sylveclaire','Montedor','Prison / visite','Rochebrune','Pierre de vision','Fortacier','Boisombre','Gare forestière','Mines profondes','Conseil','Tourcendre','Citadelle blanche','Repos','Terres noires','Destin','Désert rouge','Île éternelle','Gare du Nord','Vieilleforêt','Lacbourg','Eaux','Monts de fer','Tour sombre','Havres clairs','Valdor','Conseil','Nordgel','Gare de l’Ouest','Destin','Port-Serein','Taxe de luxe','Pic du Dragon'],
-  academy:['Départ','Village des mages','Banque runique','Val-enchanté','Taxe magique','Express arcanique','Allée des grimoires','Destin','Maison des alchimistes','Clinique enchantée','Prison / visite','Conseil magique','Énergie mystique','Académie boréale','Académie australe','Voie secrète','Forteresse magique','Banque runique','Manoir ancien','Maison du serpent','Salle mouvante','Institut occidental','Destin','Maison du blaireau','Maison de l’aigle','Carrosse nocturne','Maison du lion','Marché des sortilèges','Eaux','Crypte des secrets','Forteresse magique','Forêt enchantée','Banque runique','Manoir des ombres','Tournoi aérien','Gare de l’académie','Destin','Institut tropical','Taxe de luxe','Grande Académie']
+const estateGroups = [
+  ['brun', '#7a4b2b', 2], ['bleu ciel', '#7bd2e8', 3], ['rose', '#d56a9d', 3],
+  ['orange', '#ed9146', 3], ['rouge', '#d94a4a', 3], ['jaune', '#e9d34c', 3],
+  ['vert', '#54a56d', 3], ['bleu nuit', '#335a9f', 2]
+];
+const estatePropertyIndexes = [1, 3, 6, 8, 9, 11, 13, 14, 16, 18, 19, 21, 23, 24, 26, 27, 29, 31, 32, 34, 37, 39];
+const estateSkins = {
+  france: ['Départ', 'Marcillac-Vallon', 'Caisse commune', 'Millau', 'Impôts', 'Gare de Lyon', 'Angers', 'Destin', 'Bordeaux', 'Toulouse', 'Prison / visite', 'Montpellier', 'Électricité', 'Rennes', 'Strasbourg', 'Gare de Paris', 'Lille', 'Caisse commune', 'Nice', 'Marseille', 'Parc gratuit', 'Lyon', 'Destin', 'Nantes', 'Reims', 'Gare du Nord', 'Chambéry', 'Grenoble', 'Eaux', 'Annecy', 'Allez en prison', 'Dijon', 'Aix-en-Provence', 'Caisse commune', 'Biarritz', 'Gare Saint-Charles', 'Destin', 'Versailles', 'Taxe de luxe', 'Paris'],
+  usa: ['Départ', 'Boston', 'Caisse commune', 'Chicago', 'Impôts', 'Gare centrale', 'Seattle', 'Destin', 'Denver', 'Austin', 'Prison / visite', 'Miami', 'Électricité', 'Atlanta', 'Dallas', 'Gare de l’Union', 'San Francisco', 'Caisse commune', 'Las Vegas', 'Nouvelle-Orléans', 'Parc gratuit', 'Phoenix', 'Destin', 'Los Angeles', 'Washington', 'Gare du Capitole', 'Portland', 'Detroit', 'Eaux', 'Philadelphie', 'Allez en prison', 'Houston', 'Orlando', 'Caisse commune', 'Honolulu', 'Grand Central', 'Destin', 'San Diego', 'Taxe de luxe', 'New York'],
+  uk: ['Départ', 'Édimbourg', 'Caisse commune', 'Cardiff', 'Impôts', 'Gare du Nord', 'Bristol', 'Destin', 'Liverpool', 'Manchester', 'Prison / visite', 'Brighton', 'Électricité', 'Leeds', 'Birmingham', 'Gare du Sud', 'Glasgow', 'Caisse commune', 'Cambridge', 'York', 'Parc gratuit', 'Sheffield', 'Destin', 'Oxford', 'Windsor', 'Gare de l’Ouest', 'Bath', 'Nottingham', 'Eaux', 'Canterbury', 'Allez en prison', 'Belfast', 'Swansea', 'Caisse commune', 'Dover', 'Gare de l’Est', 'Destin', 'Newcastle', 'Taxe de luxe', 'Londres'],
+  galaxy: ['Départ', 'Auriga', 'Réseau stellaire', 'Nébula', 'Taxe orbitale', 'Navette centrale', 'Cérès', 'Destin', 'Orion', 'Cygnus', 'Cellule / visite', 'Hélios', 'Énergie', 'Vesper', 'Nova', 'Port spatial', 'Titan', 'Réseau stellaire', 'Kepler', 'Atlas', 'Repos orbital', 'Nyx', 'Destin', 'Zénith', 'Éclipse', 'Navette libre', 'Aster', 'Solaria', 'Eau', 'Polaris', 'Station pénitentiaire', 'Gaïa', 'Altaïr', 'Réseau stellaire', 'Lumen', 'Navette lointaine', 'Destin', 'Andromède', 'Taxe de luxe', 'Cosmos'],
+  fantasy: ['Départ', 'Valbois', 'Conseil', 'Hauterive', 'Taxe royale', 'Gare des forges', 'Clairvallon', 'Destin', 'Sylveclaire', 'Montedor', 'Prison / visite', 'Rochebrune', 'Pierre de vision', 'Fortacier', 'Boisombre', 'Gare forestière', 'Mines profondes', 'Conseil', 'Tourcendre', 'Citadelle blanche', 'Repos', 'Terres noires', 'Destin', 'Désert rouge', 'Île éternelle', 'Gare du Nord', 'Vieilleforêt', 'Lacbourg', 'Eaux', 'Monts de fer', 'Tour sombre', 'Havres clairs', 'Valdor', 'Conseil', 'Nordgel', 'Gare de l’Ouest', 'Destin', 'Port-Serein', 'Taxe de luxe', 'Pic du Dragon'],
+  academy: ['Départ', 'Village des mages', 'Banque runique', 'Val-enchanté', 'Taxe magique', 'Express arcanique', 'Allée des grimoires', 'Destin', 'Maison des alchimistes', 'Clinique enchantée', 'Prison / visite', 'Conseil magique', 'Énergie mystique', 'Académie boréale', 'Académie australe', 'Voie secrète', 'Forteresse magique', 'Banque runique', 'Manoir ancien', 'Maison du serpent', 'Salle mouvante', 'Institut occidental', 'Destin', 'Maison du blaireau', 'Maison de l’aigle', 'Carrosse nocturne', 'Maison du lion', 'Marché des sortilèges', 'Eaux', 'Crypte des secrets', 'Forteresse magique', 'Forêt enchantée', 'Banque runique', 'Manoir des ombres', 'Tournoi aérien', 'Gare de l’académie', 'Destin', 'Institut tropical', 'Taxe de luxe', 'Grande Académie']
 };
-Object.entries(estateSkins).forEach(([skinName,labels])=>{const properties=estatePropertyIndexes.map(index=>labels[index]);if(new Set(properties).size!==properties.length)throw new Error(`Thème immobilier ${skinName} invalide : propriété répétée.`)});
-function applyBoardSkin(){const skin=estateSkins[boardSkin.value]||estateSkins.france;estateNames.splice(0,estateNames.length,...skin);if(game){status.textContent=`Skin du plateau : ${boardSkin.options[boardSkin.selectedIndex].text}.`;render()}}
-function perimeterPosition(index,size){const edge=size-1;if(index<=edge)return[size-index,1];if(index<=edge*2)return[1,index-edge+1];if(index<=edge*3)return[index-edge*2+1,size];return[size,size-(index-edge*3)]}
-function rectanglePosition(index,columns,rows){if(index<rows)return[rows-index,1];index-=rows;if(index<columns-1)return[1,index+2];index-=columns-1;if(index<rows-1)return[index+2,columns];index-=rows-1;return[rows,columns-index-1]}
-function tokensAt(index){return game.people.map((person,number)=>person.pos===index?`<i class="token" style="--token:${tokenColors[number]}">${number+1}</i>`:'').join('')}
-function renderEstateBoard(){const labels=Array.from({length:40},(_,index)=>estateNames[index]||`Case ${index+1}`);const cells=labels.map((label,index)=>{const[row,column]=perimeterPosition(index,11),space=estateSpace(index),edge=index>0&&index<10?'west':index>10&&index<20?'north':index>20&&index<30?'east':index>30?'south':'';return`<div class="space estate-space ${space.type} ${edge}" data-space="${index + 1}" style="grid-area:${row}/${column};--band:${space.group!==undefined?estateGroups[space.group][1]:''}">${space.group!==undefined?'<i class="band"></i>':''}<span class="name">${label}</span><span>${tokensAt(index)}</span></div>`}).join('');const legend=estateGroups.map((group,groupIndex)=>`<div><i style="--group-color:${group[1]}"></i><span>${estatePropertyIndexes.filter(index=>estateSpace(index).group===groupIndex).map(index=>labels[index]).join(' · ')}</span></div>`).join('');board.innerHTML=`<div class="square-board estate-board"><div class="center-art"><h2>EMPIRE<br>IMMOBILIER</h2><p>${boardSkin.options[boardSkin.selectedIndex].text}</p><div class="estate-legend">${legend}</div></div>${cells}</div>`}
-function worldRegion(label){if(['France','Belgique','Royaume-Uni','Suède','Allemagne','Italie','Espagne','Russie','Kazakhstan','Turquie'].includes(label))return'europe';if(['Maroc','Égypte','Ghana','Éthiopie','Afrique du Sud'].includes(label))return'africa';if(['Inde','Chine','Japon','Vietnam','Indonésie','Iran'].includes(label))return'asia';if(['Australie','Nouvelle-Zélande'].includes(label))return'oceania';if(['Canada','États-Unis','Mexique','Brésil','Pérou','Argentine','Colombie','Venezuela'].includes(label))return'america';if(resources.includes(label))return'resource';return'special'}
-function worldSkinLabel(label,index){if(['france','usa','uk'].includes(boardSkin.value))return label;const themes={galaxy:{places:['Auriga','Nébula','Cérès','Orion','Cygnus','Vesper','Nova','Titan','Kepler','Atlas','Polaris','Andromède'],resource:['Plasma','Cristal','Alliage','Hélium'],special:{'Départ':'Port spatial','Actualité':'Réseau stellaire','Enchères':'Marché galactique','Joker':'Contrebande','Douane':'Blocus','Choix mondial':'Hyperroute','500 000 €':'Prime'}},fantasy:{places:['Valbois','Clairvallon','Sylveclaire','Montedor','Rochebrune','Fortacier','Boisombre','Terres noires','Valdor','Désert rouge','Île éternelle','Tourcendre'],resource:['Acier ancien','Bois sacré','Or des forges','Herbes rares'],special:{'Départ':'Valbois','Actualité':'Conseil','Enchères':'Marché du bourg','Joker':'Pierre de vision','Douane':'Porte noire','Choix mondial':'Carte ancienne','500 000 €':'Trésor'}},academy:{places:['Grande Académie','Village des mages','Allée des grimoires','Conseil magique','Académie boréale','Académie australe','Forteresse magique','Val-enchanté','Banque runique','Forêt enchantée','Maison des alchimistes','Manoir des ombres'],resource:['Runes','Baguettes','Potions','Balais'],special:{'Départ':'Voie secrète','Actualité':'Gazette magique','Enchères':'Marché nocturne','Joker':'Sablier temporel','Douane':'Sortilège','Choix mondial':'Carte enchantée','500 000 €':'Coffre runique'}}};const theme=themes[boardSkin.value];if(!theme)return label;if(theme.special[label])return theme.special[label];if(countries.includes(label))return theme.places[index%theme.places.length];if(resources.includes(label))return theme.resource[index%theme.resource.length];return label}
-function renderRichnessBoard(){const cell=(label,index,size)=>{const[row,column]=perimeterPosition(index,size);return`<div class="space world-space ${worldRegion(label)}" style="grid-area:${row}/${column}"><span class="name">${worldSkinLabel(label,index)}</span><span>${tokensAt(index)}</span></div>`};const theme=['galaxy','fantasy','academy'].includes(boardSkin.value)?boardSkin.value:'world';const labels={world:['AMÉRIQUE<br>DU NORD','AMÉRIQUE<br>DU SUD','EUROPE','AFRIQUE','ASIE','OCÉANIE'],galaxy:['CONFINS','NÉBULEUSES','NOYAU','SECTEURS','CEINTURE','ALLIANCE'],fantasy:['VALBOIS','DÉSERT ROUGE','MONTEDOR','ROCHEBRUNE','TERRES NOIRES','SYLVECLAIRE'],academy:['NORD','CAPITALE','ACADÉMIE','VILLAGE','CONTINENT','MONDE MAGIQUE']}[theme];const heading=theme==='world'?'MARCHÉS<br>DU MONDE':boardSkin.options[boardSkin.selectedIndex].text.toUpperCase();board.innerHTML=`<div class="world-board-real"><div class="world-ring-real outer-real" style="--ring:11">${worldTrack.slice(0,40).map((label,index)=>cell(label,index,11)).join('')}</div><div class="world-ring-real inner-real" style="--ring:9">${worldTrack.slice(40).map((label,index)=>cell(label,index,9)).join('')}</div><div class="world-map ${theme}"><span class="continent north-america">${labels[0]}</span><span class="continent south-america">${labels[1]}</span><span class="continent europe-map">${labels[2]}</span><span class="continent africa-map">${labels[3]}</span><span class="continent asia-map">${labels[4]}</span><span class="continent oceania-map">${labels[5]}</span><h2>${heading}</h2><p>40 cases extérieures · 32 cases intérieures</p></div></div>`}
-function renderPaydayTrack(){const labels=paydayTypes.map((type,index)=>({type,label:index===0?'DÉPART':type==='mail'?'✉ COURRIER':type==='deal'?'⇄ ACQUISITION':type==='lottery'?'★ LOTERIE':type==='bill'?'! FACTURE':type==='payday'?'€ PAYE':'JOUR'}));const outer=labels.slice(0,16),inner=labels.slice(16,30),payday=labels[30];const cell=(entry,index,columns,rows,absolute)=>{const[row,column]=rectanglePosition(index,columns,rows);return`<div class="payday-space ${entry.type}" style="grid-area:${row}/${column}"><b>${absolute+1}</b><span>${entry.label}</span><span>${tokensAt(absolute)}</span></div>`};board.innerHTML=`<div class="payday-board-real"><div class="payday-ring outer-payday" style="--columns:6;--rows:4">${outer.map((entry,index)=>cell(entry,index,6,4,index)).join('')}</div><div class="payday-ring inner-payday" style="--columns:5;--rows:4">${inner.map((entry,index)=>cell(entry,index,5,4,index+16)).join('')}</div><div class="payday-arrow into-inner">↙</div><div class="payday-arrow out-inner">↗</div><div class="payday-center"><h2>FIN DE MOIS</h2><p>Qui équilibrera son budget ?</p><small>${payday.label} · jour 31</small><div class="payday-exit ${payday.type}"><b>31</b> ${payday.label}<span>${tokensAt(30)}</span></div></div></div>`}
-document.head.insertAdjacentHTML('beforeend',`<style>
-.estate-board .band{inset:0 auto 0 0;width:18%;height:auto}.estate-board .west .band{inset:0 0 0 auto;width:18%;height:auto}.estate-board .north .band{inset:0 0 auto 0;width:auto;height:18%}.estate-board .east .band{inset:0 auto 0 0;width:18%;height:auto}.estate-board .south .band{inset:auto 0 0 0;width:auto;height:18%}.estate-board .space .name{margin:0 8%;z-index:1}.world-board-real,.payday-board-real{position:relative;width:min(850px,94vw);aspect-ratio:1;margin:auto;border:6px solid #173b5d;box-shadow:0 10px 28px #0004;background:#e6c87f}.world-ring-real,.payday-ring{position:absolute;display:grid;grid-template:repeat(var(--ring),1fr)/repeat(var(--ring),1fr);gap:1px}.world-ring-real.outer-real,.outer-payday{inset:0}.world-ring-real.inner-real{inset:10%}.world-space{border-color:#473a2c;background:#f5e3ba}.world-space.europe{background:#b8dcf3}.world-space.africa{background:#f7d17d}.world-space.asia{background:#f1a29c}.world-space.oceania{background:#c7b4e6}.world-space.america{background:#9bd3ae}.world-space.resource{background:#d8bf91}.world-space.special{background:#f8f2df}.world-map{position:absolute;inset:25%;overflow:hidden;border:4px solid #e9dc9d;border-radius:50%;background:radial-gradient(circle at 50% 0,#e8f7ff 0 10%,#74b8dc 11% 100%);color:#fff;text-align:center;text-shadow:0 2px 3px #163a56}.world-map:before{content:'';position:absolute;inset:11%;border-radius:49% 43% 55% 36%;background:radial-gradient(ellipse at 20% 30%,#7aae63 0 16%,transparent 17%),radial-gradient(ellipse at 48% 27%,#d5bc56 0 18%,transparent 19%),radial-gradient(ellipse at 64% 53%,#d47e55 0 20%,transparent 21%),radial-gradient(ellipse at 36% 68%,#6ca66c 0 16%,transparent 17%)}.world-map h2{position:relative;margin:40% 0 0;font-size:clamp(18px,4vw,43px)}.world-map p{position:relative;font-size:clamp(8px,1.3vw,14px)}.continent{position:absolute;z-index:2;color:#173b5d;text-shadow:none;font-size:clamp(6px,.9vw,10px);font-weight:900}.north-america{top:25%;left:9%}.south-america{bottom:15%;left:25%}.europe-map{top:24%;left:52%}.africa-map{top:48%;left:50%}.asia-map{top:31%;right:8%}.oceania-map{bottom:16%;right:9%}.inner-payday{inset:16%;grid-template:repeat(5,1fr)/repeat(5,1fr)}.payday-board-real{border-color:#1e4f81;background:linear-gradient(135deg,#53a7dc,#bde7f7)}.payday-space{position:relative;min-width:0;overflow:hidden;border:1px solid #1d4f72;background:#f9f6dd;color:#1c3951;font-size:clamp(7px,.9vw,11px);font-weight:800;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}.payday-space b{position:absolute;left:3px;top:2px}.payday-space.mail{background:#ffe69c}.payday-space.deal{background:#9ee4bb}.payday-space.lottery{background:#e3b7ec}.payday-space.bill{background:#ffb4ad}.payday-space.payday{background:#9ad8e9}.payday-center{position:absolute;inset:31%;display:grid;place-items:center;text-align:center;border:4px solid #e2ba4e;border-radius:50%;background:radial-gradient(circle,#fff8bd 0 26%,#f3b85c 27% 100%);color:#1f4f81}.payday-center h2{margin:12px 0 0;font-size:clamp(18px,4vw,40px)}.payday-center p{font-weight:900;margin:0}.payday-center small{padding:7px}@media(prefers-color-scheme:dark){.world-space{color:#172235}.payday-space{color:#172235}.payday-center{color:#172235}}
-</style>`);
-const renderBeforeBoards=render;render=function(){renderBeforeBoards();if(game.kind==='estate')renderEstateBoard();else if(game.kind==='world')renderRichnessBoard();else renderPaydayTrack();title.textContent=game.kind==='estate'?'Empire Immobilier':game.kind==='world'?'Marchés du Monde':'Fin de Mois'};
-document.head.insertAdjacentHTML('beforeend','<style>.world-map.galaxy{background:radial-gradient(circle at 50% 45%,#462a77,#111827 68%,#020617)}.world-map.galaxy:before{background:radial-gradient(circle at 24% 36%,#e5b25c 0 11%,transparent 12%),radial-gradient(circle at 65% 26%,#c85b57 0 13%,transparent 14%),radial-gradient(circle at 66% 65%,#5a9dcb 0 14%,transparent 15%),radial-gradient(circle at 34% 66%,#78a85f 0 11%,transparent 12%)}.world-map.fantasy{background:radial-gradient(ellipse,#d8b762,#657c41 58%,#294936)}.world-map.fantasy:before{background:radial-gradient(ellipse at 25% 32%,#6e9e59 0 20%,transparent 21%),radial-gradient(ellipse at 56% 38%,#b68545 0 20%,transparent 21%),radial-gradient(ellipse at 68% 67%,#523623 0 19%,transparent 20%),radial-gradient(ellipse at 30% 70%,#779657 0 17%,transparent 18%)}.world-map.academy{background:radial-gradient(circle,#e6d08a,#4c275d 62%,#1d1635)}.world-map.academy:before{background:radial-gradient(circle at 26% 35%,#8d65a5 0 15%,transparent 16%),radial-gradient(circle at 60% 28%,#c8a957 0 18%,transparent 19%),radial-gradient(circle at 60% 60%,#5c9c62 0 17%,transparent 18%),radial-gradient(circle at 28% 68%,#a35c54 0 15%,transparent 16%)}.payday-ring{grid-template:repeat(var(--rows),1fr)/repeat(var(--columns),1fr)!important}.outer-payday{inset:4%}.inner-payday{inset:23%!important;grid-template:repeat(var(--rows),1fr)/repeat(var(--columns),1fr)!important}.payday-center{inset:38%!important;z-index:2}.payday-arrow{position:absolute;z-index:5;font-size:clamp(22px,4vw,44px);color:#e24d53;text-shadow:0 2px #fff;font-weight:900}.into-inner{left:17%;bottom:23%}.out-inner{right:17%;top:23%}.payday-exit{margin:5px;padding:4px;border:2px solid #1e4f81;border-radius:8px;background:#a9e6c4;font-size:clamp(7px,1vw,11px)}.payday-exit span{display:inline-flex}</style>');
-document.head.insertAdjacentHTML('beforeend','<style>.estate-legend{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:10px auto 0;max-width:84%;font-size:clamp(6px,.75vw,10px);text-align:left}.estate-legend div{display:flex;align-items:center;gap:5px;min-width:0}.estate-legend i{width:18px;height:9px;flex:0 0 auto;border:1px solid #17243a;background:var(--group-color)}.estate-legend span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}</style>');
-boardSkin.addEventListener('change',applyBoardSkin);applyBoardSkin();
-document.head.insertAdjacentHTML('beforeend','<style>.wheel-spin{display:inline-grid;place-items:center;min-width:58px;min-height:58px;border:4px solid #d97706!important;border-radius:50%;background:conic-gradient(#facc15 0 16%,#60a5fa 16% 32%,#f87171 32% 48%,#86efac 48% 64%,#c4b5fd 64% 80%,#facc15 80%)!important;color:#17243a!important;animation:board-wheel .55s cubic-bezier(.2,.8,.2,1)}.board-pop{position:fixed;z-index:30;inset:0;display:grid;place-items:center;background:#0008;padding:20px}.board-pop article{max-width:430px;padding:28px;border:4px solid #d97706;border-radius:18px;background:#fff;color:#17243a;text-align:center;box-shadow:0 18px 48px #0008}.board-pop strong{display:block;margin-bottom:12px;font-size:27px}@keyframes board-wheel{to{transform:rotate(900deg)}}</style>');
-function showBoardPop(title,text){const pop=document.createElement('button');pop.className='board-pop';pop.innerHTML=`<article><strong>${title}</strong><span>${text}</span><p>Cliquez pour continuer</p></article>`;pop.onclick=()=>pop.remove();document.body.append(pop)}
-const boardRoll=roll;rollButton.onclick=()=>{if(game.over||game.turn!==0||game.pending)return;dice.classList.add('wheel-spin');setTimeout(()=>{dice.classList.remove('wheel-spin');boardRoll()},560)};
-const baseEstateCard=estateCard;estateCard=function(type){const card=(type==='chance'?chanceCards:chestCards)[0];showBoardPop(type==='chance'?'CHANCE':'CAISSE COMMUNE',card?.[0]||'Carte');return baseEstateCard(type)};
-const basePaydayCard=paydayCard;paydayCard=function(){showBoardPop('COURRIER',game.mail[0]||'Courrier');return basePaydayCard()};
+let estateNames = estateSkins.france.slice();
+
+const chanceCards = [
+  { title: 'Destin', text: 'Avancez jusqu’au départ.', effect: { type: 'move', index: 0, collect: true } },
+  { title: 'Destin', text: 'Avancez de trois cases.', effect: { type: 'relativeMove', steps: 3 } },
+  { title: 'Destin', text: 'Reculez de trois cases.', effect: { type: 'relativeMove', steps: -3 } },
+  { title: 'Destin', text: 'Prime exceptionnelle : recevez 120 €.', effect: { type: 'cash', amount: 120 } },
+  { title: 'Destin', text: 'Amende administrative : payez 80 €.', effect: { type: 'cash', amount: -80 } },
+  { title: 'Destin', text: 'Rendez-vous immédiatement en prison.', effect: { type: 'jail' } },
+  { title: 'Destin', text: 'Réparations : 25 € par maison.', effect: { type: 'repairs', amount: 25 } },
+  { title: 'Destin', text: 'Votre placement rapporte 150 €.', effect: { type: 'cash', amount: 150 } },
+  { title: 'Destin', text: 'Frais de voyage : payez 60 €.', effect: { type: 'cash', amount: -60 } },
+  { title: 'Destin', text: 'Recevez une carte de libération.', effect: { type: 'stored', id: 'release', label: 'Libération' } }
+];
+const communityCards = [
+  { title: 'Caisse commune', text: 'Remboursement fiscal : recevez 100 €.', effect: { type: 'cash', amount: 100 } },
+  { title: 'Caisse commune', text: 'Facture médicale : payez 50 €.', effect: { type: 'cash', amount: -50 } },
+  { title: 'Caisse commune', text: 'Héritage : recevez 120 €.', effect: { type: 'cash', amount: 120 } },
+  { title: 'Caisse commune', text: 'Avancez jusqu’au départ.', effect: { type: 'move', index: 0, collect: true } },
+  { title: 'Caisse commune', text: 'Recevez une carte de libération.', effect: { type: 'stored', id: 'release', label: 'Libération' } },
+  { title: 'Caisse commune', text: 'Frais scolaires : payez 90 €.', effect: { type: 'cash', amount: -90 } },
+  { title: 'Caisse commune', text: 'Vente d’occasion : recevez 75 €.', effect: { type: 'cash', amount: 75 } },
+  { title: 'Caisse commune', text: 'Travaux de voirie : 20 € par maison.', effect: { type: 'repairs', amount: 20 } }
+];
+
+const resources = ['Aluminium', 'Blé', 'Bois', 'Cacao', 'Café', 'Charbon', 'Cobalt', 'Coton', 'Cuivre', 'Diamant', 'Fer', 'Gaz', 'Hydraulique', 'Laine', 'Maïs', 'Or', 'Pétrole', 'Plomb', 'Riz', 'Solaire', 'Sucre', 'Thé', 'Tourisme', 'Uranium'];
+const countries = ['France', 'Belgique', 'Royaume-Uni', 'Suède', 'Allemagne', 'Italie', 'Espagne', 'Maroc', 'Égypte', 'Ghana', 'Éthiopie', 'Inde', 'Chine', 'Japon', 'Vietnam', 'Indonésie', 'Australie', 'Nouvelle-Zélande', 'Canada', 'États-Unis', 'Mexique', 'Brésil', 'Pérou', 'Argentine', 'Colombie', 'Venezuela', 'Russie', 'Kazakhstan', 'Turquie', 'Iran', 'Afrique du Sud', 'Qatar', 'Corée'];
+const worldTrack = ['Départ', 'France', 'Actualité', 'Blé', 'Belgique', 'Enchères', 'Cobalt', 'Royaume-Uni', 'Choix Europe', 'Suède', 'Bois', 'Allemagne', 'Joker', 'Italie', 'Tourisme', 'Espagne', 'Douane', 'Maroc', 'Cacao', 'Égypte', 'Choix Afrique', 'Ghana', 'Or', 'Éthiopie', 'Actualité', 'Inde', 'Thé', 'Chine', 'Choix Asie', 'Japon', 'Cuivre', 'Vietnam', 'Joker', 'Indonésie', 'Pétrole', 'Australie', 'Laine', 'Nouvelle-Zélande', 'Enchères', '500 000 €', 'Canada', 'Fer', 'États-Unis', 'Choix Amérique', 'Mexique', 'Maïs', 'Brésil', 'Café', 'Pérou', 'Argentine', 'Cuivre', 'Colombie', 'Actualité', 'Venezuela', 'Pétrole', 'Choix mondial', 'Russie', 'Gaz', 'Kazakhstan', 'Uranium', 'Douane', 'Turquie', 'Coton', 'Iran', 'Qatar', 'Joker', 'Afrique du Sud', 'Diamant', 'Actualité', 'Choix mondial', '500 000 €', 'Enchères'];
+const worldNews = [
+  { text: 'Hausse des cours : recevez 1 500 000 €.', amount: 1500000 },
+  { text: 'Taxe environnementale : payez 1 000 000 €.', amount: -1000000 },
+  { text: 'Subvention industrielle : recevez 2 000 000 €.', amount: 2000000 },
+  { text: 'Crise des marchés : payez 2 000 000 €.', amount: -2000000 },
+  { text: 'Contrat exceptionnel : recevez 3 000 000 €.', amount: 3000000 }
+];
+
+const paydayTrack = [
+  { type: 'start', label: 'Départ' }, { type: 'mail', label: '2 courriers', count: 2 },
+  { type: 'deal', label: 'Acquisition' }, { type: 'mail', label: '1 courrier', count: 1 },
+  { type: 'sale', label: 'Vente' }, { type: 'mail', label: '3 courriers', count: 3 },
+  { type: 'deal', label: 'Acquisition' }, { type: 'election', label: 'Caisse électorale' },
+  { type: 'mail', label: '2 courriers', count: 2 }, { type: 'dice', label: 'Concours de roue' },
+  { type: 'deal', label: 'Acquisition' }, { type: 'mail', label: '1 courrier', count: 1 },
+  { type: 'lottery', label: 'Loterie' }, { type: 'mail', label: '2 courriers', count: 2 },
+  { type: 'rest', label: 'Repos' }, { type: 'deal', label: 'Acquisition' },
+  { type: 'mail', label: '3 courriers', count: 3 }, { type: 'sale', label: 'Vente' },
+  { type: 'mail', label: '1 courrier', count: 1 }, { type: 'lottery', label: 'Loterie' },
+  { type: 'deal', label: 'Acquisition' }, { type: 'mail', label: '2 courriers', count: 2 },
+  { type: 'savings', label: 'Épargne' }, { type: 'clock', label: 'Changement d’heure' },
+  { type: 'deal', label: 'Acquisition' }, { type: 'mail', label: '3 courriers', count: 3 },
+  { type: 'sale', label: 'Vente' }, { type: 'mail', label: '1 courrier', count: 1 },
+  { type: 'deal', label: 'Acquisition' }, { type: 'winning', label: 'Tirage du mois' },
+  { type: 'payday', label: 'Jour de paye' }
+];
+const paydayMail = [
+  { title: 'Courrier', text: 'Remboursement : recevez 250 €.', type: 'cash', amount: 250 },
+  { title: 'Courrier', text: 'Réparation automobile : payez 300 €.', type: 'cash', amount: -300 },
+  { title: 'Courrier', text: 'Facture médicale de 250 €.', type: 'bill', amount: 250 },
+  { title: 'Courrier', text: 'Facture d’énergie de 180 €.', type: 'bill', amount: 180 },
+  { title: 'Courrier', text: 'Vous recevez un billet de loterie.', type: 'stored', kind: 'lottery', label: 'Billet de loterie' },
+  { title: 'Courrier', text: 'Carte postale : aucun mouvement financier.', type: 'none' },
+  { title: 'Courrier', text: 'Ristourne : recevez 180 €.', type: 'cash', amount: 180 },
+  { title: 'Courrier', text: 'Cotisation : payez 120 €.', type: 'cash', amount: -120 }
+];
+const paydayDeals = [
+  { name: 'Vélo vintage', cost: 300, value: 550 }, { name: 'Collection de bandes dessinées', cost: 450, value: 820 },
+  { name: 'Appareil photo', cost: 600, value: 1000 }, { name: 'Petit terrain', cost: 900, value: 1400 },
+  { name: 'Ordinateur restauré', cost: 720, value: 1160 }, { name: 'Mobilier ancien', cost: 520, value: 910 }
+];
+
+function shuffle(values) {
+  const copy = values.slice();
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(Math.random() * (index + 1));
+    [copy[index], copy[target]] = [copy[target], copy[index]];
+  }
+  return copy;
+}
+
+function money(value) {
+  return `${Math.round(value).toLocaleString('fr-FR')} €`;
+}
+
+function playerName(index) {
+  return index === 0 ? 'Vous' : `Bot ${index}`;
+}
+
+function currentPlayer() {
+  return game.people[game.turn];
+}
+
+function log(message) {
+  game.log.unshift(message);
+  game.log = game.log.slice(0, 10);
+}
+
+function delay(duration) {
+  if (game?.fast) return Promise.resolve();
+  return new Promise(resolve => setTimeout(resolve, duration));
+}
+
+function changeCash(playerIndex, amount, reason = '') {
+  const player = game.people[playerIndex];
+  player.cash += amount;
+  flashSequence += 1;
+  game.cashFlashes ||= {};
+  game.cashFlashes[playerIndex] = { amount, sequence: flashSequence };
+  if (reason) log(`${playerName(playerIndex)} ${amount >= 0 ? 'reçoit' : 'paie'} ${money(Math.abs(amount))} — ${reason}.`);
+  renderSidebar();
+  const sequence = flashSequence;
+  setTimeout(() => {
+    if (game?.cashFlashes?.[playerIndex]?.sequence === sequence) {
+      delete game.cashFlashes[playerIndex];
+      renderSidebar();
+    }
+  }, 1250);
+}
+
+function showModal({ title, text, color = '#d97706', actions = [{ label: 'Continuer', value: 'continue' }], content = '' }) {
+  const defaultValue = actions[0]?.value;
+  if (game.fast) return Promise.resolve(defaultValue);
+  modalHost.innerHTML = '';
+  return new Promise(resolve => {
+    const modal = document.createElement('div');
+    modal.className = 'board-modal';
+    modal.style.setProperty('--modal-color', color);
+    modal.innerHTML = `<article><h2>${title}</h2><p>${text}</p>${content}<div class="modal-actions">${actions.map((action, index) => `<button data-modal-action="${index}">${action.label}</button>`).join('')}</div></article>`;
+    const finish = value => {
+      modal.remove();
+      resolve(value);
+    };
+    modal.querySelectorAll('[data-modal-action]').forEach((button, index) => {
+      button.addEventListener('click', () => finish(actions[index].value));
+    });
+    modalHost.append(modal);
+    if (game.turn !== 0) setTimeout(() => finish(defaultValue), 700 + Math.random() * 350);
+  });
+}
+
+async function spinOneDie() {
+  const value = 1 + Math.floor(Math.random() * 6);
+  wheelRotation += 720 + (6 - value) * 60 + Math.floor(Math.random() * 2) * 360;
+  wheelElement.style.setProperty('--rotation', `${wheelRotation}deg`);
+  const startedAt = performance.now();
+  while (!game.fast && performance.now() - startedAt < 930) {
+    wheelElement.dataset.value = String(1 + Math.floor(Math.random() * 6));
+    await delay(75);
+  }
+  wheelElement.dataset.value = String(value);
+  await delay(130);
+  return value;
+}
+
+async function spinDice(count) {
+  const values = [];
+  for (let index = 0; index < count; index += 1) values.push(await spinOneDie());
+  diceElement.textContent = count === 1 ? String(values[0]) : `${values[0]} + ${values[1]} = ${values[0] + values[1]}`;
+  return values;
+}
+
+async function movePlayer(playerIndex, steps, trackLength, onWrap) {
+  const player = game.people[playerIndex];
+  const direction = steps < 0 ? -1 : 1;
+  for (let count = 0; count < Math.abs(steps); count += 1) {
+    const previous = player.pos;
+    player.pos = (player.pos + direction + trackLength) % trackLength;
+    if (direction > 0 && player.pos < previous) {
+      player.laps = (player.laps || 0) + 1;
+      if (onWrap) onWrap();
+    }
+    renderBoard();
+    await delay(92);
+  }
+}
+
+async function moveTo(playerIndex, target, trackLength, collect, onWrap) {
+  const player = game.people[playerIndex];
+  let steps = (target - player.pos + trackLength) % trackLength;
+  if (steps === 0 && collect) steps = trackLength;
+  await movePlayer(playerIndex, steps, trackLength, onWrap);
+}
+
+function estateSpace(index) {
+  if (estatePropertyIndexes.includes(index)) {
+    const order = estatePropertyIndexes.indexOf(index);
+    let passed = 0;
+    const group = estateGroups.findIndex(([, , count]) => {
+      passed += count;
+      return order < passed;
+    });
+    return { type: 'property', group, cost: 60 + group * 40 + (order % 3) * 20 };
+  }
+  if ([5, 15, 25, 35].includes(index)) return { type: 'station', cost: 200 };
+  if ([12, 28].includes(index)) return { type: 'utility', cost: 150 };
+  if ([2, 17, 33].includes(index)) return { type: 'community' };
+  if ([7, 22, 36].includes(index)) return { type: 'chance' };
+  if ([4, 38].includes(index)) return { type: 'tax', cost: index === 4 ? 200 : 100 };
+  if (index === 30) return { type: 'jail' };
+  return { type: index === 0 ? 'start' : index === 10 ? 'visit' : index === 20 ? 'parking' : 'rest' };
+}
+
+function estateOwner(index) {
+  return game.people.findIndex(player => player.assets.some(asset => asset.kind === 'estate' && asset.index === index));
+}
+
+function estateAsset(index) {
+  const owner = estateOwner(index);
+  return owner < 0 ? null : game.people[owner].assets.find(asset => asset.index === index);
+}
+
+function hasEstateSet(player, group) {
+  return player.assets.filter(asset => asset.kind === 'estate' && asset.group === group).length === estateGroups[group][2];
+}
+
+function estateWorth(player) {
+  return player.cash + player.assets.reduce((total, asset) => total + (asset.cost || 0) + (asset.houses || 0) * (asset.houseCost || 0), 0);
+}
+
+function createEstate() {
+  estateNames = (estateSkins[skinSelect.value] || estateSkins.france).slice();
+  game = {
+    kind: 'estate', turn: 0, turns: 0, busy: false, over: false, pending: null, log: [],
+    chance: shuffle(chanceCards), community: shuffle(communityCards),
+    people: Array.from({ length: Number(playerCountSelect.value) }, () => ({ cash: 1500, pos: 0, laps: 0, assets: [], stored: [], jail: 0, doubles: 0, out: false }))
+  };
+}
+
+function enterJail(playerIndex) {
+  const player = game.people[playerIndex];
+  player.pos = 10;
+  player.jail = 2;
+  player.doubles = 0;
+  log(`${playerName(playerIndex)} va en prison.`);
+}
+
+async function drawEstateCard(deckName) {
+  const deck = game[deckName];
+  const card = deck.shift();
+  deck.push(card);
+  await showModal({ title: card.title, text: card.text, color: deckName === 'chance' ? '#c026d3' : '#0284c7' });
+  const playerIndex = game.turn;
+  const player = currentPlayer();
+  const effect = card.effect;
+  if (effect.type === 'cash') {
+    changeCash(playerIndex, effect.amount, card.title);
+    endTurn();
+  } else if (effect.type === 'jail') {
+    enterJail(playerIndex);
+    endTurn();
+  } else if (effect.type === 'repairs') {
+    const amount = player.assets.reduce((sum, asset) => sum + (asset.houses || 0) * effect.amount, 0);
+    if (amount) changeCash(playerIndex, -amount, 'réparations');
+    endTurn();
+  } else if (effect.type === 'stored') {
+    player.stored.push({ id: effect.id, label: effect.label });
+    log(`${playerName(playerIndex)} conserve une carte ${effect.label}.`);
+    endTurn();
+  } else if (effect.type === 'move') {
+    await moveTo(playerIndex, effect.index, 40, effect.collect, () => changeCash(playerIndex, 200, 'passage au départ'));
+    await resolveEstateSpace();
+  } else if (effect.type === 'relativeMove') {
+    await movePlayer(playerIndex, effect.steps, 40, () => changeCash(playerIndex, 200, 'passage au départ'));
+    await resolveEstateSpace();
+  }
+}
+
+function estateRent(asset, ownerIndex) {
+  if (asset.type === 'station') {
+    return 25 * 2 ** (game.people[ownerIndex].assets.filter(item => item.type === 'station').length - 1);
+  }
+  if (asset.type === 'utility') {
+    return (game.lastDice || 7) * 5 * game.people[ownerIndex].assets.filter(item => item.type === 'utility').length;
+  }
+  return asset.rent * (asset.houses ? asset.houses + 1 : hasEstateSet(game.people[ownerIndex], asset.group) ? 2 : 1);
+}
+
+async function resolveEstateSpace() {
+  const playerIndex = game.turn;
+  const player = currentPlayer();
+  const space = estateSpace(player.pos);
+  if (['property', 'station', 'utility'].includes(space.type)) {
+    const owner = estateOwner(player.pos);
+    if (owner < 0) {
+      game.pending = { type: 'estateBuy', space, index: player.pos };
+      statusElement.textContent = `${estateNames[player.pos]} est disponible pour ${money(space.cost)}.`;
+      render();
+      if (playerIndex !== 0) {
+        await delay(450);
+        decideEstatePurchase(player.cash >= space.cost * 1.7 || Math.random() < .7);
+      }
+      return;
+    }
+    if (owner !== playerIndex) {
+      const rent = estateRent(estateAsset(player.pos), owner);
+      changeCash(playerIndex, -rent, `loyer de ${estateNames[player.pos]}`);
+      changeCash(owner, rent);
+    }
+    endTurn();
+    return;
+  }
+  if (space.type === 'chance') {
+    await drawEstateCard('chance');
+    return;
+  }
+  if (space.type === 'community') {
+    await drawEstateCard('community');
+    return;
+  }
+  if (space.type === 'tax') changeCash(playerIndex, -space.cost, 'taxe');
+  if (space.type === 'jail') enterJail(playerIndex);
+  endTurn();
+}
+
+function decideEstatePurchase(accepted) {
+  const pending = game.pending;
+  if (!pending || pending.type !== 'estateBuy') return;
+  const playerIndex = game.turn;
+  const player = currentPlayer();
+  if (accepted && player.cash >= pending.space.cost) {
+    const asset = {
+      kind: 'estate', index: pending.index, type: pending.space.type, group: pending.space.group,
+      cost: pending.space.cost, rent: Math.max(6, Math.round(pending.space.cost * .1)), houses: 0,
+      houseCost: 50 + (pending.space.group || 0) * 10
+    };
+    changeCash(playerIndex, -asset.cost, `achat de ${estateNames[asset.index]}`);
+    player.assets.push(asset);
+    game.boardFlash = { index: asset.index, type: 'bought' };
+  } else {
+    log(`${playerName(playerIndex)} laisse ${estateNames[pending.index]} à la banque.`);
+  }
+  game.pending = null;
+  endTurn();
+}
+
+function buildEstate(index) {
+  const player = game.people[0];
+  const choices = player.assets.filter(asset => asset.type === 'property' && hasEstateSet(player, asset.group) && asset.houses < 4 && player.cash >= asset.houseCost);
+  const asset = Number.isInteger(index) ? choices.find(choice => choice.index === index) : choices.sort((left, right) => left.houses - right.houses)[0];
+  if (!asset || game.turn !== 0 || game.busy || game.pending) return;
+  changeCash(0, -asset.houseCost, `construction sur ${estateNames[asset.index]}`);
+  asset.houses += 1;
+  game.boardFlash = { index: asset.index, type: 'built' };
+  render();
+}
+
+async function rollEstate() {
+  const playerIndex = game.turn;
+  const player = currentPlayer();
+  if (player.jail > 0) {
+    const releaseIndex = player.stored.findIndex(card => card.id === 'release');
+    if (releaseIndex >= 0) {
+      player.stored.splice(releaseIndex, 1);
+      player.jail = 0;
+      log(`${playerName(playerIndex)} utilise une carte de libération.`);
+    } else {
+      player.jail -= 1;
+      log(`${playerName(playerIndex)} reste en prison.`);
+      endTurn();
+      return;
+    }
+  }
+  const values = await spinDice(2);
+  const steps = values[0] + values[1];
+  game.lastDice = steps;
+  player.doubles = values[0] === values[1] ? player.doubles + 1 : 0;
+  if (player.doubles === 3) {
+    enterJail(playerIndex);
+    endTurn();
+    return;
+  }
+  await movePlayer(playerIndex, steps, 40, () => changeCash(playerIndex, 200, 'passage au départ'));
+  await resolveEstateSpace();
+}
+
+function createWorld() {
+  const titles = [];
+  resources.forEach((resource, resourceIndex) => {
+    [5, 10, 15, 20, 20, 30].forEach((share, titleIndex) => {
+      titles.push({
+        kind: 'world', resource, share,
+        country: countries[(resourceIndex * 3 + titleIndex * 5) % countries.length],
+        cost: (titleIndex + 1) * 500000,
+        color: `hsl(${(resourceIndex * 47) % 360} 62% 52%)`
+      });
+    });
+  });
+  game = {
+    kind: 'world', turn: 0, turns: 0, tradeTurns: 0, busy: false, over: false, pending: null, log: [], pot: 0,
+    titles: shuffle(titles), news: shuffle(worldNews), tradingUnlocked: false,
+    people: Array.from({ length: Number(playerCountSelect.value) }, () => ({ cash: 66000000, pos: 0, laps: 0, assets: [], stored: [], jokers: 0, skip: 0, out: false }))
+  };
+}
+
+function worldShare(player, resource) {
+  return player.assets.filter(asset => asset.resource === resource).reduce((sum, asset) => sum + asset.share, 0);
+}
+
+function worldRoyalty(player, resource) {
+  const share = worldShare(player, resource);
+  if (share >= 90) return 18000000;
+  if (share >= 70) return 9000000;
+  if (share >= 50) return 4500000;
+  if (share >= 30) return 900000;
+  return 0;
+}
+
+function unlockWorldTrading() {
+  if (!game.tradingUnlocked && game.titles.length === 0) {
+    game.tradingUnlocked = true;
+    game.tradeTurns = 0;
+    log('Tous les titres sont attribués : les échanges sont désormais ouverts.');
+  }
+}
+
+function worldOffers(country, player) {
+  const direct = game.titles.filter(asset => asset.country === country);
+  if (direct.length) return direct.slice(0, 6);
+  const usefulResources = new Set(player.assets.map(asset => asset.resource));
+  const useful = game.titles.filter(asset => usefulResources.has(asset.resource));
+  return (useful.length ? useful : game.titles).slice(0, 6);
+}
+
+async function drawWorldNews() {
+  const card = game.news.shift();
+  game.news.push(card);
+  await showModal({ title: 'Actualité', text: card.text, color: '#0f766e' });
+  changeCash(game.turn, card.amount, 'actualité');
+  endTurn();
+}
+
+async function resolveWorldSpace() {
+  const player = currentPlayer();
+  const label = worldTrack[player.pos];
+  if (countries.includes(label)) {
+    const choices = worldOffers(label, player);
+    if (!choices.length) {
+      unlockWorldTrading();
+      endTurn();
+      return;
+    }
+    game.pending = { type: 'worldBuy', label, offers: choices };
+    statusElement.textContent = `${label} : choisissez les titres à acquérir, puis terminez vos achats.`;
+    render();
+    if (game.turn !== 0) await botWorldPurchases();
+    return;
+  }
+  if (resources.includes(label)) {
+    game.people.forEach((owner, ownerIndex) => {
+      if (ownerIndex === game.turn) return;
+      const royalty = worldRoyalty(owner, label);
+      if (!royalty) return;
+      changeCash(game.turn, -royalty, `royalties de ${label}`);
+      changeCash(ownerIndex, royalty);
+    });
+    endTurn();
+    return;
+  }
+  if (label === 'Actualité') {
+    await drawWorldNews();
+    return;
+  }
+  if (label === '500 000 €') {
+    changeCash(game.turn, 500000 * (game.lastDice || 7), 'prime de la roue');
+  } else if (label === 'Douane') {
+    player.skip = 1;
+    log(`${playerName(game.turn)} perdra son prochain tour.`);
+  } else if (label === 'Joker') {
+    if (player.cash >= 3000000) {
+      changeCash(game.turn, -3000000, 'achat d’un Joker');
+      player.jokers += 1;
+      player.stored.push({ id: 'joker', label: 'Joker commercial' });
+    }
+  } else if (label.startsWith('Choix') && player.laps > 0 && game.titles.length) {
+    game.pending = { type: 'worldBuy', label, offers: worldOffers('', player) };
+    render();
+    if (game.turn !== 0) await botWorldPurchases();
+    return;
+  } else if (label === 'Enchères' && player.laps > 0 && game.titles.length) {
+    const asset = game.titles[0];
+    const price = Math.max(100000, Math.round(asset.cost * (.55 + Math.random() * .45)));
+    await showModal({ title: 'Enchères', text: `${asset.resource} ${asset.share}% (${asset.country}) est adjugé ${money(price)}.`, color: asset.color });
+    if (player.cash >= price) {
+      changeCash(game.turn, -price, 'enchère');
+      player.assets.push(asset);
+      game.titles.shift();
+      unlockWorldTrading();
+    }
+  }
+  endTurn();
+}
+
+function buyWorldAsset(index) {
+  const pending = game.pending;
+  const player = currentPlayer();
+  const asset = pending?.offers[index];
+  if (!asset || player.cash < asset.cost) return false;
+  changeCash(game.turn, -asset.cost, `titre ${asset.resource} ${asset.share}%`);
+  player.assets.push(asset);
+  game.titles.splice(game.titles.indexOf(asset), 1);
+  pending.offers.splice(index, 1);
+  unlockWorldTrading();
+  render();
+  return true;
+}
+
+async function botWorldPurchases() {
+  const player = currentPlayer();
+  let purchases = 0;
+  while (game.pending?.offers.length && purchases < 3) {
+    const ranked = game.pending.offers
+      .map((asset, index) => ({ asset, index, score: worldShare(player, asset.resource) * 3 + asset.share * 2 - asset.cost / 500000 }))
+      .filter(entry => entry.asset.cost <= player.cash * .6)
+      .sort((left, right) => right.score - left.score);
+    if (!ranked.length || (purchases > 0 && Math.random() < .35)) break;
+    buyWorldAsset(ranked[0].index);
+    purchases += 1;
+    await delay(250);
+  }
+  game.pending = null;
+  endTurn();
+}
+
+function worldAssetScore(player, asset) {
+  return asset.cost + worldShare(player, asset.resource) * 100000;
+}
+
+function executeWorldTrade(fromIndex, toIndex, offered, requested, offeredCash, requestedCash) {
+  const from = game.people[fromIndex];
+  const to = game.people[toIndex];
+  if (!offered || !requested || from.cash < offeredCash || to.cash < requestedCash) return false;
+  const offeredIndex = from.assets.indexOf(offered);
+  const requestedIndex = to.assets.indexOf(requested);
+  if (offeredIndex < 0 || requestedIndex < 0) return false;
+  const offeredValue = worldAssetScore(to, offered) + offeredCash;
+  const requestedValue = worldAssetScore(to, requested) + requestedCash;
+  const strategicGain = worldShare(to, offered.resource) > worldShare(to, requested.resource);
+  if (toIndex !== 0 && offeredValue < requestedValue * (strategicGain ? .78 : .95)) return false;
+  from.assets.splice(offeredIndex, 1, requested);
+  to.assets.splice(requestedIndex, 1, offered);
+  changeCash(fromIndex, requestedCash - offeredCash);
+  changeCash(toIndex, offeredCash - requestedCash);
+  log(`${playerName(fromIndex)} et ${playerName(toIndex)} échangent ${offered.resource} contre ${requested.resource}.`);
+  render();
+  return true;
+}
+
+async function openWorldTrade() {
+  if (game.kind !== 'world' || !game.tradingUnlocked || game.turn !== 0 || game.pending || game.busy) return;
+  const human = game.people[0];
+  const opponents = game.people.map((player, index) => ({ player, index })).filter(entry => entry.index > 0 && entry.player.assets.length);
+  if (!human.assets.length || !opponents.length) {
+    statusElement.textContent = 'Un échange exige au moins un titre de chaque côté.';
+    return;
+  }
+  const opponentOptions = opponents.map(entry => `<option value="${entry.index}">${playerName(entry.index)}</option>`).join('');
+  const ownOptions = human.assets.map((asset, index) => `<option value="${index}">${asset.resource} ${asset.share}%</option>`).join('');
+  const requestedOptions = opponents[0].player.assets.map((asset, index) => `<option value="${index}">${asset.resource} ${asset.share}%</option>`).join('');
+  const content = `<div class="trade-grid"><label>Partenaire<select id="tradeOpponent">${opponentOptions}</select></label><label>Votre titre<select id="tradeOwn">${ownOptions}</select></label><label>Titre demandé<select id="tradeWanted">${requestedOptions}</select></label><label>Argent offert<input id="tradeOfferCash" type="number" min="0" step="100000" value="0"></label><label>Argent demandé<input id="tradeWantCash" type="number" min="0" step="100000" value="0"></label></div>`;
+  modalHost.innerHTML = `<div class="board-modal" style="--modal-color:#0f766e"><article><h2>Échange commercial</h2><p>Proposez un titre et, si besoin, une compensation.</p>${content}<div class="modal-actions"><button id="confirmTrade">Proposer</button><button id="cancelTrade">Annuler</button></div></article></div>`;
+  const modal = modalHost.firstElementChild;
+  const opponentSelect = modal.querySelector('#tradeOpponent');
+  const wantedSelect = modal.querySelector('#tradeWanted');
+  opponentSelect.addEventListener('change', () => {
+    const opponent = game.people[Number(opponentSelect.value)];
+    wantedSelect.innerHTML = opponent.assets.map((asset, index) => `<option value="${index}">${asset.resource} ${asset.share}%</option>`).join('');
+  });
+  modal.querySelector('#cancelTrade').addEventListener('click', () => modal.remove());
+  modal.querySelector('#confirmTrade').addEventListener('click', () => {
+    const opponentIndex = Number(opponentSelect.value);
+    const opponent = game.people[opponentIndex];
+    const accepted = executeWorldTrade(
+      0, opponentIndex,
+      human.assets[Number(modal.querySelector('#tradeOwn').value)],
+      opponent.assets[Number(wantedSelect.value)],
+      Math.max(0, Number(modal.querySelector('#tradeOfferCash').value) || 0),
+      Math.max(0, Number(modal.querySelector('#tradeWantCash').value) || 0)
+    );
+    modal.remove();
+    statusElement.textContent = accepted ? 'Échange accepté.' : 'Échange refusé.';
+  });
+}
+
+function maybeBotWorldTrade() {
+  if (!game.tradingUnlocked || Math.random() > .28) return;
+  const candidates = game.people.map((player, index) => ({ player, index })).filter(entry => entry.index > 0 && entry.player.assets.length);
+  if (candidates.length < 2) return;
+  const [first, second] = shuffle(candidates).slice(0, 2);
+  const offered = first.player.assets.find(asset => worldShare(second.player, asset.resource) > worldShare(first.player, asset.resource));
+  const requested = second.player.assets.find(asset => worldShare(first.player, asset.resource) > worldShare(second.player, asset.resource));
+  if (offered && requested) executeWorldTrade(first.index, second.index, offered, requested, 0, 0);
+}
+
+async function rollWorld() {
+  const player = currentPlayer();
+  if (player.skip > 0) {
+    player.skip -= 1;
+    log(`${playerName(game.turn)} reste à la douane.`);
+    endTurn();
+    return;
+  }
+  const values = await spinDice(2);
+  const steps = values[0] + values[1];
+  game.lastDice = steps;
+  if (values[0] === values[1]) changeCash(game.turn, -values[0] * 1000000, 'double à la roue');
+  await movePlayer(game.turn, steps, worldTrack.length);
+  await resolveWorldSpace();
+}
+
+function createPayday() {
+  game = {
+    kind: 'payday', turn: 0, turns: 0, busy: false, over: false, pending: null, log: [], pot: 0, targetMonths: 2,
+    mail: shuffle(paydayMail), deals: shuffle(paydayDeals),
+    people: Array.from({ length: Number(playerCountSelect.value) }, () => ({ cash: 6500, pos: 0, laps: 0, bills: 0, loans: 0, savings: 0, assets: [], stored: [], monthsCompleted: 0, out: false }))
+  };
+}
+
+async function drawPaydayMail(count) {
+  const playerIndex = game.turn;
+  for (let index = 0; index < count; index += 1) {
+    const card = game.mail.shift();
+    game.mail.push(card);
+    await showModal({ title: `${card.title} · ${index + 1}/${count}`, text: card.text, color: '#ca8a04' });
+    const player = game.people[playerIndex];
+    if (card.type === 'cash') changeCash(playerIndex, card.amount, 'courrier');
+    if (card.type === 'bill') {
+      player.bills += card.amount;
+      log(`${playerName(playerIndex)} ajoute une facture de ${money(card.amount)}.`);
+    }
+    if (card.type === 'stored') {
+      player.stored.push({ id: card.kind, label: card.label });
+      log(`${playerName(playerIndex)} conserve ${card.label}.`);
+    }
+    render();
+  }
+}
+
+async function offerPaydayDeal() {
+  const playerIndex = game.turn;
+  const player = currentPlayer();
+  const deal = game.deals.shift();
+  game.deals.push(deal);
+  const choice = await showModal({
+    title: 'Acquisition', text: `${deal.name} coûte ${money(deal.cost)} et peut être revendu ${money(deal.value)}.`, color: '#15803d',
+    actions: player.cash >= deal.cost ? [{ label: 'Acheter', value: 'buy' }, { label: 'Passer', value: 'skip' }] : [{ label: 'Fonds insuffisants', value: 'skip' }]
+  });
+  if (choice === 'buy' && player.cash >= deal.cost) {
+    changeCash(playerIndex, -deal.cost, `achat de ${deal.name}`);
+    player.assets.push({ kind: 'deal', ...deal });
+    game.boardFlash = { index: player.pos, type: 'bought' };
+  }
+}
+
+async function sellPaydayAsset() {
+  const playerIndex = game.turn;
+  const player = currentPlayer();
+  const sellable = player.assets.filter(asset => asset.kind === 'deal');
+  if (!sellable.length) {
+    await showModal({ title: 'Vente', text: 'Vous ne possédez aucune acquisition à revendre.', color: '#15803d' });
+    return;
+  }
+  const actions = sellable.map((asset, index) => ({ label: `${asset.name} · ${money(asset.value)}`, value: index }));
+  actions.push({ label: 'Ne rien vendre', value: -1 });
+  const selected = await showModal({ title: 'Vente', text: 'Choisissez une acquisition à revendre.', color: '#15803d', actions });
+  if (selected >= 0) {
+    const asset = sellable[selected];
+    player.assets.splice(player.assets.indexOf(asset), 1);
+    changeCash(playerIndex, asset.value, `vente de ${asset.name}`);
+  }
+}
+
+async function paydayDiceContest() {
+  const results = game.people.map(() => 1 + Math.floor(Math.random() * 6));
+  const best = Math.max(...results);
+  const winner = results.indexOf(best);
+  await showModal({ title: 'Concours de roue', text: `${game.people.map((player, index) => `${playerName(index)} : ${results[index]}`).join(' · ')}. ${playerName(winner)} gagne ${money(2000)}.`, color: '#7e22ce' });
+  changeCash(winner, 2000, 'concours de roue');
+}
+
+async function finishPaydayMonth() {
+  const playerIndex = game.turn;
+  const player = currentPlayer();
+  const interest = Math.round(player.loans * .1);
+  const savingsInterest = Math.round(player.savings * .1);
+  changeCash(playerIndex, 6500 + savingsInterest - player.bills - interest, 'solde du mois');
+  player.bills = 0;
+  player.stored = player.stored.filter(card => card.id !== 'lottery');
+  player.monthsCompleted += 1;
+  await showModal({ title: 'Jour de paye', text: `Salaire : ${money(6500)} · intérêts d’épargne : ${money(savingsInterest)} · intérêts de prêt : ${money(interest)}.`, color: '#0284c7' });
+  player.pos = 0;
+  if (game.people.every(person => person.monthsCompleted >= game.targetMonths)) {
+    finishGame();
+    return;
+  }
+  endTurn();
+}
+
+async function resolvePaydaySpace() {
+  const playerIndex = game.turn;
+  const player = currentPlayer();
+  const space = paydayTrack[player.pos];
+  if (space.type === 'mail') await drawPaydayMail(space.count);
+  if (space.type === 'deal') await offerPaydayDeal();
+  if (space.type === 'sale') await sellPaydayAsset();
+  if (space.type === 'election') {
+    game.people.forEach((person, index) => {
+      changeCash(index, -1000, 'caisse électorale');
+      game.pot += 1000;
+    });
+    await showModal({ title: 'Caisse électorale', text: `Chaque joueur verse ${money(1000)}. La caisse contient ${money(game.pot)}.`, color: '#b91c1c' });
+  }
+  if (space.type === 'dice') await paydayDiceContest();
+  if (space.type === 'lottery') {
+    changeCash(playerIndex, -100, 'billet de loterie');
+    player.stored.push({ id: 'lottery', label: 'Billet de loterie' });
+  }
+  if (space.type === 'savings') {
+    const deposit = Math.min(500, Math.max(0, player.cash));
+    if (deposit) {
+      changeCash(playerIndex, -deposit, 'versement sur l’épargne');
+      player.savings += deposit;
+    }
+  }
+  if (space.type === 'clock') {
+    game.people.forEach(person => { person.pos = Math.max(0, person.pos - 1); });
+    await showModal({ title: 'Changement d’heure', text: 'Tous les joueurs reculent d’une case.', color: '#b91c1c' });
+  }
+  if (space.type === 'winning') {
+    const tickets = player.stored.filter(card => card.id === 'lottery');
+    const prize = tickets.length * 2000;
+    if (prize) changeCash(playerIndex, prize, 'tirage du mois');
+    player.stored = player.stored.filter(card => card.id !== 'lottery');
+    await showModal({ title: 'Tirage du mois', text: prize ? `Vos billets rapportent ${money(prize)}.` : 'Vous ne possédez aucun billet.', color: '#7e22ce' });
+  }
+  if (space.type === 'payday') {
+    await finishPaydayMonth();
+    return;
+  }
+  endTurn();
+}
+
+async function rollPayday() {
+  const [value] = await spinDice(1);
+  const player = currentPlayer();
+  const steps = Math.min(value, 30 - player.pos);
+  await movePlayer(game.turn, steps, paydayTrack.length);
+  await resolvePaydaySpace();
+}
+
+function playerValue(player) {
+  if (game.kind === 'estate') return estateWorth(player);
+  if (game.kind === 'world') return player.cash + player.assets.reduce((sum, asset) => sum + asset.cost, 0);
+  return player.cash + player.savings - player.loans + player.assets.reduce((sum, asset) => sum + (asset.value || 0), 0);
+}
+
+function finishGame() {
+  game.over = true;
+  game.busy = false;
+  const ranking = game.people.map((player, index) => ({ index, value: playerValue(player) })).sort((left, right) => right.value - left.value);
+  statusElement.textContent = `${playerName(ranking[0].index)} remporte la partie avec ${money(ranking[0].value)}.`;
+  render();
+}
+
+function ensureSolvency(playerIndex) {
+  const player = game.people[playerIndex];
+  if (player.cash >= 0) return;
+  if (game.kind === 'payday') {
+    const loan = Math.ceil(Math.abs(player.cash) / 1000) * 1000;
+    player.loans += loan;
+    changeCash(playerIndex, loan, 'prêt bancaire');
+    return;
+  }
+  player.out = true;
+  log(`${playerName(playerIndex)} est éliminé faute de liquidités.`);
+  if (game.people.filter(person => !person.out).length <= 1) finishGame();
+}
+
+function endTurn() {
+  if (game.over) return;
+  ensureSolvency(game.turn);
+  if (game.over) return;
+  game.pending = null;
+  game.busy = false;
+  game.turns += 1;
+  if (game.kind === 'world') {
+    if (game.tradingUnlocked) game.tradeTurns += 1;
+    maybeBotWorldTrade();
+  }
+  do game.turn = (game.turn + 1) % game.people.length;
+  while (game.people[game.turn].out);
+  if (game.kind === 'world' && game.tradingUnlocked && game.tradeTurns > 60) {
+    finishGame();
+    return;
+  }
+  statusElement.textContent = game.turn === 0 ? 'À vous de jouer.' : `${playerName(game.turn)} joue.`;
+  render();
+  scheduleBot();
+}
+
+function scheduleBot() {
+  clearTimeout(botTimer);
+  if (game.over || game.turn === 0 || game.busy || game.pending) return;
+  botTimer = setTimeout(performRoll, 620 + Math.random() * 520);
+}
+
+async function performRoll() {
+  if (game.over || game.busy || game.pending) return;
+  game.busy = true;
+  renderControls();
+  if (game.kind === 'estate') await rollEstate();
+  else if (game.kind === 'world') await rollWorld();
+  else await rollPayday();
+}
+
+function perimeterPosition(index, size) {
+  const edge = size - 1;
+  if (index <= edge) return [size - index, 1];
+  if (index <= edge * 2) return [1, index - edge + 1];
+  if (index <= edge * 3) return [index - edge * 2 + 1, size];
+  return [size, size - (index - edge * 3)];
+}
+
+function rectanglePosition(index, columns, rows) {
+  if (index < rows) return [rows - index, 1];
+  let remaining = index - rows;
+  if (remaining < columns - 1) return [1, remaining + 2];
+  remaining -= columns - 1;
+  if (remaining < rows - 1) return [remaining + 2, columns];
+  remaining -= rows - 1;
+  return [rows, columns - remaining - 1];
+}
+
+function tokensAt(index) {
+  return game.people.map((player, playerIndex) => player.pos === index && !player.out ? `<i class="token" style="--token:${tokenColors[playerIndex]}">${playerIndex + 1}</i>` : '').join('');
+}
+
+function estateOwnerMarkup(index) {
+  const owner = estateOwner(index);
+  if (owner < 0) return '';
+  const asset = estateAsset(index);
+  return `<i class="owner-mark" title="${playerName(owner)}" style="--owner:${tokenColors[owner]}">${owner + 1}</i>${asset.houses ? `<span class="owner-houses">${'🏠'.repeat(asset.houses)}</span>` : ''}`;
+}
+
+function renderEstateBoard() {
+  const cells = estateNames.map((label, index) => {
+    const [row, column] = perimeterPosition(index, 11);
+    const space = estateSpace(index);
+    const edge = index > 0 && index < 10 ? 'west' : index > 10 && index < 20 ? 'north' : index > 20 && index < 30 ? 'east' : index > 30 && index < 40 ? 'south' : '';
+    const corner = [0, 10, 20, 30].includes(index) ? 'corner' : '';
+    const flash = game.boardFlash?.index === index ? `just-${game.boardFlash.type}` : '';
+    return `<div class="space estate-space ${space.type} ${edge} ${corner} ${flash}" style="grid-area:${row}/${column};--band:${space.group !== undefined ? estateGroups[space.group][1] : '#d0d5dd'}">${space.group !== undefined ? '<i class="band"></i>' : ''}<span class="name">${label}</span><span>${tokensAt(index)}</span>${estateOwnerMarkup(index)}</div>`;
+  }).join('');
+  const legend = estateGroups.map((group, groupIndex) => `<div><i style="--group-color:${group[1]}"></i><span>${estatePropertyIndexes.filter(index => estateSpace(index).group === groupIndex).map(index => estateNames[index]).join(' · ')}</span></div>`).join('');
+  board.innerHTML = `<div class="square-board"><div class="center-art"><h2>EMPIRE<br>IMMOBILIER</h2><p>${skinSelect.options[skinSelect.selectedIndex].text}</p><div class="estate-legend">${legend}</div></div>${cells}</div>`;
+}
+
+function worldRegion(label) {
+  if (['France', 'Belgique', 'Royaume-Uni', 'Suède', 'Allemagne', 'Italie', 'Espagne', 'Russie', 'Kazakhstan', 'Turquie'].includes(label)) return 'europe';
+  if (['Maroc', 'Égypte', 'Ghana', 'Éthiopie', 'Afrique du Sud'].includes(label)) return 'africa';
+  if (['Inde', 'Chine', 'Japon', 'Vietnam', 'Indonésie', 'Iran'].includes(label)) return 'asia';
+  if (['Australie', 'Nouvelle-Zélande'].includes(label)) return 'oceania';
+  if (countries.includes(label)) return 'america';
+  if (resources.includes(label)) return 'resource';
+  return 'special';
+}
+
+function worldSkinLabel(label, index) {
+  if (!['galaxy', 'fantasy', 'academy'].includes(skinSelect.value)) return label;
+  const themes = {
+    galaxy: { places: ['Auriga', 'Nébula', 'Cérès', 'Orion', 'Cygnus', 'Vesper', 'Nova', 'Titan', 'Kepler', 'Atlas', 'Polaris', 'Andromède'], resources: ['Plasma', 'Cristal', 'Alliage', 'Hélium'] },
+    fantasy: { places: ['Valbois', 'Clairvallon', 'Sylveclaire', 'Montedor', 'Rochebrune', 'Fortacier', 'Boisombre', 'Terres noires', 'Valdor', 'Désert rouge', 'Île éternelle', 'Tourcendre'], resources: ['Acier ancien', 'Bois sacré', 'Or des forges', 'Herbes rares'] },
+    academy: { places: ['Grande Académie', 'Village des mages', 'Allée des grimoires', 'Conseil magique', 'Académie boréale', 'Académie australe', 'Forteresse magique', 'Val-enchanté', 'Banque runique', 'Forêt enchantée', 'Maison des alchimistes', 'Manoir des ombres'], resources: ['Runes', 'Baguettes', 'Potions', 'Balais'] }
+  };
+  const theme = themes[skinSelect.value];
+  if (countries.includes(label)) return theme.places[index % theme.places.length];
+  if (resources.includes(label)) return theme.resources[index % theme.resources.length];
+  return label;
+}
+
+function worldOwnershipMarkup(label) {
+  if (countries.includes(label)) {
+    return `<span class="world-ownership">${game.people.map((player, index) => {
+      const count = player.assets.filter(asset => asset.country === label).length;
+      return count ? `<i class="world-share" title="${playerName(index)} : ${count} titre(s)" style="--owner:${tokenColors[index]}">${count}</i>` : '';
+    }).join('')}</span>`;
+  }
+  if (resources.includes(label)) {
+    return `<span class="world-ownership">${game.people.map((player, index) => {
+      const share = worldShare(player, label);
+      return share ? `<i class="world-share" title="${playerName(index)} : ${share}%" style="--owner:${tokenColors[index]}">${share}</i>` : '';
+    }).join('')}</span>`;
+  }
+  return '';
+}
+
+function renderWorldBoard() {
+  const cell = (label, globalIndex, localIndex, size) => {
+    const [row, column] = perimeterPosition(localIndex, size);
+    return `<div class="space world-space ${worldRegion(label)}" style="grid-area:${row}/${column}"><span class="name">${worldSkinLabel(label, globalIndex)}</span><span>${tokensAt(globalIndex)}</span>${worldOwnershipMarkup(label)}</div>`;
+  };
+  const theme = ['galaxy', 'fantasy', 'academy'].includes(skinSelect.value) ? skinSelect.value : '';
+  board.innerHTML = `<div class="world-board"><div class="world-ring outer" style="--ring:11">${worldTrack.slice(0, 40).map((label, index) => cell(label, index, index, 11)).join('')}</div><div class="world-ring inner" style="--ring:9">${worldTrack.slice(40).map((label, index) => cell(label, index + 40, index, 9)).join('')}</div><div class="world-map ${theme}"><h2>MARCHÉS<br>DU MONDE</h2><p>40 cases extérieures · 32 cases intérieures</p></div></div>`;
+}
+
+function renderPaydayBoard() {
+  const outer = paydayTrack.slice(0, 16);
+  const inner = paydayTrack.slice(16, 30);
+  const cell = (space, globalIndex, localIndex, columns, rows) => {
+    const [row, column] = rectanglePosition(localIndex, columns, rows);
+    const flash = game.boardFlash?.index === globalIndex ? `just-${game.boardFlash.type}` : '';
+    return `<div class="payday-space ${space.type} ${flash}" style="grid-area:${row}/${column}"><b>${globalIndex + 1}</b><span>${space.label}</span><span>${tokensAt(globalIndex)}</span></div>`;
+  };
+  board.innerHTML = `<div class="payday-board"><div class="payday-ring outer" style="--columns:6;--rows:4">${outer.map((space, index) => cell(space, index, index, 6, 4)).join('')}</div><div class="payday-ring inner" style="--columns:5;--rows:4">${inner.map((space, index) => cell(space, index + 16, index, 5, 4)).join('')}</div><div class="payday-arrow in">↙</div><div class="payday-arrow out">↗</div><div class="payday-center"><h2>FIN DE MOIS</h2><p>Deux tours du calendrier</p><small>31 · Jour de paye</small><span>${tokensAt(30)}</span></div></div>`;
+}
+
+function renderBoard() {
+  if (game.kind === 'estate') renderEstateBoard();
+  else if (game.kind === 'world') renderWorldBoard();
+  else renderPaydayBoard();
+}
+
+function assetColor(asset) {
+  if (asset.kind === 'world') return asset.color;
+  if (asset.kind === 'estate' && asset.group !== undefined) return estateGroups[asset.group][1];
+  if (asset.type === 'station') return '#334155';
+  if (asset.type === 'utility') return '#0891b2';
+  return '#64748b';
+}
+
+function assetLabel(asset) {
+  if (asset.kind === 'estate') return `${estateNames[asset.index]}${asset.houses ? ` · ${asset.houses} maison(s)` : ''}`;
+  if (asset.kind === 'world') return `${asset.resource} ${asset.share}% · ${asset.country}`;
+  return `${asset.name} · revente ${money(asset.value)}`;
+}
+
+function renderSidebar() {
+  playersElement.innerHTML = game.people.map((player, index) => {
+    const visibleAssets = player.assets.map(asset => `<span class="mini-asset" style="--asset-color:${assetColor(asset)}">${assetLabel(asset)}</span>`).join('');
+    const stored = player.stored.map(card => `<span class="mini-asset" style="--asset-color:#7c3aed">${card.label}</span>`).join('');
+    const details = game.kind === 'payday' ? `Factures ${money(player.bills)} · prêt ${money(player.loans)} · épargne ${money(player.savings)}` : game.kind === 'world' ? `${player.assets.length} titre(s) · ${player.jokers} Joker(s)` : `${player.assets.length} propriété(s)`;
+    const cashFlash = game.cashFlashes?.[index];
+    const flash = cashFlash ? `<span class="money-change ${cashFlash.amount >= 0 ? 'gain' : 'loss'}">${cashFlash.amount >= 0 ? '+' : '−'}${money(Math.abs(cashFlash.amount))}</span>` : '';
+    return `<article class="player ${game.turn === index ? 'active' : ''}" style="border-left:7px solid ${tokenColors[index]}"><strong>${playerName(index)}</strong> · ${money(player.cash)}${flash}<small>${details}</small><div class="player-assets">${visibleAssets}${stored}</div></article>`;
+  }).join('');
+}
+
+function renderAssets() {
+  const player = game.people[0];
+  assetsTitleElement.textContent = 'Vos actifs et cartes conservées';
+  const cards = player.assets.map(asset => {
+    const buildable = game.kind === 'estate' && asset.type === 'property' && hasEstateSet(player, asset.group) && asset.houses < 4 && player.cash >= asset.houseCost;
+    return `<article class="card ${asset.kind === 'world' ? 'resource' : ''}" style="--resource:${assetColor(asset)}"><strong>${assetLabel(asset)}</strong>${asset.kind === 'estate' ? `<p>Achat ${money(asset.cost)} · loyer ${money(estateRent(asset, 0))}</p>` : ''}${buildable ? `<button data-build="${asset.index}">Construire · ${money(asset.houseCost)}</button>` : ''}</article>`;
+  });
+  player.stored.forEach(card => cards.push(`<article class="card special-card"><strong>${card.label}</strong><p>Carte conservée jusqu’à son utilisation.</p></article>`));
+  assetsElement.innerHTML = cards.join('') || '<span class="muted">Aucun actif pour le moment.</span>';
+  assetsElement.querySelectorAll('[data-build]').forEach(button => button.addEventListener('click', () => buildEstate(Number(button.dataset.build))));
+}
+
+function renderOffers() {
+  offersElement.innerHTML = '';
+  if (game.pending?.type === 'worldBuy') {
+    offersElement.innerHTML = game.pending.offers.map((asset, index) => `<article class="card resource" style="--resource:${asset.color}"><strong>${asset.resource} · ${asset.share}%</strong><p>${asset.country}<br>${money(asset.cost)}</p>${game.turn === 0 ? `<button data-world-buy="${index}">Acheter</button>` : ''}</article>`).join('');
+    offersElement.querySelectorAll('[data-world-buy]').forEach(button => button.addEventListener('click', () => buyWorldAsset(Number(button.dataset.worldBuy))));
+  }
+}
+
+function renderControls() {
+  const humanTurn = game.turn === 0 && !game.over;
+  rollButton.disabled = !humanTurn || game.busy || Boolean(game.pending);
+  buyButton.hidden = !(humanTurn && game.pending?.type === 'estateBuy');
+  skipButton.hidden = !(humanTurn && ['estateBuy', 'worldBuy'].includes(game.pending?.type));
+  buildButton.hidden = !(humanTurn && game.kind === 'estate' && !game.pending && game.people[0].assets.some(asset => asset.type === 'property' && hasEstateSet(game.people[0], asset.group) && asset.houses < 4 && game.people[0].cash >= asset.houseCost));
+  tradeButton.hidden = !(humanTurn && game.kind === 'world' && game.tradingUnlocked && !game.pending);
+}
+
+function render() {
+  titleElement.textContent = game.kind === 'estate' ? 'Empire Immobilier' : game.kind === 'world' ? 'Marchés du Monde' : 'Fin de Mois';
+  rulesElement.textContent = game.kind === 'estate'
+    ? 'Achetez des propriétés, indiquez leurs propriétaires, complétez des groupes et construisez. Les cartes sont résolues une par une après leur fermeture.'
+    : game.kind === 'world'
+      ? 'Un tour complet parcourt les 40 cases extérieures puis les 32 intérieures. Les titres donnent des royalties dès 30 % et deviennent échangeables lorsque le marché est épuisé.'
+      : 'Parcourez les 31 jours : courriers, acquisitions, ventes, loteries, épargne et paye. Chaque courrier est lu et résolu séparément.';
+  renderBoard();
+  renderSidebar();
+  renderAssets();
+  renderOffers();
+  renderControls();
+  logElement.innerHTML = game.log.map(entry => `<li>${entry}</li>`).join('');
+  if (game.boardFlash) setTimeout(() => { if (game) { game.boardFlash = null; renderBoard(); } }, 950);
+}
+
+function newGame() {
+  clearTimeout(botTimer);
+  modalHost.innerHTML = '';
+  wheelElement.dataset.value = '—';
+  diceElement.textContent = '—';
+  if (variantSelect.value === 'estate') createEstate();
+  else if (variantSelect.value === 'world') createWorld();
+  else createPayday();
+  statusElement.textContent = 'À vous de jouer.';
+  render();
+}
+
+rollButton.addEventListener('click', performRoll);
+buyButton.addEventListener('click', () => decideEstatePurchase(true));
+skipButton.addEventListener('click', () => {
+  if (game.pending?.type === 'estateBuy') decideEstatePurchase(false);
+  else if (game.pending?.type === 'worldBuy') {
+    game.pending = null;
+    endTurn();
+  }
+});
+buildButton.addEventListener('click', () => buildEstate());
+tradeButton.addEventListener('click', openWorldTrade);
+document.getElementById('newGame').addEventListener('click', newGame);
+variantSelect.addEventListener('change', newGame);
+playerCountSelect.addEventListener('change', newGame);
+skinSelect.addEventListener('change', () => {
+  if (game.kind === 'estate') estateNames = (estateSkins[skinSelect.value] || estateSkins.france).slice();
+  render();
+});
+
+Object.entries(estateSkins).forEach(([skin, labels]) => {
+  if (labels.length !== 40) throw new Error(`Le thème ${skin} ne comporte pas 40 cases.`);
+  const properties = estatePropertyIndexes.map(index => labels[index]);
+  if (new Set(properties).size !== properties.length) throw new Error(`Le thème ${skin} répète une propriété.`);
+});
+if (worldTrack.length !== 72) throw new Error('Marchés du Monde doit comporter 72 cases.');
+if (paydayTrack.length !== 31) throw new Error('Fin de Mois doit comporter 31 jours.');
+
+newGame();

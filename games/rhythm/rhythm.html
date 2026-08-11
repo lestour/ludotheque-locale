@@ -81,14 +81,20 @@
     .whole-rest { transform: translateY(-1px); }
     .half-rest { transform: translateY(-5px); }
     .score-rest b { position: absolute; left: 50%; bottom: 38px; min-width: 22px; padding: 2px 5px; border-radius: 10px; color: #fff; background: #315fa7; font: 800 11px/1 Arial,sans-serif; text-align: center; transform: translateX(-50%); }
+    .rest-annotation { position: absolute; left: 50%; top: -20px; color: currentColor; font: normal 18px/1 serif; white-space: nowrap; transform: translateX(-50%); }
     .measure-line { position: absolute; z-index: 1; top: calc(91px + var(--staff-shift, 0px)); width: 2px; height: 91px; background: #64748b; opacity: .72; }
     .measure-line small { position: absolute; top: -17px; left: 4px; color: #64748b; font: 700 9px/1 Arial,sans-serif; }
-    .duration-track { position: relative; min-width: 0; height: 52px; margin-top: 94px; border-top: 1px solid #94a3b8; background: #f8fafc; }
+    .duration-track { position: relative; min-width: 0; height: 72px; margin-top: 94px; border-top: 1px solid #94a3b8; background: #f8fafc; }
     .duration-mark { position: absolute; top: 12px; height: 12px; min-width: 5px; border-radius: 8px; background: var(--note); box-shadow: inset 0 0 0 1px #17243a55; transform: translateX(-2px); }
     .duration-mark.tap { width: 8px !important; height: 8px; border-radius: 50%; }
-    .duration-mark::after { position: absolute; top: 16px; left: 0; color: #52657f; content: attr(data-label); font-size: 9px; white-space: nowrap; }
+    .duration-mark::after { position: absolute; top: 16px; left: 0; width: 100%; max-width: 100%; color: #52657f; content: attr(data-label); font-size: 9px; line-height: 1.12; overflow-wrap: anywhere; text-align: center; white-space: normal; }
+    .duration-mark.tap::after { display: none; }
     .duration-label { position: absolute; left: 0; top: -18px; color: #52657f; font-size: 11px; font-weight: 700; }
     .hit-line { position: absolute; z-index: 4; top: -18px; bottom: -18px; width: 4px; border-radius: 3px; background: #e11d48; box-shadow: 0 0 12px #e11d48; }
+    .microphone-pitch-line { position: absolute; z-index: 4; right: 0; height: 3px; border-radius: 2px; background: #16a34a; box-shadow: 0 0 8px #22c55e; pointer-events: none; }
+    .microphone-pitch-line b { position: absolute; right: 4px; bottom: 5px; padding: 2px 5px; border-radius: 5px; color: #fff; background: #15803d; font: 800 10px/1 Arial,sans-serif; white-space: nowrap; }
+    .tuner-display { display: inline-flex; min-width: 180px; align-items: center; justify-content: center; padding: 7px 10px; border: 1px solid #94a3b8; border-radius: 8px; background: #f8fafc; font-variant-numeric: tabular-nums; }
+    .tuner-display[hidden] { display: none; }
     .key-signature { position: absolute; z-index: 3; top: var(--staff-shift, 0px); left: 84px; width: 72px; height: 220px; color: #17243a; }
     .key-signature i { position: absolute; top: calc(77px + var(--staff-pos) * 11px); left: calc(var(--index, 0) * 10px); font: normal 32px/1 serif; }
     .key-signature i:nth-child(1){--index:0}.key-signature i:nth-child(2){--index:1}.key-signature i:nth-child(3){--index:2}.key-signature i:nth-child(4){--index:3}.key-signature i:nth-child(5){--index:4}.key-signature i:nth-child(6){--index:5}.key-signature i:nth-child(7){--index:6}
@@ -161,6 +167,7 @@
       .measure-line { background: #94a3b8; }
       .measure-line small { color: #b6c6df; }
       .duration-track { border-color: #526987; background: #18263b; }
+      .tuner-display { border-color: #60718a; color: #e8eef8; background: #263447; }
       .score-change { border-color: #7186a4; color: #eef4ff; background: #263447; }
       .score-change.incoming-signature, .score-change.incoming-clef { background: #172235eb; }
       .score-change.incoming-signature.key-signature { background: transparent; }
@@ -186,6 +193,7 @@
   <script type="module" src="soundfont-engine.js?v=7"></script>
   <script src="brass-fingering.js?v=2"></script>
   <script src="trombone-position.js?v=1"></script>
-  <script src="rhythm.js?v=90"></script>
+  <script src="rhythm.js?v=91"></script>
+  <script src="../../shared/options-help.js?v=2" data-options-help="true"></script>
 </body>
 </html>
