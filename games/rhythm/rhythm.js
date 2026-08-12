@@ -1783,10 +1783,18 @@ function combineExcerptDocuments(documents) {
     usedExcerpts.add(pair.excerpt);
     usedMasters.add(pair.master);
   });
+  let synchronizedExcerptCount = 0;
+  let unalignedExcerptCount = 0;
   const combined = masterTracks.map(masterTrack => {
     const excerpt = replacements.get(masterTrack);
     if (!excerpt) return masterTrack;
-    return { ...alignExcerptToMaster(excerpt, masterTrack), name: masterTrack.name || excerpt.name, legacyMasterTrack: masterTrack.name, matchedScore: trackMatchScore(excerpt, masterTrack) };
+    const aligned = alignExcerptToMaster(excerpt, masterTrack);
+    if (!aligned.timelineAnchors) {
+      unalignedExcerptCount += 1;
+      return { ...masterTrack, recentExcerptAvailable: excerpt.sourceDocument, recentExcerptStatus: 'unaligned' };
+    }
+    synchronizedExcerptCount += 1;
+    return { ...aligned, name: masterTrack.name || excerpt.name, legacyMasterTrack: masterTrack.name, matchedScore: trackMatchScore(excerpt, masterTrack) };
   });
   excerptTracks.filter(track => !usedExcerpts.has(track)).forEach(track => combined.push(track));
   const conductorPool = masterTracks.length ? masterTracks : combined;
@@ -1801,7 +1809,12 @@ function combineExcerptDocuments(documents) {
     pauses: globalPauses,
     changes: [...track.changes.filter(change => change.type !== 'tempo' && change.type !== 'time'), ...globalChanges].sort((left, right) => left.beat - right.beat)
   }));
-  return { tracks: synchronized, excerptCount: usedExcerpts.size, fallbackCount: synchronized.filter(track => track.sourceKind === 'master').length };
+  return {
+    tracks: synchronized,
+    excerptCount: synchronizedExcerptCount,
+    fallbackCount: synchronized.filter(track => track.sourceKind === 'master').length,
+    unalignedExcerptCount
+  };
 }
 function importedDocumentLabel(document) {
   if (document.sourceKind === 'combined') return 'Version récente · parties individuelles réunies';
@@ -1827,7 +1840,7 @@ function loadImportedDocument(index) {
     trackIndex = 0;
     const source = document.mergeInfo || {};
     const anchors = tracks.reduce((sum, track) => sum + (track.timelineAnchors || 0), 0);
-    statusElement.textContent = `${tracks.length} voix réunies : ${source.excerptCount || 0} remplacées par leur partie indépendante récente${source.fallbackCount ? `, ${source.fallbackCount} conservées depuis la partition générale faute d'extrait` : ''}. ${anchors} points d’ancrage (liaisons, motifs ou mesures) ont synchronisé les chronologies.`;
+    statusElement.textContent = `${tracks.length} voix réunies : ${source.excerptCount || 0} remplacées par leur partie indépendante récente${source.fallbackCount ? `, ${source.fallbackCount} conservées depuis la partition générale${source.unalignedExcerptCount ? ' faute de repères de synchronisation fiables' : ' faute d’extrait'}` : ''}. ${anchors} points d’ancrage (liaisons, motifs ou mesures) ont synchronisé les chronologies.`;
     renderTracks();
     render();
   } else if (document.name.includes('/')) loadIndividualExcerpt(document);
