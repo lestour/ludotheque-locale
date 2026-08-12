@@ -8,8 +8,8 @@ if (!window.GameRecords) {
   }
 
   (() => {
-    const recordsKey = 'game-hub:records';
-    const statisticsKey = 'game-hub:statistics';
+    const recordsKey = window.GameRuntime?.profileKey('game-hub:records') || 'game-hub:records';
+    const statisticsKey = window.GameRuntime?.profileKey('game-hub:statistics') || 'game-hub:statistics';
     const basePageId = location.pathname.split('/').pop().replace('.html', '') || 'hub';
     const routeVariant = new URLSearchParams(location.search).get('variant');
     const pageId = routeVariant ? `${basePageId}:${routeVariant}` : basePageId;

@@ -121,7 +121,7 @@ function finishRun() {
   const holdScore = run.expectedTime ? Math.round(run.detectedTime / run.expectedTime * 100) : 0;
   const volumeScore = run.volumeTime ? Math.round(run.accumulatedVolumeAccuracy / run.volumeTime * 100) : 0;
   const total = Math.round(scoreVolumeInput.checked ? pitchScore * .6 + holdScore * .25 + volumeScore * .15 : pitchScore * .7 + holdScore * .3);
-  const key = `game-hub:karaoke:${exerciseSelect.value}:${tempoInput.value}`;
+  const key = window.GameRuntime?.profileKey(`game-hub:karaoke:${exerciseSelect.value}:${tempoInput.value}`) || `game-hub:karaoke:${exerciseSelect.value}:${tempoInput.value}`;
   const best = Math.max(total, Number(localStorage.getItem(key) || 0));
   localStorage.setItem(key, String(best));
   window.GameRecords?.finish({ score: total, scoreLabel: `${total}/100`, won: true });
@@ -131,7 +131,8 @@ function finishRun() {
   renderScore(pitchScore, holdScore, volumeScore, total, best);
 }
 
-function renderScore(pitch = 0, hold = 0, volume = 0, total = 0, best = Number(localStorage.getItem(`game-hub:karaoke:${exerciseSelect.value}:${tempoInput.value}`) || 0)) { scoreElement.innerHTML = `<div>Justesse<br><strong>${pitch}%</strong></div><div>Tenue<br><strong>${hold}%</strong></div>${scoreVolumeInput.checked ? `<div>Nuance<br><strong>${volume}%</strong></div>` : ''}<div>Score<br><strong>${total}</strong></div><div>Record<br><strong>${best}</strong></div>`; }
+function karaokeRecordKey() { return window.GameRuntime?.profileKey(`game-hub:karaoke:${exerciseSelect.value}:${tempoInput.value}`) || `game-hub:karaoke:${exerciseSelect.value}:${tempoInput.value}`; }
+function renderScore(pitch = 0, hold = 0, volume = 0, total = 0, best = Number(localStorage.getItem(karaokeRecordKey()) || 0)) { scoreElement.innerHTML = `<div>Justesse<br><strong>${pitch}%</strong></div><div>Tenue<br><strong>${hold}%</strong></div>${scoreVolumeInput.checked ? `<div>Nuance<br><strong>${volume}%</strong></div>` : ''}<div>Score<br><strong>${total}</strong></div><div>Record<br><strong>${best}</strong></div>`; }
 function drawPitch(targetMidi, detectedMidi) {
   context2d.clearRect(0, 0, canvas.width, canvas.height);
   context2d.fillStyle = '#ffffff16';

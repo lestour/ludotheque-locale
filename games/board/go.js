@@ -12,6 +12,7 @@ const undoButton = document.getElementById('undo');
 const redoButton = document.getElementById('redo');
 const hintButton = document.getElementById('hint');
 let game;
+let goAutosave = null;
 let botTimer;
 const stoneAnimationDuration = 430;
 
@@ -364,7 +365,7 @@ function newGame() {
   render();
 }
 
-document.getElementById('newGame').addEventListener('click', newGame);
+document.getElementById('newGame').addEventListener('click', () => { goAutosave?.clear(); newGame(); });
 passButton.addEventListener('click', () => { if (localCanPlay()) passTurn(localColor(), lanActive()); });
 hintButton.addEventListener('click', showHint);
 undoButton.addEventListener('click', () => {
@@ -387,9 +388,15 @@ redoButton.addEventListener('click', () => {
   render();
   if (!game.over && game.turn === 2) scheduleBot();
 });
-[sizeSelect, variantSelect, difficultySelect].forEach(control => control.addEventListener('change', newGame));
+[sizeSelect, variantSelect, difficultySelect].forEach(control => control.addEventListener('change', () => { goAutosave?.clear(); newGame(); }));
 komiInput.addEventListener('change', render);
 newGame();
+goAutosave = window.GameRuntime?.createAutosave('go-position', {
+  capture: () => ({ size: game.size, variant: game.variant, state: snapshot(), history: game.history, future: game.future }),
+  validate: saved => Number(saved?.size) === game.size && saved?.variant === game.variant,
+  restore: saved => { restore(saved.state); game.history = saved.history || []; game.future = saved.future || []; render(); }
+});
+goAutosave?.restore();
 
 function registerLanAdapter() {
   if (!window.LanMultiplayer || registerLanAdapter.done) return;

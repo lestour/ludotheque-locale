@@ -105,7 +105,7 @@ async function testAssets(route) {
   return `${sources.length} script(s) local(aux) accessible(s).`;
 }
 
-function loadRoute(route) {
+function loadRoute(route, seed = 'diagnostic') {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('Chargement supérieur à 12 secondes.')), 12000);
     sandbox.onload = () => {
@@ -124,7 +124,7 @@ function loadRoute(route) {
       } catch (error) { reject(error); }
     };
     sandbox.onerror = () => { clearTimeout(timeout); reject(new Error('Erreur de chargement du document.')); };
-    const url = new URL(route, location.href); url.searchParams.set('smoke', '1'); url.searchParams.set('seed', 'diagnostic'); sandbox.src = url.href;
+    const url = new URL(route, location.href); url.searchParams.set('smoke', '1'); url.searchParams.set('seed', seed); sandbox.src = url.href;
   });
 }
 
@@ -304,6 +304,20 @@ async function waitForGameInvariant(frameWindow, route) {
   throw new Error('Le moteur n’a pas exposé son état vérifiable à temps.');
 }
 
+async function testMobileRoute(route) {
+  sandbox.style.width = '390px';
+  sandbox.style.height = '844px';
+  await loadRoute(route, 'mobile-diagnostic');
+  await new Promise(resolve => setTimeout(resolve, 120));
+  const loaded = sandbox.contentDocument;
+  const viewportWidth = sandbox.contentWindow.innerWidth;
+  const overflow = loaded.documentElement.scrollWidth - viewportWidth;
+  assert(overflow <= 3, `Débordement horizontal global de ${overflow}px sur téléphone.`);
+  const mobile = sandbox.contentWindow.GameRuntime?.mobileInterface(loaded);
+  assert(mobile?.viewportFit && mobile.layoutInstalled, 'La couche mobile commune est incomplète.');
+  return `Viewport ${viewportWidth}px sans débordement global.`;
+}
+
 async function run() {
   results = [];
   updateSummary();
@@ -318,7 +332,41 @@ async function run() {
       await test(`Invariant · ${route.replace('../', '')}`, () => waitForGameInvariant(sandbox.contentWindow, route));
     }
   }
+  for (const route of [
+    '../games/grid/sudoku.html',
+    '../games/grid/nonogram.html',
+    '../games/grid/minesweeper.html',
+    '../games/cards/modern/derniere-couleur.html',
+    '../games/board/chess.html?variant=chess',
+    '../games/rhythm/rhythm.html',
+    '../games/rhythm/karaoke.html'
+  ]) await test(`Mobile · ${route.replace('../', '')}`, () => testMobileRoute(route));
+  sandbox.style.width = '';
+  sandbox.style.height = '';
+}
+
+async function runStressCampaign() {
+  results = [];
+  updateSummary();
+  const campaigns = [
+    '../games/grid/sudoku.html',
+    '../games/grid/sudoku.html?variants=killer,thermometer,diagonal',
+    '../games/grid/nonogram.html',
+    '../games/board/mahjong.html',
+    '../games/cards/classic/klondike.html'
+  ];
+  const seeds = ['campagne-a', 'campagne-b', 'campagne-c', 'campagne-d'];
+  for (const route of campaigns) {
+    for (const seed of seeds) {
+      const label = `${route.replace('../', '')} · ${seed}`;
+      await test(`Campagne · ${label}`, async () => {
+        await loadRoute(route, seed);
+        return waitForGameInvariant(sandbox.contentWindow, route);
+      });
+    }
+  }
 }
 
 document.getElementById('run').addEventListener('click', run);
+document.getElementById('stress').addEventListener('click', runStressCampaign);
 run();

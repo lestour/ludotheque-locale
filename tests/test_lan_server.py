@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import socket
+import tempfile
 import threading
 import unittest
 import urllib.error
@@ -40,8 +41,8 @@ class LanRoomsTests(unittest.TestCase):
         paused = self.rooms.command(room, guest, "pause", {"paused": True})
         self.assertTrue(paused["paused"])
         self.rooms.command(room, host, "pause", {"paused": False})
-        self.rooms.command(room, host, "action", {"action": {"type": "cell", "index": 4}})
-        self.assertEqual(room["events"][-1]["type"], "action")
+        with self.assertRaises(ValueError):
+            self.rooms.command(room, host, "action", {"action": {"type": "cell", "index": 4}})
 
         self.rooms.command(room, host, "finish", {"result": {"score": 12}})
         finished = self.rooms.command(room, guest, "finish", {"result": {"score": 9}})
@@ -79,6 +80,33 @@ class LanRoomsTests(unittest.TestCase):
         self.assertEqual(finished["phase"], "finished")
         self.assertFalse(finished["results"][alice["id"]]["won"])
         self.assertTrue(finished["results"][bob["id"]]["won"])
+
+    def test_public_actions_are_sanitized_per_game(self):
+        first, first_token = self.rooms.create("Alice", "games/board/chess.html", "private", {}, 2)
+        _, second_token = self.rooms.join(first["code"], "Bob", "games/board/chess.html")
+        room, alice = self.rooms.authenticate(first["code"], first_token)
+        _, bob = self.rooms.authenticate(first["code"], second_token)
+        self.rooms.command(room, alice, "ready", {"ready": True})
+        self.rooms.command(room, bob, "ready", {"ready": True})
+        self.rooms.command(room, alice, "start", {})
+        with self.assertRaises(ValueError):
+            self.rooms.command(room, alice, "action", {"action": {"type": "board-move", "from": [-1, 0], "to": [0, 0]}})
+        self.rooms.command(room, alice, "action", {"action": {"type": "board-move", "from": [6, 0], "to": [5, 0], "promotion": "x", "ignored": "secret"}})
+        action = room["events"][-1]["payload"]["action"]
+        self.assertEqual(action, {"type": "board-move", "from": [6, 0], "to": [5, 0]})
+        with self.assertRaises(ValueError):
+            LAN.validate_public_action("games/grid/sudoku.html", {"type": "cell", "index": 4})
+        self.assertEqual(
+            LAN.validate_public_action("games/cards/classic/bataille-corse.html", {"type": "corse-slap", "controlledSeat": 2, "extra": True}),
+            {"type": "corse-slap", "controlledSeat": 2},
+        )
+        self.assertEqual(LAN.validate_public_action("games/cards/modern/totem-reflexe.html", {"type": "totem-draw"}), {"type": "totem-draw"})
+        self.assertEqual(
+            LAN.validate_public_action("games/cards/modern/symbole-unique.html", {"type": "symbol-claim", "symbol": "🐝", "target": 1, "extra": "discarded"}),
+            {"type": "symbol-claim", "symbol": "🐝", "target": 1},
+        )
+        with self.assertRaises(ValueError):
+            LAN.validate_public_action("games/cards/modern/symbole-unique.html", {"type": "symbol-claim", "symbol": ""})
 
     def test_mismatched_assets_block_start(self):
         first, first_token = self.rooms.create("Alice", "games/rhythm/rhythm.html", "private", {})
@@ -154,6 +182,19 @@ class LanRoomsTests(unittest.TestCase):
         room["emptySince"] -= LAN.EMPTY_ROOM_GRACE_SECONDS + 1
         self.rooms.cleanup()
         self.assertNotIn(first["code"], self.rooms.rooms)
+
+    def test_rooms_resume_after_server_restart_without_plain_tokens(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_file = Path(directory) / "lan-rooms.json"
+            rooms = LAN.LanRooms(state_file)
+            created, token = rooms.create("Alice", "games/grid/sudoku.html", "private", {"difficulty": "hard"}, 2)
+            code = created["code"]
+            persisted = state_file.read_text(encoding="utf-8")
+            self.assertNotIn(token, persisted)
+            restarted = LAN.LanRooms(state_file)
+            room, player = restarted.authenticate(code, token)
+            self.assertTrue(player["connected"])
+            self.assertEqual(room["options"]["difficulty"], "hard")
 
     def test_validation_rejects_paths_and_markup(self):
         with self.assertRaises(ValueError):
@@ -244,6 +285,28 @@ class LanHttpTests(unittest.TestCase):
         status, state = self.request(f"/api/rooms/{room['code']}?since=0", token=created["token"])
         self.assertEqual(status, 200)
         self.assertEqual(state["playerId"], room["playerId"])
+
+    def test_two_http_clients_start_finish_and_vote_for_rematch(self):
+        _, created = self.request("/api/rooms/create", {"name": "Alice", "game": "games/board/mahjong.html", "visibility": "private", "options": {"tileCount": 72}, "seatCount": 2})
+        code = created["room"]["code"]
+        _, joined = self.request("/api/rooms/join", {"code": code, "name": "Bob", "game": "games/board/mahjong.html"})
+        alice_token = created["token"]
+        bob_token = joined["token"]
+
+        def command(token, name, payload=None):
+            return self.request(f"/api/rooms/{code}/command", {"command": name, "payload": payload or {}}, token=token)[1]["room"]
+
+        command(alice_token, "ready", {"ready": True})
+        command(bob_token, "ready", {"ready": True})
+        playing = command(alice_token, "start")
+        self.assertEqual(playing["phase"], "playing")
+        finished = command(bob_token, "finish", {"result": {"score": 36, "scoreLabel": "36 paires", "won": True, "raceWinner": True}})
+        self.assertEqual(finished["phase"], "finished")
+        self.assertEqual(finished["results"][joined["room"]["playerId"]]["score"], 36)
+        command(alice_token, "rematch", {"accept": True})
+        lobby = command(bob_token, "rematch", {"accept": True})
+        self.assertEqual(lobby["phase"], "lobby")
+        self.assertIsNone(lobby["seed"])
 
     def test_unknown_origin_is_rejected(self):
         request = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/lan/status", headers={"Origin": "https://example.invalid"})

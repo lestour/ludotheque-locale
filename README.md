@@ -31,6 +31,12 @@ graine secrète du paquet ne sont jamais envoyées aux navigateurs.
   un téléphone du LAN, il faut lancer le serveur avec un certificat HTTPS
   accepté par le téléphone.
 
+Pour préparer HTTPS, lancer `python3 tools/create_lan_certificate.py`, installer
+le fichier `.runtime/tls/lan.crt` comme certificat de confiance sur les
+appareils concernés, puis relancer le lanceur LAN. Les lanceurs détectent alors
+automatiquement le certificat et passent en HTTPS. La clé privée reste locale,
+hors Git et hors des archives.
+
 Le nombre de places d’un salon peut être supérieur au nombre de personnes
 connectées : les sièges libres, puis les sièges temporairement déconnectés, sont
 pris en charge par des bots jusqu’à l’arrivée ou au retour de leur joueur.
@@ -39,7 +45,24 @@ Un petit serveur HTTP local est nécessaire pour les modules audio, les AudioWor
 
 Depuis un navigateur compatible, la ludothèque peut aussi être installée comme application. Les pages déjà visitées restent disponibles hors ligne ; la volumineuse banque sonore MS Basic reste chargée directement depuis le dossier local afin de ne pas saturer le cache du navigateur.
 
+Le bouton **Accessibilité** présent sur chaque page règle localement la taille du
+texte, le thème clair/sombre, le contraste renforcé et la réduction des
+animations. Les profils du hub séparent les records, statistiques, options et
+sauvegardes. Échecs/Dames, Go et Klondike reprennent automatiquement leur
+position locale, sauf en LAN. Depuis le hub,
+**Exporter mes données** crée une sauvegarde JSON des records, préférences et
+sauvegardes de jeu. Les codes, jetons et identifiants des salons LAN sont
+volontairement exclus de ce fichier.
+
 Pour partager l’application, compresser le dossier complet sous le nom `Ludotheque-locale`, sans retirer `vendor`, `games/rhythm/assets/MS-Basic.sf3` ni les quatre fichiers `Lancer le Hub…`. L’application ne dépend plus des liens symboliques pour charger ses scripts partagés.
+
+Un paquet propre et multiplateforme peut être généré avec
+`python3 tools/package_release.py`. Il est créé dans
+`dist/Ludotheque-locale.zip`, inclut les lanceurs macOS, Windows et Linux ainsi
+que les ressources audio, mais exclut Git, les caches et les fichiers compilés.
+Le workflow GitHub `Validation locale` reconstruit et vérifie ce paquet à chaque
+push et pull request. Il exécute également le diagnostic complet dans Chrome
+headless, avec des vues téléphone sur les principaux jeux.
 
 Les lanceurs vérifient désormais les cinq fichiers indispensables au moteur MS Basic avant d’ouvrir le hub. Dans Rhythm Lab, le bouton **Tester MS Basic** contrôle aussi le protocole, Web Audio, AudioWorklet, les modules locaux et le SoundFont ; son message indique précisément l’élément absent ou incompatible.
 
@@ -69,6 +92,7 @@ Les éventuels liens symboliques historiques présents dans certains sous-dossie
 ## Diagnostic et reproduction
 
 - Ouvrir `http://127.0.0.1:PORT/tests/index.html` depuis le serveur local pour contrôler toutes les pages, leurs scripts et les invariants des principaux moteurs. Le passage complet peut durer quelques minutes, notamment pour Rhythm Lab et les générateurs certifiés.
+- Le bouton **Campagne générateurs** du diagnostic répète Sudoku, Sudoku combiné, Nonogram, Mahjong et Klondike avec plusieurs graines reproductibles.
 - Ajouter `?seed=ma-graine` à l’adresse d’un jeu pour rendre les appels à `Math.random()` reproductibles pendant cette session.
 - Le runtime commun `shared/game-runtime.js` fournit aussi un historique annuler/rétablir, un stockage versionné et un exécuteur Web Worker pour les solveurs et bots lourds.
 - Le hub mémorise automatiquement la dernière route visitée, y compris sa variante, et propose de reprendre directement cette partie.

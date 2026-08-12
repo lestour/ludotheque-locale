@@ -373,7 +373,7 @@ function choose(id) {
   window.GameEffects?.play('success');
   if (game.removed.size === game.positions.length) {
     statusElement.textContent = 'Mahjong ! Le plateau est entièrement vidé.';
-    window.GameRecords?.finish({ score: game.history.length, scoreLabel: `${game.history.length} paires`, lowerIsBetter: true, won: true });
+    window.GameRecords?.finish({ score: game.history.length, scoreLabel: `${game.history.length} paires`, lowerIsBetter: true, won: true, raceWinner: true });
     window.GameEffects?.play('win');
   } else statusElement.textContent = 'Paire retirée. De nouvelles tuiles peuvent être libres.';
   render();

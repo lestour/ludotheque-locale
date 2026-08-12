@@ -2,6 +2,10 @@
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PORT=8765
+PROTOCOL=http
+if [ -f "$ROOT/.runtime/tls/lan.crt" ] && [ -f "$ROOT/.runtime/tls/lan.key" ]; then
+  PROTOCOL=https
+fi
 
 if ! command -v python3 >/dev/null 2>&1; then
   printf '%s\n' "Python 3 est nécessaire pour héberger les salons LAN." >&2
@@ -15,14 +19,17 @@ open_hub() {
   fi
 }
 
-if command -v curl >/dev/null 2>&1 && curl --silent --fail "http://127.0.0.1:${PORT}/api/lan/status" >/dev/null 2>&1; then
-  LOCAL_URL="http://127.0.0.1:${PORT}/index.html"
+if command -v curl >/dev/null 2>&1 && curl --insecure --silent --fail "${PROTOCOL}://127.0.0.1:${PORT}/api/lan/status" >/dev/null 2>&1; then
+  LOCAL_URL="${PROTOCOL}://127.0.0.1:${PORT}/index.html"
   open_hub
   exit 0
 fi
 
 cd "$ROOT" || exit 1
 PORT=$(python3 server/lan_server.py --find-port --port "$PORT")
-LOCAL_URL="http://127.0.0.1:${PORT}/index.html"
+LOCAL_URL="${PROTOCOL}://127.0.0.1:${PORT}/index.html"
 (sleep 1; open_hub) &
+if [ "$PROTOCOL" = https ]; then
+  exec python3 server/lan_server.py --port "$PORT" --root "$ROOT" --cert "$ROOT/.runtime/tls/lan.crt" --key "$ROOT/.runtime/tls/lan.key"
+fi
 exec python3 server/lan_server.py --port "$PORT" --root "$ROOT"

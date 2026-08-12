@@ -10,6 +10,11 @@
     'games/grid/minesweeper.html',
     'games/board/chess.html',
     'games/board/go.html',
+    'games/board/mahjong.html',
+    'games/cards/classic/klondike.html',
+    'games/cards/classic/bataille-corse.html',
+    'games/cards/modern/totem-reflexe.html',
+    'games/cards/modern/symbole-unique.html',
     'games/rhythm/rhythm.html',
     'games/rhythm/karaoke.html',
     'games/cards/classic/bataille.html',
@@ -17,6 +22,7 @@
   ]);
   const synchronizationAvailable = synchronizedGames.has(game);
   const twoPlayerGames = new Set(['games/board/chess.html', 'games/board/go.html']);
+  const MAX_REPLAY_EVENTS = 2000;
   const sessionKey = `ludotheque:lan:${location.host}:${game}`;
   const personalOptions = /^(?:sound|volume|masterVolume|trackVolume|keyboardLayout|audioStyle|microphone|microphoneSensitivity|showErrors|colorNotes|showFingering|cellScale)$/i;
   let credentials = null;
@@ -32,6 +38,7 @@
   let adapter = null;
   let startScheduledFor = 0;
   let dismissedResultKey = '';
+  let replayEvents = [];
 
   try {
     credentials = JSON.parse(sessionStorage.getItem(sessionKey) || 'null');
@@ -173,13 +180,15 @@
       ? [...document.querySelectorAll('#scoreFile[type="file"],#backingFile[type="file"]')]
       : [document.querySelector('#file[type="file"],#scoreFile[type="file"],#imageInput[type="file"]')].filter(Boolean);
     const files = inputs.flatMap(input => [...(input.files || [])]);
-    if (!files.length) return null;
-    if (game === 'games/grid/nonogram.html') throw new Error('Le partage des nonograms issus d’une image sera ajouté avec le transfert privé des puzzles. Utilisez une grille générée pour ce salon LAN.');
-    const buffer = await new Blob((await Promise.all(files.map(async file => [`${file.name}:${file.size}:`, await file.arrayBuffer()]))).flat()).arrayBuffer();
+    const descriptor = await adapter?.assetDescriptor?.();
+    if (!files.length && descriptor == null) return null;
+    const parts = (await Promise.all(files.map(async file => [`${file.name}:${file.size}:`, await file.arrayBuffer()]))).flat();
+    if (descriptor != null) parts.push(`descriptor:${JSON.stringify(descriptor)}`);
+    const buffer = await new Blob(parts).arrayBuffer();
     const hash = crypto.subtle?.digest
       ? [...new Uint8Array(await crypto.subtle.digest('SHA-256', buffer))].map(value => value.toString(16).padStart(2, '0')).join('')
       : sha256Fallback(buffer);
-    return { name: files.map(file => file.name).join(' + '), size: files.reduce((total, file) => total + file.size, 0), hash };
+    return { name: files.map(file => file.name).join(' + ') || 'Configuration locale', size: files.reduce((total, file) => total + file.size, 0), hash };
   }
 
   function command(commandName, payload = {}) {
@@ -232,7 +241,7 @@
       cover = document.createElement('div');
       cover.id = 'lanResultCover';
       cover.dataset.lanUi = 'true';
-      cover.innerHTML = '<div><span class="lan-result-kicker">Partie terminée</span><strong data-lan-result-title></strong><p data-lan-result-votes></p><p>Voulez-vous continuer avec une nouvelle partie ?</p><div class="lan-result-actions"><button type="button" data-lan-rematch>Oui, rejouer</button><button type="button" data-lan-decline>Non</button><button type="button" data-lan-result-room>Ouvrir le salon</button><button type="button" data-lan-result-close>Voir le plateau</button></div></div>';
+      cover.innerHTML = '<div><span class="lan-result-kicker">Partie terminée</span><strong data-lan-result-title></strong><ol class="lan-result-ranking" data-lan-result-ranking></ol><p data-lan-result-votes></p><p>Voulez-vous continuer avec une nouvelle partie ?</p><div class="lan-result-actions"><button type="button" data-lan-rematch>Oui, rejouer</button><button type="button" data-lan-decline>Non</button><button type="button" data-lan-export-replay>Exporter le replay</button><button type="button" data-lan-result-room>Ouvrir le salon</button><button type="button" data-lan-result-close>Voir le plateau</button></div></div>';
       cover.querySelector('[data-lan-rematch]').onclick = () => run(() => command('rematch', { accept: true }));
       cover.querySelector('[data-lan-decline]').onclick = () => run(async () => {
         await command('rematch', { accept: false });
@@ -244,6 +253,7 @@
         cover.hidden = true;
         openDialog();
       };
+      cover.querySelector('[data-lan-export-replay]').onclick = exportReplay;
       cover.querySelector('[data-lan-result-close]').onclick = () => {
         dismissedResultKey = currentResultKey();
         cover.hidden = true;
@@ -255,6 +265,7 @@
     cover.hidden = !visible || dismissedResultKey === resultKey;
     if (!visible || !room) return;
     cover.querySelector('[data-lan-result-title]').textContent = winnerSummary();
+    cover.querySelector('[data-lan-result-ranking]').innerHTML = rankedResults().map((entry, index) => `<li><strong>${index + 1}. ${safeText(entry.name)}</strong><span>${safeText(entry.label)}</span></li>`).join('');
     const votes = room.rematchVotes || [];
     const declines = room.rematchDeclines || [];
     cover.querySelector('[data-lan-result-votes]').textContent = `${votes.length}/${room.players.length} joueur${room.players.length > 1 ? 's' : ''} souhaite${room.players.length > 1 ? 'nt' : ''} rejouer${declines.length ? ` · ${declines.length} refus` : ''}.`;
@@ -271,6 +282,19 @@
       } else if (control.dataset.lanDisabled) {
         control.disabled = false;
         delete control.dataset.lanDisabled;
+      }
+    });
+  }
+
+  function lockGameplay(locked) {
+    document.querySelectorAll('main button,main [role="button"],main input,main select,main textarea').forEach(control => {
+      if (control.closest('[data-lan-ui]') || control.dataset.lanPersonal !== undefined || personalOptions.test(control.id)) return;
+      if (locked) {
+        if (!control.disabled) control.dataset.lanGameDisabled = 'true';
+        control.disabled = true;
+      } else if (control.dataset.lanGameDisabled) {
+        control.disabled = false;
+        delete control.dataset.lanGameDisabled;
       }
     });
   }
@@ -308,11 +332,13 @@
     document.getElementById('lanDeclineRematch').hidden = room.phase !== 'finished';
     document.getElementById('lanRoomStatus').textContent = room.phase === 'lobby' ? 'En attente du lancement.' : room.phase === 'playing' ? room.paused ? 'Partie en pause.' : 'Partie en cours.' : winnerSummary();
     if (room.phase === 'lobby') {
+      lockGameplay(false);
       applyOptions(room.options);
       lockOptions(!isHost());
       setLobbyCover(true);
     } else {
       lockOptions(true);
+      lockGameplay(room.phase === 'finished');
       const waitingForStart = room.phase === 'playing' && Number(room.startAt || 0) * 1000 > Date.now();
       setLobbyCover(waitingForStart, waitingForStart ? 'Tout le monde démarre dans quelques secondes…' : '');
     }
@@ -338,11 +364,37 @@
     return `${winner}${declines.length ? ` ${declines.join(', ')} ne souhaite${declines.length > 1 ? 'nt' : ''} pas rejouer.` : ''}`;
   }
 
+  function rankedResults() {
+    return Object.entries(room?.results || {}).map(([playerId, result]) => {
+      const seat = room?.seats?.[result.seatIndex] || room?.seats?.find(item => item.playerId === playerId);
+      const player = room?.players?.find(item => item.id === playerId);
+      return { name: seat?.label || player?.name || `Joueur ${Number(result.seatIndex || 0) + 1}`, label: result.scoreLabel || (result.time ? `${result.time} s` : `${result.score || 0} point(s)`), result };
+    }).sort((left, right) => {
+      if (Boolean(left.result.won) !== Boolean(right.result.won)) return Number(right.result.won) - Number(left.result.won);
+      if (left.result.lowerIsBetter || right.result.lowerIsBetter) return Number(left.result.score ?? left.result.time ?? Infinity) - Number(right.result.score ?? right.result.time ?? Infinity);
+      return Number(right.result.score || 0) - Number(left.result.score || 0);
+    });
+  }
+
+  function exportReplay() {
+    if (!room) return;
+    const payload = {
+      format: 'ludotheque-lan-replay', version: 1, exportedAt: new Date().toISOString(),
+      game: room.game, options: room.options, seed: room.seed, seats: (room.seats || []).map(seat => ({ index: seat.index, label: seat.label, kind: seat.kind })),
+      events: replayEvents, results: rankedResults().map(entry => ({ name: entry.name, label: entry.label, won: Boolean(entry.result.won) }))
+    };
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+    link.download = `replay-${room.game.split('/').pop().replace('.html', '')}-${room.code}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  }
+
   function scheduleStart() {
     if (!room?.seed || startScheduledFor === room.startAt) return;
     const url = new URL(location.href);
     const currentSeed = url.searchParams.get('seed');
-    const preservePage = game === 'games/rhythm/rhythm.html' || game === 'games/rhythm/karaoke.html' || game === 'games/cards/modern/derniere-couleur.html';
+    const preservePage = game === 'games/rhythm/rhythm.html' || game === 'games/rhythm/karaoke.html' || game === 'games/cards/modern/derniere-couleur.html' || (game === 'games/grid/nonogram.html' && document.querySelector('#imageInput')?.files?.length);
     if (!preservePage && currentSeed !== room.seed) {
       url.searchParams.set('seed', room.seed);
       url.searchParams.set('lan', room.code);
@@ -365,8 +417,10 @@
 
   function processEvents(events = []) {
     events.forEach(event => {
+      if (!replayEvents.some(item => item.sequence === event.sequence)) replayEvents.push(event);
+      replayEvents = replayEvents.slice(-MAX_REPLAY_EVENTS);
       sequence = Math.max(sequence, event.sequence || 0);
-      if (event.playerId === credentials?.playerId && event.type === 'action') return;
+      if (event.playerId === credentials?.playerId && event.type === 'action' && !adapter?.receiveOwn) return;
       if (event.type === 'pause') window.dispatchEvent(new CustomEvent('lan:pause', { detail: event.payload }));
       if (event.type === 'action') {
         adapter?.receive?.(event.payload.action, event.playerId);
@@ -379,6 +433,7 @@
   function updateRoom(nextRoom) {
     if (!nextRoom) { clearCredentials(); renderRoom(); return; }
     const previousSequence = sequence;
+    if (room?.seed !== nextRoom.seed || room?.code !== nextRoom.code) replayEvents = [];
     const events = (nextRoom.events || []).filter(event => Number(event.sequence || 0) > previousSequence);
     room = nextRoom;
     sequence = Math.max(sequence, room.sequence || 0);
@@ -485,7 +540,7 @@
       <section id="lanRoomPanel" hidden>
         <p><strong>Salon <span id="lanRoomCode"></span></strong> · <span id="lanRoomVisibility"></span> <button id="lanCopyCode" type="button">Copier le code</button></p>
         <ul id="lanPlayers"></ul><p id="lanRoomStatus"></p>
-        <div class="lan-actions"><button id="lanReady" type="button">Je suis prêt</button><button id="lanStart" type="button">Lancer</button><button id="lanPause" type="button" hidden>Pause pour tous</button><button id="lanRematch" type="button" hidden>Rejouer</button><button id="lanDeclineRematch" type="button" hidden>Ne pas rejouer</button><button id="lanLeave" type="button">Quitter</button></div>
+        <div class="lan-actions"><button id="lanReady" type="button">Je suis prêt</button><button id="lanStart" type="button">Lancer</button><button id="lanPause" type="button" hidden>Pause pour tous</button><button id="lanRematch" type="button" hidden>Rejouer</button><button id="lanDeclineRematch" type="button" hidden>Ne pas rejouer</button><button id="lanExportReplay" type="button">Exporter le replay</button><button id="lanLeave" type="button">Quitter</button></div>
       </section>
       <p id="lanError" class="lan-error" hidden></p>`;
     document.body.appendChild(dialog);
@@ -502,6 +557,7 @@
     document.getElementById('lanPause').onclick = () => run(() => command('pause', { paused: !room.paused }));
     document.getElementById('lanRematch').onclick = () => run(() => command('rematch', { accept: true }));
     document.getElementById('lanDeclineRematch').onclick = () => run(() => command('rematch', { accept: false }));
+    document.getElementById('lanExportReplay').onclick = exportReplay;
     document.getElementById('lanCopyCode').onclick = () => run(async () => {
       if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(room.code);
       else {
@@ -532,7 +588,7 @@
       #lanDialog{z-index:2147481000;width:min(520px,calc(100vw - 30px));max-height:calc(100vh - 30px);box-sizing:border-box;border:1px solid #64748b;border-radius:16px;padding:18px;background:#fff;color:#172033;box-shadow:0 20px 70px #0008}
       #lanDialog::backdrop{background:#07111fcc;backdrop-filter:blur(3px)}#lanDialog label{display:grid;gap:5px;margin:10px 0}#lanDialog input,#lanDialog select{box-sizing:border-box;width:100%;padding:9px;border:1px solid #94a3b8;border-radius:8px;font:inherit;background:#fff;color:#172033}
       .lan-title,.lan-actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.lan-title{justify-content:space-between;font-size:20px}.lan-title button{font-size:24px}.lan-actions button,#lanDialog button{padding:8px 11px;border:1px solid #94a3b8;border-radius:9px;background:#f8fafc;color:#172033;cursor:pointer}.lan-actions button:hover,#lanDialog button:hover{background:#0f766e;color:#fff}.lan-actions button:disabled{opacity:.45;cursor:not-allowed}#lanPlayers{line-height:1.7}.lan-error{padding:9px;border-radius:8px;background:#fee2e2;color:#991b1b}
-      #lanLobbyCover,#lanPauseCover,#lanResultCover{position:fixed;inset:0;z-index:2147479000;display:grid;place-items:center;padding:24px;background:#0f172acc;color:#fff;text-align:center;backdrop-filter:blur(4px)}#lanLobbyCover[hidden],#lanPauseCover[hidden],#lanResultCover[hidden]{display:none}#lanLobbyCover>div,#lanPauseCover>div,#lanResultCover>div{width:min(520px,calc(100vw - 40px));box-sizing:border-box;padding:28px;border:1px solid #64748b;border-radius:18px;background:#172554;box-shadow:0 22px 70px #0009}#lanLobbyCover strong,#lanPauseCover strong,#lanResultCover strong{display:block;font-size:24px}#lanLobbyCover button,#lanPauseCover button,#lanResultCover button{padding:10px 14px;border:0;border-radius:9px;background:#fff;color:#172554;font-weight:700;cursor:pointer}#lanResultCover{z-index:2147481500}.lan-result-kicker{display:block;margin-bottom:8px;color:#99f6e4;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.lan-result-actions{display:flex;gap:9px;justify-content:center;flex-wrap:wrap}.lan-result-actions button:first-child{background:#14b8a6;color:#042f2e}.lan-result-actions button:disabled{opacity:.55;cursor:default}
+      #lanLobbyCover,#lanPauseCover,#lanResultCover{position:fixed;inset:0;z-index:2147479000;display:grid;place-items:center;padding:24px;background:#0f172acc;color:#fff;text-align:center;backdrop-filter:blur(4px)}#lanLobbyCover[hidden],#lanPauseCover[hidden],#lanResultCover[hidden]{display:none}#lanLobbyCover>div,#lanPauseCover>div,#lanResultCover>div{width:min(520px,calc(100vw - 40px));box-sizing:border-box;padding:28px;border:1px solid #64748b;border-radius:18px;background:#172554;box-shadow:0 22px 70px #0009}#lanLobbyCover strong,#lanPauseCover strong,#lanResultCover strong{display:block;font-size:24px}#lanLobbyCover button,#lanPauseCover button,#lanResultCover button{padding:10px 14px;border:0;border-radius:9px;background:#fff;color:#172554;font-weight:700;cursor:pointer}#lanResultCover{z-index:2147481500}.lan-result-kicker{display:block;margin-bottom:8px;color:#99f6e4;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.lan-result-ranking{display:grid;gap:6px;margin:16px 0;padding:0;list-style:none;text-align:left}.lan-result-ranking li{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border-radius:8px;background:#ffffff12}.lan-result-ranking li span{color:#cbd5e1}.lan-result-actions{display:flex;gap:9px;justify-content:center;flex-wrap:wrap}.lan-result-actions button:first-child{background:#14b8a6;color:#042f2e}.lan-result-actions button:disabled{opacity:.55;cursor:default}
       @media(prefers-color-scheme:dark){#lanDialog{background:#172235;color:#e5edf8}#lanDialog input,#lanDialog select,#lanDialog button{background:#25344b;color:#e5edf8;border-color:#64748b}}
     `;
     document.head.appendChild(style);

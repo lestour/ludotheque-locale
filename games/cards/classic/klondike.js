@@ -38,6 +38,7 @@ if (requestedDrawCount === '1' || requestedDrawCount === '3') drawCount.value = 
 if (['easy', 'normal', 'hard', 'expert'].includes(requestedDifficulty)) dealDifficulty.value = requestedDifficulty;
 
 let game;
+let klondikeAutosave = null;
 let gameHistory = [];
 let historyIndex = -1;
 let pointerDrag = null;
@@ -45,6 +46,7 @@ let solverTrace = [];
 let solverTraceMessages = [];
 let traceIndex = 0;
 let isViewingTrace = false;
+let finishReported = false;
 
 function cardMarkup(card, selected = false, hidden = false, hinted = false) {
   if (hidden) return '<button class="card back" aria-label="Carte cachée">?</button>';
@@ -84,7 +86,8 @@ function cloneGameState(source = game) {
     tableau: source.tableau.map(pile => pile.map(card => ({ ...card }))),
     foundations: source.foundations.map(pile => pile.map(card => ({ ...card }))),
     selected: null,
-    hint: null
+    hint: null,
+    animation: null
   };
 }
 
@@ -821,6 +824,11 @@ function render() {
   updateHistoryButtons();
   updateTraceControls();
   finishGameButton.disabled = !canAutoFinish();
+  if (!finishReported && game.foundations.every(pile => pile.length === 13)) {
+    finishReported = true;
+    const foundationCards = game.foundations.reduce((total, pile) => total + pile.length, 0);
+    window.GameRecords?.finish({ score: foundationCards, scoreLabel: 'Solitaire terminé', won: true, raceWinner: true });
+  }
 }
 
 function cardStateSignature(state) {
@@ -1003,6 +1011,7 @@ function createGame() {
   gameHistory = [];
   historyIndex = -1;
   clearSolverTrace();
+  finishReported = false;
   saveHistory();
   render();
 }
@@ -1020,7 +1029,7 @@ window.KlondikeTestAPI = Object.freeze({
 
 stockSlot.addEventListener('click', drawStock);
 wasteSlot.addEventListener('click', () => selectCard('waste'));
-newGameButton.addEventListener('click', createGame);
+newGameButton.addEventListener('click', () => { klondikeAutosave?.clear(); createGame(); });
 autoFoundationButton.addEventListener('click', autoFoundation);
 undoButton.addEventListener('click', () => restoreHistory(historyIndex - 1));
 redoButton.addEventListener('click', () => restoreHistory(historyIndex + 1));
@@ -1051,6 +1060,12 @@ nextTraceButton.addEventListener('click', () => showTrace(traceIndex + 1));
 traceSlider.addEventListener('input', () => showTrace(Number(traceSlider.value)));
 localStorage.setItem('game-hub:last-game', 'klondike');
 createGame();
+klondikeAutosave = window.GameRuntime?.createAutosave('klondike-position', {
+  capture: () => ({ drawCount: game.drawCount, difficulty: dealDifficulty.value, game: cloneGameState(), history: gameHistory, historyIndex }),
+  validate: saved => Number(saved?.drawCount) === Number(drawCount.value) && saved?.difficulty === dealDifficulty.value,
+  restore: saved => { game = cloneGameState(saved.game); gameHistory = saved.history || [cloneGameState(game)]; historyIndex = Math.max(0, Math.min(gameHistory.length - 1, Number(saved.historyIndex) || 0)); render(); }
+});
+klondikeAutosave?.restore();
 
 if (new URLSearchParams(location.search).has('stockTest')) {
   const checks = [];

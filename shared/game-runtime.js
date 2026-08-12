@@ -150,6 +150,63 @@
     } catch { return false; }
   }
 
+  function activeProfileId() {
+    try {
+      const value = localStorage.getItem('game-hub:active-profile') || 'default';
+      return /^[a-z0-9-]{1,32}$/i.test(value) ? value : 'default';
+    } catch { return 'default'; }
+  }
+
+  function profileKey(key) {
+    const profile = activeProfileId();
+    return profile === 'default' ? key : `${key}:${profile}`;
+  }
+
+  function installControlPreferences() {
+    if (!location.pathname.includes('/games/')) return;
+    const key = profileKey(`game-hub:options:${location.pathname}`);
+    let values = {};
+    try { values = JSON.parse(localStorage.getItem(key) || '{}'); } catch {}
+    document.querySelectorAll('main select[id],main input[id]').forEach(control => {
+      if (!(control.id in values) || ['file', 'button', 'submit', 'text', 'password'].includes(control.type)) return;
+      if (control.type === 'checkbox' || control.type === 'radio') control.checked = Boolean(values[control.id]);
+      else control.value = String(values[control.id]);
+    });
+    document.addEventListener('change', event => {
+      const control = event.target;
+      if (!control.matches?.('main select[id],main input[id]') || ['file', 'button', 'submit', 'text', 'password'].includes(control.type) || control.closest('[data-lan-ui]')) return;
+      values[control.id] = control.type === 'checkbox' || control.type === 'radio' ? control.checked : control.value;
+      try { localStorage.setItem(key, JSON.stringify(values)); } catch {}
+    });
+  }
+
+  function createAutosave(name, handlers = {}) {
+    const key = profileKey(`game-hub:autosave:${location.pathname}:${name}`);
+    const enabled = () => !new URLSearchParams(location.search).has('lan') && (typeof handlers.enabled !== 'function' || handlers.enabled());
+    const save = () => {
+      if (!enabled() || typeof handlers.capture !== 'function') return false;
+      try {
+        const value = handlers.capture();
+        localStorage.setItem(key, JSON.stringify({ version: 1, savedAt: Date.now(), value }));
+        return true;
+      } catch { return false; }
+    };
+    const restore = () => {
+      if (!enabled() || typeof handlers.restore !== 'function') return false;
+      try {
+        const payload = JSON.parse(localStorage.getItem(key) || 'null');
+        if (!payload || payload.version !== 1 || Date.now() - Number(payload.savedAt || 0) > (handlers.maxAge || 30 * 24 * 60 * 60 * 1000)) return false;
+        if (typeof handlers.validate === 'function' && !handlers.validate(payload.value)) return false;
+        handlers.restore(payload.value);
+        return true;
+      } catch { return false; }
+    };
+    const clear = () => { try { localStorage.removeItem(key); } catch {} };
+    const interval = window.setInterval(save, Math.max(1000, Number(handlers.interval) || 3000));
+    window.addEventListener('pagehide', save);
+    return { key, save, restore, clear, stop() { clearInterval(interval); window.removeEventListener('pagehide', save); } };
+  }
+
   function installMobileLayout() {
     if (!location.pathname.includes('/games/') || document.querySelector('style[data-mobile-layout]')) return;
     const viewport = document.querySelector('meta[name="viewport"]');
@@ -182,6 +239,80 @@
     document.documentElement.classList.toggle('touch-device', matchMedia('(pointer:coarse)').matches);
   }
 
+  function installAccessibilityPreferences() {
+    if (document.querySelector('[data-accessibility-preferences]')) return;
+    const storageKey = 'game-hub:accessibility';
+    const defaults = { fontScale: 100, highContrast: false, reduceMotion: false, theme: 'auto' };
+    let preferences = defaults;
+    try { preferences = { ...defaults, ...JSON.parse(localStorage.getItem(storageKey) || '{}') }; } catch {}
+
+    const apply = () => {
+      const fontScale = Math.max(85, Math.min(140, Number(preferences.fontScale) || 100));
+      document.documentElement.style.setProperty('--app-font-scale', `${fontScale / 100}`);
+      document.documentElement.classList.toggle('app-high-contrast', Boolean(preferences.highContrast));
+      document.documentElement.classList.toggle('app-reduce-motion', Boolean(preferences.reduceMotion));
+      document.documentElement.classList.toggle('app-theme-dark', preferences.theme === 'dark');
+      document.documentElement.classList.toggle('app-theme-light', preferences.theme === 'light');
+    };
+    const save = () => {
+      try { localStorage.setItem(storageKey, JSON.stringify(preferences)); } catch {}
+      apply();
+    };
+    apply();
+
+    const style = document.createElement('style');
+    style.dataset.accessibilityPreferences = 'true';
+    style.textContent = `
+      html{font-size:calc(16px * var(--app-font-scale,1))}
+      html.app-reduce-motion *,html.app-reduce-motion *::before,html.app-reduce-motion *::after{animation-duration:.001ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.001ms!important}
+      html.app-high-contrast{filter:contrast(1.16)}html.app-high-contrast :focus-visible{outline:4px solid #f59e0b!important;outline-offset:3px!important}
+      html.app-theme-dark{color-scheme:dark;background:#101827!important;color:#e8eef8!important}html.app-theme-dark body,html.app-theme-dark main{background:#101827!important;color:#e8eef8!important}html.app-theme-dark :where(.panel,.side,aside,dialog){background:#172235!important;color:#e8eef8!important;border-color:#52637d!important}html.app-theme-dark :where(button,select,input,textarea){background:#263447;color:#f1f5fb;border-color:#60718a}
+      html.app-theme-light{color-scheme:light;background:#f3f6fb!important;color:#17243a!important}html.app-theme-light body,html.app-theme-light main{background:#f3f6fb!important;color:#17243a!important}html.app-theme-light :where(.panel,.side,aside,dialog){background:#fff!important;color:#17243a!important;border-color:#cbd5e1!important}html.app-theme-light :where(button,select,input,textarea){background:#fff;color:#17243a;border-color:#94a3b8}
+      #accessibilityButton{position:fixed;right:max(14px,env(safe-area-inset-right));top:max(14px,env(safe-area-inset-top));z-index:2147478000;width:44px;height:44px;padding:0;border:2px solid #fff;border-radius:50%;background:#334155;color:#fff;font:700 22px system-ui;box-shadow:0 4px 16px #0006;cursor:pointer}
+      #accessibilityDialog{z-index:2147482000;width:min(420px,calc(100vw - 24px));box-sizing:border-box;border:1px solid #64748b;border-radius:16px;padding:18px;background:#fff;color:#172033;box-shadow:0 20px 70px #0008}
+      #accessibilityDialog::backdrop{background:#07111fcc;backdrop-filter:blur(3px)}#accessibilityDialog form{display:grid;gap:14px}#accessibilityDialog header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0;background:none;color:inherit}#accessibilityDialog h2{margin:0}#accessibilityDialog label{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px}#accessibilityDialog input[type=range]{width:min(190px,45vw)}#accessibilityDialog button{padding:8px 12px;border:1px solid #94a3b8;border-radius:9px;background:#f8fafc;color:#172033;cursor:pointer}
+      @media(prefers-color-scheme:dark){#accessibilityDialog{background:#172235;color:#e5edf8}#accessibilityDialog button{background:#25344b;color:#e5edf8;border-color:#64748b}}
+      @media(max-width:760px){#accessibilityButton{top:max(8px,env(safe-area-inset-top));right:max(8px,env(safe-area-inset-right));width:42px;height:42px}}
+    `;
+    document.head.appendChild(style);
+
+    const button = document.createElement('button');
+    button.id = 'accessibilityButton';
+    button.type = 'button';
+    button.title = 'Accessibilité';
+    button.setAttribute('aria-label', 'Ouvrir les réglages d’accessibilité');
+    button.textContent = '♿';
+    document.body.appendChild(button);
+
+    const dialog = document.createElement('dialog');
+    dialog.id = 'accessibilityDialog';
+    dialog.innerHTML = `<form method="dialog"><header><h2>Affichage et accessibilité</h2><button aria-label="Fermer">×</button></header><label>Thème <select id="appTheme"><option value="auto">Système</option><option value="light">Clair</option><option value="dark">Sombre</option></select></label><label>Taille du texte <span><input id="appFontScale" type="range" min="85" max="140" step="5"><output id="appFontScaleValue"></output></span></label><label>Contraste renforcé <input id="appHighContrast" type="checkbox"></label><label>Réduire les animations <input id="appReduceMotion" type="checkbox"></label><button id="appAccessibilityReset" type="button">Valeurs par défaut</button></form>`;
+    document.body.appendChild(dialog);
+    const fontScale = dialog.querySelector('#appFontScale');
+    const fontScaleValue = dialog.querySelector('#appFontScaleValue');
+    const highContrast = dialog.querySelector('#appHighContrast');
+    const reduceMotion = dialog.querySelector('#appReduceMotion');
+    const theme = dialog.querySelector('#appTheme');
+    const syncControls = () => {
+      fontScale.value = preferences.fontScale;
+      fontScaleValue.value = `${preferences.fontScale} %`;
+      highContrast.checked = preferences.highContrast;
+      reduceMotion.checked = preferences.reduceMotion;
+      theme.value = preferences.theme;
+    };
+    const update = () => {
+      preferences = { fontScale: Number(fontScale.value), highContrast: highContrast.checked, reduceMotion: reduceMotion.checked, theme: theme.value };
+      fontScaleValue.value = `${preferences.fontScale} %`;
+      save();
+    };
+    fontScale.addEventListener('input', update);
+    highContrast.addEventListener('change', update);
+    reduceMotion.addEventListener('change', update);
+    theme.addEventListener('change', update);
+    dialog.querySelector('#appAccessibilityReset').addEventListener('click', () => { preferences = { ...defaults }; syncControls(); save(); });
+    button.addEventListener('click', () => { syncControls(); if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', ''); });
+  }
+
   function mobileInterface(root = document) {
     const viewport = root.querySelector('meta[name="viewport"]');
     const layoutStyle = root.querySelector('style[data-mobile-layout]');
@@ -197,10 +328,13 @@
   }
 
   const lanBootOptions = decodeLanOptions();
+  installControlPreferences();
   applyLanOptions(lanBootOptions);
   const seededRandom = reproducibleRandom();
-  window.GameRuntime = { version: 8, hashSeed, createRandom, shuffle, clone, createHistory, storage, settingsSignature, createWorkerTask, randomSeed, rememberRecent, applyLanOptions, mobileInterface, lanBootOptions, seededRandom };
+  window.GameRuntime = { version: 11, hashSeed, createRandom, shuffle, clone, createHistory, createAutosave, storage, settingsSignature, createWorkerTask, randomSeed, rememberRecent, activeProfileId, profileKey, applyLanOptions, mobileInterface, lanBootOptions, seededRandom };
   installMobileLayout();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installAccessibilityPreferences, { once: true });
+  else installAccessibilityPreferences();
 
   if (location.pathname.includes('/games/')) {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => rememberRecent(), { once: true });
@@ -232,7 +366,7 @@
     const currentSource = document.currentScript?.src;
     if (currentSource) {
       const lanScript = document.createElement('script');
-      lanScript.src = new URL('lan-multiplayer.js?v=4', currentSource).href;
+      lanScript.src = new URL('lan-multiplayer.js?v=5', currentSource).href;
       lanScript.dataset.lanMultiplayer = 'true';
       document.head.appendChild(lanScript);
     }

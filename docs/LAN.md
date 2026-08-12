@@ -19,6 +19,8 @@ réseau Wi-Fi ou Ethernet.
   places restantes deviennent des bots au lancement.
 - La graine de génération et les options ne sont révélées qu’au démarrage.
 - Pause, résultats et vote de revanche sont communs au salon.
+- La fenêtre finale affiche le classement et permet d’exporter un replay JSON
+  des événements publics. Les jetons et mains privées n’y figurent pas.
 - Les mises à jour utilisent un WebSocket authentifié. Si le navigateur ou le
   réseau le bloque, le client revient automatiquement aux requêtes HTTP.
 - Rhythm Lab conserve les partitions sur chaque appareil et compare leur
@@ -29,7 +31,10 @@ réseau Wi-Fi ou Ethernet.
 - Karaoké compare localement les empreintes de la partition et de
   l’accompagnement, puis demande l’accès au microphone avant le départ.
 
-Les salons sont uniquement conservés en mémoire. Fermer le serveur les détruit.
+Les salons actifs sont enregistrés dans `.runtime/lan-rooms.json` avec des
+jetons uniquement hachés. Ils peuvent donc être repris après un redémarrage du
+serveur ; ce fichier local est exclu de Git et des archives de distribution.
+L’option `--no-persist` restaure le fonctionnement uniquement en mémoire.
 Après le lancement, aucun nouveau joueur ne peut entrer. Un joueur déjà inscrit
 peut revenir avec son jeton de session ; son siège est piloté par un bot pendant
 son absence. L’hôte est transféré au premier joueur encore connecté. Un salon
@@ -38,10 +43,13 @@ Wi-Fi sans conserver indéfiniment une partie abandonnée.
 
 ## Jeux actuellement synchronisés
 
-- Sudoku, Nonogram généré et Démineur : même graine et mêmes options. Le premier
+- Sudoku, Nonogram, Démineur, Mahjong Solitaire et Klondike : même graine et mêmes options. Le premier
   joueur qui termine correctement clôt la course pour tous et déclenche la
   fenêtre de résultat commune. Le Démineur ouvre automatiquement la case
   centrale pour construire exactement le même champ de mines.
+- Pour un Nonogram issu d’une image, chaque appareil charge localement le même
+  fichier et sélectionne le même bloc, la même résolution et la même palette.
+  Seule leur empreinte est comparée : l’image ne quitte jamais les appareils.
 - Rhythm Lab : départ, options, pause et résultats communs. Une partition
   importée doit être chargée localement par chaque joueur avec la même empreinte.
 - Karaoké : partition, accompagnement, départ, pause et résultat communs ;
@@ -51,6 +59,12 @@ Wi-Fi sans conserver indéfiniment une partie abandonnée.
   de l’hôte.
 - Bataille : paquet, plis, animations, noms et résultat synchronisés entre les
   navigateurs.
+- Bataille Corse : cartes, tours et tapes passent par l’ordre du serveur afin
+  que deux tapes presque simultanées donnent le même gagnant sur chaque écran.
+- Totem Réflexe : retournements, duels et prise du totem sont ordonnés par le
+  serveur ; seuls les joueurs concernés peuvent gagner un duel.
+- Symbole Unique : le retournement initial et le premier symbole valide reçu
+  par le serveur sont appliqués dans le même ordre chez tous les joueurs.
 - Dernière Couleur : paquet, tours, pénalités et bots sont arbitrés par le
   serveur. Chaque navigateur ne reçoit que sa propre main et le nombre de
   cartes des adversaires. La graine secrète du paquet n’est jamais transmise.

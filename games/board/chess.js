@@ -18,6 +18,7 @@ const redoButton = document.getElementById('redoMove');
 const glyphs = { wk: '♔', wq: '♕', wr: '♖', wb: '♗', wn: '♘', wp: '♙', bk: '♚', bq: '♛', br: '♜', bb: '♝', bn: '♞', bp: '♟' };
 const values = { p: 1, n: 3.2, b: 3.35, r: 5, q: 9, k: 100 };
 let game;
+let boardAutosave = null;
 let botTimer;
 const motionDuration = 440;
 
@@ -631,7 +632,7 @@ function newGame(fromVariant = false) {
 const initialType = new URLSearchParams(location.search).get('variant');
 if (!window.GameEffects) { const script = document.createElement('script'); script.src = '../../shared/effects.js?v=1'; document.head.appendChild(script); }
 if (initialType === 'checkers') typeSelect.value = 'checkers';
-document.getElementById('newGame').addEventListener('click', () => newGame());
+document.getElementById('newGame').addEventListener('click', () => { boardAutosave?.clear(); newGame(); });
 undoButton.addEventListener('click', undoMove);
 redoButton.addEventListener('click', redoMove);
 document.addEventListener('keydown', event => {
@@ -639,11 +640,27 @@ document.addEventListener('keydown', event => {
   if (event.key.toLowerCase() === 'z' && !event.shiftKey) { event.preventDefault(); undoMove(); }
   else if (event.key.toLowerCase() === 'y' || (event.key.toLowerCase() === 'z' && event.shiftKey)) { event.preventDefault(); redoMove(); }
 });
-typeSelect.addEventListener('change', () => newGame());
-ruleVariantSelect.addEventListener('change', () => newGame(true));
-boardSizeSelect.addEventListener('change', () => newGame());
-difficultySelect.addEventListener('change', () => newGame());
+typeSelect.addEventListener('change', () => { boardAutosave?.clear(); newGame(); });
+ruleVariantSelect.addEventListener('change', () => { boardAutosave?.clear(); newGame(true); });
+boardSizeSelect.addEventListener('change', () => { boardAutosave?.clear(); newGame(); });
+difficultySelect.addEventListener('change', () => { boardAutosave?.clear(); newGame(); });
 newGame();
+boardAutosave = window.GameRuntime?.createAutosave('board-position', {
+  capture: () => ({ type: game.type, variant: game.variant, size: game.size, state: snapshotState(), history: game.history, future: game.future }),
+  validate: saved => Boolean(saved?.state && ['chess', 'checkers'].includes(saved.type)),
+  restore: saved => {
+    typeSelect.value = saved.type;
+    updateRuleVariants();
+    if ([...ruleVariantSelect.options].some(option => option.value === saved.variant)) ruleVariantSelect.value = saved.variant;
+    if ([...boardSizeSelect.options].some(option => Number(option.value) === Number(saved.size))) boardSizeSelect.value = String(saved.size);
+    newGame();
+    restoreState(saved.state);
+    game.history = saved.history || [];
+    game.future = saved.future || [];
+    render();
+  }
+});
+boardAutosave?.restore();
 
 function registerLanAdapter() {
   if (!window.LanMultiplayer || registerLanAdapter.done) return;

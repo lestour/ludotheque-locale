@@ -37,6 +37,63 @@ TWO_PLAYER_GAMES = {"games/board/chess.html", "games/board/go.html"}
 COLOR_GAME_COLORS = ("red", "yellow", "green", "blue")
 
 
+def validate_public_action(game, value):
+    if not isinstance(value, dict):
+        raise ValueError("Action de jeu invalide.")
+    action_type = value.get("type")
+    if game == "games/cards/classic/bataille.html":
+        if action_type != "draw" or not isinstance(value.get("round"), int) or value["round"] < 0:
+            raise ValueError("Action de bataille invalide.")
+        return {"type": "draw", "round": value["round"]}
+    if game == "games/cards/classic/bataille-corse.html":
+        if action_type not in {"corse-play", "corse-slap"}:
+            raise ValueError("Action de bataille corse invalide.")
+        result = {"type": action_type}
+        if isinstance(value.get("controlledSeat"), int) and 0 <= value["controlledSeat"] < MAX_PLAYERS:
+            result["controlledSeat"] = value["controlledSeat"]
+        return result
+    if game == "games/cards/modern/totem-reflexe.html":
+        if action_type not in {"totem-draw", "totem-slap"}:
+            raise ValueError("Action de totem invalide.")
+        result = {"type": action_type}
+        if isinstance(value.get("controlledSeat"), int) and 0 <= value["controlledSeat"] < MAX_PLAYERS:
+            result["controlledSeat"] = value["controlledSeat"]
+        return result
+    if game == "games/cards/modern/symbole-unique.html":
+        if action_type == "symbol-start":
+            return {"type": action_type}
+        symbol = value.get("symbol")
+        if action_type != "symbol-claim" or not isinstance(symbol, str) or not 1 <= len(symbol) <= 8 or any(ord(character) < 32 for character in symbol):
+            raise ValueError("Action de symbole invalide.")
+        result = {"type": action_type, "symbol": symbol}
+        if isinstance(value.get("target"), int) and 0 <= value["target"] < MAX_PLAYERS:
+            result["target"] = value["target"]
+        if isinstance(value.get("controlledSeat"), int) and 0 <= value["controlledSeat"] < MAX_PLAYERS:
+            result["controlledSeat"] = value["controlledSeat"]
+        return result
+    if game == "games/board/chess.html":
+        coordinates = lambda item: isinstance(item, list) and len(item) == 2 and all(isinstance(number, int) and 0 <= number < 14 for number in item)
+        if action_type != "board-move" or not coordinates(value.get("from")) or not coordinates(value.get("to")):
+            raise ValueError("Déplacement de plateau invalide.")
+        result = {"type": action_type, "from": value["from"], "to": value["to"]}
+        if value.get("promotion") in {"q", "r", "b", "n"}:
+            result["promotion"] = value["promotion"]
+        if isinstance(value.get("controlledSeat"), int) and 0 <= value["controlledSeat"] < MAX_PLAYERS:
+            result["controlledSeat"] = value["controlledSeat"]
+        return result
+    if game == "games/board/go.html":
+        if action_type == "go-move" and isinstance(value.get("index"), int) and 0 <= value["index"] < 361:
+            result = {"type": action_type, "index": value["index"]}
+        elif action_type == "go-pass":
+            result = {"type": action_type}
+        else:
+            raise ValueError("Action de Go invalide.")
+        if isinstance(value.get("controlledSeat"), int) and 0 <= value["controlledSeat"] < MAX_PLAYERS:
+            result["controlledSeat"] = value["controlledSeat"]
+        return result
+    raise ValueError("Ce jeu n’accepte pas d’action publique synchronisée.")
+
+
 def color_game_rule(room, name, default=False):
     value = room.get("options", {}).get(name, default)
     return value is True or str(value).lower() in {"1", "true", "yes", "on"}
@@ -444,9 +501,54 @@ def public_seats(room):
 
 
 class LanRooms:
-    def __init__(self):
+    def __init__(self, state_file=None):
         self.rooms = {}
         self.lock = threading.RLock()
+        self.state_file = Path(state_file).resolve() if state_file else None
+        self.load()
+
+    def disk_state(self):
+        rooms = []
+        for room in self.rooms.values():
+            stored = dict(room)
+            stored["rematchVotes"] = sorted(room["rematchVotes"])
+            stored["rematchDeclines"] = sorted(room["rematchDeclines"])
+            rooms.append(stored)
+        return {"version": 1, "savedAt": time.time(), "rooms": rooms}
+
+    def persist(self):
+        if not self.state_file:
+            return
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.state_file.with_suffix(f"{self.state_file.suffix}.tmp")
+        temporary.write_text(json.dumps(self.disk_state(), ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        try:
+            os.chmod(temporary, 0o600)
+        except OSError:
+            pass
+        temporary.replace(self.state_file)
+
+    def load(self):
+        if not self.state_file or not self.state_file.is_file():
+            return
+        try:
+            payload = json.loads(self.state_file.read_text(encoding="utf-8"))
+            now = time.time()
+            for room in payload.get("rooms", []):
+                if not isinstance(room, dict) or not ROOM_CODE_PATTERN.fullmatch(str(room.get("code", ""))):
+                    continue
+                if now - float(room.get("updatedAt", 0)) >= ROOM_IDLE_SECONDS:
+                    continue
+                room["rematchVotes"] = set(room.get("rematchVotes", []))
+                room["rematchDeclines"] = set(room.get("rematchDeclines", []))
+                room["events"] = list(room.get("events", []))[-MAX_EVENTS:]
+                room["players"] = list(room.get("players", []))[:MAX_PLAYERS]
+                for player in room["players"]:
+                    player["connected"] = False
+                room["emptySince"] = now
+                self.rooms[room["code"]] = room
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            self.rooms = {}
 
     def cleanup(self):
         now = time.time()
@@ -459,11 +561,14 @@ class LanRooms:
                         self.emit(room, "finished", {"results": room["results"]})
                     else:
                         self.emit(room, "game-state", {"version": room["gameState"]["version"]})
-            for code in [
+            expired_codes = [
                 code for code, room in self.rooms.items()
                 if room["updatedAt"] < deadline or room.get("emptySince") and now - room["emptySince"] >= EMPTY_ROOM_GRACE_SECONDS
-            ]:
+            ]
+            for code in expired_codes:
                 self.rooms.pop(code, None)
+            if expired_codes:
+                self.persist()
 
     def refresh_presence(self, room, now=None):
         now = now or time.time()
@@ -520,6 +625,7 @@ class LanRooms:
         room["events"].append(event)
         room["events"] = room["events"][-MAX_EVENTS:]
         room["updatedAt"] = time.time()
+        self.persist()
         return event
 
     def serialize(self, room, player_id=None, since=0):
@@ -681,9 +787,7 @@ class LanRooms:
                     raise ValueError("La partie n’accepte pas d’action actuellement.")
                 if room["game"] == PRIVATE_COLOR_GAME:
                     raise ValueError("Ce jeu exige une action privée validée par le serveur.")
-                action = payload.get("action")
-                if not isinstance(action, dict) or len(json.dumps(action)) > 8192:
-                    raise ValueError("Action de jeu invalide.")
+                action = validate_public_action(room["game"], payload.get("action"))
                 self.emit(room, "action", {"action": action}, player["id"])
             elif command == "game-action":
                 if room["phase"] != "playing" or room["paused"]:
@@ -765,6 +869,7 @@ class LanRooms:
                 room["results"].pop(leaving_id, None)
                 if not room["players"]:
                     self.rooms.pop(room["code"], None)
+                    self.persist()
                     return None
                 if room["hostId"] == leaving_id:
                     next_host = next((member for member in room["players"] if member["connected"]), room["players"][0])
@@ -1118,13 +1223,15 @@ class LanHttpServer(ThreadingHTTPServer):
             self.cleanup_stop.set()
         if hasattr(self, "cleanup_thread") and self.cleanup_thread is not threading.current_thread():
             self.cleanup_thread.join(timeout=3)
+        if hasattr(self, "rooms"):
+            self.rooms.persist()
         super().server_close()
 
 
-def build_server(root, port, certificate=None, key=None, bind_host="0.0.0.0"):
+def build_server(root, port, certificate=None, key=None, bind_host="0.0.0.0", state_file=None):
     os.chdir(root)
     server = LanHttpServer((bind_host, port), LanRequestHandler)
-    server.rooms = LanRooms()
+    server.rooms = LanRooms(state_file)
     server.allowed_hosts = {"localhost", "127.0.0.1", "::1"}
     hostname = socket.gethostname().lower()
     server.allowed_hosts.update({hostname, f"{hostname}.local"})
@@ -1148,6 +1255,8 @@ def main():
     parser.add_argument("--bind", default="0.0.0.0", choices=("0.0.0.0", "127.0.0.1"))
     parser.add_argument("--cert", type=Path)
     parser.add_argument("--key", type=Path)
+    parser.add_argument("--state-file", type=Path)
+    parser.add_argument("--no-persist", action="store_true")
     parser.add_argument("--find-port", action="store_true")
     arguments = parser.parse_args()
     if not 1024 <= arguments.port <= 65535:
@@ -1157,7 +1266,9 @@ def main():
     if arguments.find_port:
         print(find_available_port(arguments.port))
         return
-    server = build_server(arguments.root.resolve(), arguments.port, arguments.cert, arguments.key, arguments.bind)
+    root = arguments.root.resolve()
+    state_file = None if arguments.no_persist else (arguments.state_file or root / ".runtime" / "lan-rooms.json")
+    server = build_server(root, arguments.port, arguments.cert, arguments.key, arguments.bind, state_file)
     secure = bool(arguments.cert)
     print(f"Ludothèque LAN active sur {'https' if secure else 'http'}://127.0.0.1:{arguments.port}/index.html", flush=True)
     urls = server.public_urls
@@ -1167,7 +1278,9 @@ def main():
         print("Aucune adresse LAN détectée. Vérifiez la connexion réseau.", flush=True)
     if not secure:
         print("HTTP LAN actif : le microphone nécessite HTTPS ou localhost dans les navigateurs modernes.", flush=True)
-    print("Gardez cette fenêtre ouverte. Ctrl+C arrête le serveur et supprime tous les salons.", flush=True)
+    if state_file:
+        print(f"Reprise des salons active : {state_file}", flush=True)
+    print("Gardez cette fenêtre ouverte. Ctrl+C arrête le serveur ; les salons actifs pourront être repris au prochain lancement.", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

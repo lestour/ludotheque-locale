@@ -290,6 +290,80 @@ const catalog = document.getElementById('gameCatalog');
 const recentGame = document.getElementById('recentGame');
 let activeFilter = 'all';
 
+const portableStoragePrefixes = ['game-hub:', 'rhythm-', 'nonogram-'];
+const profilesKey = 'game-hub:profiles';
+const activeProfileKey = 'game-hub:active-profile';
+
+function readProfiles() {
+  try {
+    const profiles = JSON.parse(localStorage.getItem(profilesKey) || '[]');
+    return [{ id: 'default', name: 'Profil principal' }, ...profiles.filter(profile => profile?.id && profile?.name && profile.id !== 'default')];
+  } catch { return [{ id: 'default', name: 'Profil principal' }]; }
+}
+
+function renderProfiles() {
+  const select = document.getElementById('activeProfile');
+  const profiles = readProfiles();
+  const active = localStorage.getItem(activeProfileKey) || 'default';
+  select.replaceChildren(...profiles.map(profile => {
+    const option = document.createElement('option');
+    option.value = profile.id;
+    option.textContent = String(profile.name).slice(0, 32);
+    return option;
+  }));
+  select.value = profiles.some(profile => profile.id === active) ? active : 'default';
+  document.getElementById('deleteProfile').disabled = select.value === 'default';
+}
+
+function createProfile() {
+  const name = prompt('Nom du nouveau profil :')?.trim().replace(/[<>]/g, '').slice(0, 32);
+  if (!name) return;
+  const id = `p-${Date.now().toString(36)}-${Math.floor(Math.random() * 1296).toString(36)}`;
+  const profiles = readProfiles().filter(profile => profile.id !== 'default');
+  profiles.push({ id, name });
+  localStorage.setItem(profilesKey, JSON.stringify(profiles));
+  localStorage.setItem(activeProfileKey, id);
+  location.reload();
+}
+
+function deleteProfile() {
+  const select = document.getElementById('activeProfile');
+  if (select.value === 'default' || !confirm(`Supprimer le profil « ${select.options[select.selectedIndex].text} » et ses données ?`)) return;
+  const profile = select.value;
+  Object.keys(localStorage).filter(key => key.endsWith(`:${profile}`) || key.includes(`:${profile}:`)).forEach(key => localStorage.removeItem(key));
+  localStorage.setItem(profilesKey, JSON.stringify(readProfiles().filter(item => item.id !== 'default' && item.id !== profile)));
+  localStorage.setItem(activeProfileKey, 'default');
+  location.reload();
+}
+
+function portableEntries() {
+  return Object.fromEntries(Object.keys(localStorage)
+    .filter(key => portableStoragePrefixes.some(prefix => key.startsWith(prefix)))
+    .map(key => [key, localStorage.getItem(key)]));
+}
+
+function downloadData() {
+  const payload = { format: 'ludotheque-local-data', version: 1, exportedAt: new Date().toISOString(), values: portableEntries() };
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+  link.download = `ludotheque-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+async function importData(file) {
+  const payload = JSON.parse(await file.text());
+  if (payload?.format !== 'ludotheque-local-data' || payload.version !== 1 || !payload.values || typeof payload.values !== 'object') throw new Error('Sauvegarde incompatible.');
+  let imported = 0;
+  Object.entries(payload.values).forEach(([key, value]) => {
+    if (!portableStoragePrefixes.some(prefix => key.startsWith(prefix)) || typeof value !== 'string') return;
+    localStorage.setItem(key, value);
+    imported += 1;
+  });
+  alert(`${imported} préférence(s), record(s) et sauvegarde(s) restauré(s). La page va être rechargée.`);
+  location.reload();
+}
+
 function categoryLabel(category) {
   return { grid: 'Jeu de grille', cards: 'Jeu de cartes', board: 'Jeu de plateau', rhythm: 'Jeu de rythme' }[category];
 }
@@ -377,6 +451,23 @@ document.querySelectorAll('[data-filter]').forEach(button => {
     renderCatalog();
   });
 });
+
+const exportDataButton = document.getElementById('exportData');
+const importDataButton = document.getElementById('importData');
+const importDataFile = document.getElementById('importDataFile');
+exportDataButton.addEventListener('click', downloadData);
+importDataButton.addEventListener('click', () => importDataFile.click());
+importDataFile.addEventListener('change', async () => {
+  const [file] = importDataFile.files;
+  if (!file) return;
+  try { await importData(file); }
+  catch (error) { alert(`Import impossible : ${error.message}`); }
+  finally { importDataFile.value = ''; }
+});
+renderProfiles();
+document.getElementById('activeProfile').addEventListener('change', event => { localStorage.setItem(activeProfileKey, event.target.value); location.reload(); });
+document.getElementById('addProfile').addEventListener('click', createProfile);
+document.getElementById('deleteProfile').addEventListener('click', deleteProfile);
 
 let lastGame = null;
 let lastRoute = null;

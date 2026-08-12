@@ -15,6 +15,8 @@ user-content/
 *.pid
 *.tmp
 *~
+.runtime/
+browser-smoke-failure.html
 __pycache__/
 *.py[cod]
 

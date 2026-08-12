@@ -16,7 +16,13 @@ let captureTimer = null;
 opponentSelect.querySelector('option[value="human"]')?.remove();
 opponentSelect.closest('label').childNodes[0].textContent = 'Bots ';
 
-function playerName(player) { return player === 0 ? 'Vous' : `Bot ${player}`; }
+function lanActive() { return Boolean(window.LanMultiplayer?.active); }
+function localSeat() { return lanActive() ? Math.max(0, window.LanMultiplayer.playerIndex) : 0; }
+function playerName(player) { return lanActive() ? window.LanMultiplayer.room?.seats?.[player]?.label || `Joueur ${player + 1}` : player === 0 ? 'Vous' : `Bot ${player}`; }
+function controlsBot(player) {
+  const room = window.LanMultiplayer?.room;
+  return Boolean(lanActive() && room?.hostId === window.LanMultiplayer.playerId && room?.seats?.[player]?.controller === 'bot');
+}
 function cardFace(card) { return `<div class="card ${card.suit.color}"><span>${card.label}</span><strong>${card.suit.symbol}</strong></div>`; }
 function cardMarkup(card) { return `<div class="flip-card"><div class="flip-inner"><div class="card-face"><div class="card back">♠</div></div><div class="card-face front">${cardFace(card)}</div></div></div>`; }
 function log(message) { game.logs.unshift(message); game.logs = game.logs.slice(0, 7); }
@@ -45,7 +51,8 @@ function deckStackMarkup(count) {
 }
 
 function scheduleBot() {
-  if (game.over || game.transitioning || game.current === 0 || botTimer !== null) return;
+  if (game.over || game.transitioning || botTimer !== null) return;
+  if (lanActive() ? !controlsBot(game.current) : game.current === 0) return;
   const profile = botProfiles[opponentSelect.value] || botProfiles.normal;
   const delay = profile.minimumDelay + Math.random() * (profile.maximumDelay - profile.minimumDelay);
   const shouldSlap = isSlappable() && Math.random() < profile.accuracy;
@@ -53,7 +60,7 @@ function scheduleBot() {
   botTimer = window.setTimeout(() => {
     botTimer = null;
     if (!game.over && !game.transitioning && game.current === player) {
-      if (shouldSlap && isSlappable()) slap(player); else play(player);
+      if (shouldSlap && isSlappable()) slap(player, lanActive(), player); else play(player, lanActive(), player);
     }
   }, delay);
 }
@@ -62,7 +69,7 @@ function finish(winner) {
   game.over = true;
   clearBotTimer();
   status.textContent = winner === null ? 'Partie nulle.' : `${playerName(winner)} remporte la partie !`;
-  window.GameRecords?.finish({ won: winner === 0 });
+  window.GameRecords?.finish({ score: game.hands[localSeat()]?.length || 0, scoreLabel: `${game.hands[localSeat()]?.length || 0} cartes`, won: winner === localSeat(), winnerSeat: winner });
 }
 
 function settleCapturedPile() {
@@ -93,8 +100,13 @@ function awardPile(player, reason, action = 'win') {
   captureTimer = window.setTimeout(() => { captureTimer = null; settleCapturedPile(); }, 1350);
 }
 
-function play(player) {
+function sendLanAction(action) {
+  window.LanMultiplayer.sendAction(action).catch(error => { status.textContent = `Synchronisation LAN interrompue : ${error.message}`; });
+}
+
+function play(player, broadcast = false, controlledSeat = null) {
   if (game.over || game.transitioning || player !== game.current || !game.hands[player].length) return;
+  if (broadcast && lanActive()) { sendLanAction({ type: 'corse-play', controlledSeat }); return; }
   clearBotTimer();
   const card = game.hands[player].shift();
   card.playedBy = player;
@@ -122,8 +134,9 @@ function play(player) {
   render();
 }
 
-function slap(player) {
+function slap(player, broadcast = false, controlledSeat = null) {
   if (game.over || game.transitioning || !game.pile.length || !game.hands[player].length) return;
+  if (broadcast && lanActive()) { sendLanAction({ type: 'corse-slap', controlledSeat }); return; }
   clearBotTimer();
   if (isSlappable()) { game.slapEffect = { player, correct: true }; awardPile(player, 'tape correcte', 'slap'); return; }
   const recipient = nextPlayer(player);
@@ -162,10 +175,11 @@ function render() {
   scores.innerHTML = game.hands.map((hand, player) => `<div class="score${game.current === player && !game.transitioning ? ' active' : ''}${game.lastWinner === player && game.transitioning ? ' winner' : ''}" data-player-score="${player}"><span>${playerName(player)}</span>${deckStackMarkup(hand.length)}<strong>${hand.length} carte${hand.length > 1 ? 's' : ''}</strong></div>`).join('');
   pileElement.innerHTML = game.capture ? capturePileMarkup() : normalPileMarkup();
   if (!game.capture && game.slapEffect) pileElement.insertAdjacentHTML('beforeend', `<span class="slap-burst${game.slapEffect.correct ? '' : ' bad'}" aria-label="${game.slapEffect.correct ? 'Tape correcte' : 'Tape incorrecte'}">✋</span>`);
-  const hand = game.hands[0];
-  actions.innerHTML = `<button class="primary" data-play="0" ${game.over || game.transitioning || game.current !== 0 || !hand.length ? 'disabled' : ''}>Vous jouez</button><button class="slap" data-slap="0" ${game.over || game.transitioning || !game.pile.length || !hand.length ? 'disabled' : ''}>Vous tapez</button>`;
-  actions.querySelectorAll('[data-play]').forEach(button => button.addEventListener('click', () => play(Number(button.dataset.play))));
-  actions.querySelectorAll('[data-slap]').forEach(button => button.addEventListener('click', () => slap(Number(button.dataset.slap))));
+  const seat = localSeat();
+  const hand = game.hands[seat] || [];
+  actions.innerHTML = `<button class="primary" data-play="${seat}" ${game.over || game.transitioning || game.current !== seat || !hand.length ? 'disabled' : ''}>Jouer une carte</button><button class="slap" data-slap="${seat}" ${game.over || game.transitioning || !game.pile.length || !hand.length ? 'disabled' : ''}>Taper</button>`;
+  actions.querySelectorAll('[data-play]').forEach(button => button.addEventListener('click', () => play(Number(button.dataset.play), lanActive())));
+  actions.querySelectorAll('[data-slap]').forEach(button => button.addEventListener('click', () => slap(Number(button.dataset.slap), lanActive())));
   history.innerHTML = game.logs.length ? game.logs.map(message => `<li>${message}</li>`).join('') : '<li>Vous commencez.</li>';
   scheduleBot();
 }
@@ -188,9 +202,29 @@ slapOnSeven.addEventListener('change', render);
 slapOnTenSandwich.addEventListener('change', render);
 window.addEventListener('keydown', event => {
   if (event.repeat) return;
-  if (event.key === ' ') { event.preventDefault(); play(0); }
-  if (event.key.toLowerCase() === 'a') slap(0);
+  if (event.key === ' ') { event.preventDefault(); play(localSeat(), lanActive()); }
+  if (event.key.toLowerCase() === 'a') slap(localSeat(), lanActive());
 });
+function registerLanAdapter() {
+  if (!window.LanMultiplayer || registerLanAdapter.done) return;
+  registerLanAdapter.done = true;
+  window.LanMultiplayer.registerAdapter({
+    receiveOwn: true,
+    receive(action, playerId) {
+      if (!action || game.over) return;
+      const senderSeat = window.LanMultiplayer.room?.seats?.findIndex(seat => seat.playerId === playerId);
+      const controlledSeat = Number.isInteger(action.controlledSeat) ? action.controlledSeat : senderSeat;
+      const hostControlsBot = window.LanMultiplayer.room?.hostId === playerId && window.LanMultiplayer.room?.seats?.[controlledSeat]?.controller === 'bot';
+      if (controlledSeat !== senderSeat && !hostControlsBot) return;
+      if (action.type === 'corse-play') play(controlledSeat);
+      else if (action.type === 'corse-slap') slap(controlledSeat);
+    }
+  });
+}
+registerLanAdapter();
+window.addEventListener('lan:available', registerLanAdapter);
+window.addEventListener('lan:room', () => { render(); scheduleBot(); });
+window.addEventListener('lan:finished', () => { clearBotTimer(); clearCaptureTimer(); game.over = true; render(); });
 localStorage.setItem('game-hub:last-game', 'bataille-corse');
 createGame();
 

@@ -1628,9 +1628,14 @@ sizeSelect.addEventListener('change', () => {
 localStorage.setItem('game-hub:last-game', 'nonogram');
 window.addEventListener('lan:start', () => {
   lanFinished = false;
+  solverMessage = '';
+  clearTrace();
+  if (isColorMode) colorPlayer = Array(size * size).fill(null);
+  else player = Array(size * size).fill(0);
   board.style.pointerEvents = '';
   solveStepButton.disabled = false;
   solveAllButton.disabled = false;
+  if (isColorMode) renderColor(); else render();
 });
 window.addEventListener('lan:finished', () => {
   lanFinished = true;
@@ -1639,6 +1644,27 @@ window.addEventListener('lan:finished', () => {
   solveAllButton.disabled = true;
   status.textContent = 'Partie LAN terminée : un joueur a résolu la grille en premier.';
 });
+function registerLanAdapter() {
+  if (!window.LanMultiplayer || registerLanAdapter.done) return;
+  registerLanAdapter.done = true;
+  window.LanMultiplayer.registerAdapter({
+    prepareReady() {
+      if (importedImage && (!isColorMode || !importedCrop)) throw new Error('Sélectionnez un bloc coloré de l’image avant de vous déclarer prêt.');
+    },
+    assetDescriptor() {
+      if (!importedImage) return null;
+      return {
+        mode: modeSelect.value,
+        crop: importedCrop ? [importedCrop.x, importedCrop.y, importedCrop.width, importedCrop.height] : null,
+        imageGrid: imageGrid ? [imageGrid.columns, imageGrid.rows] : null,
+        size,
+        paletteLimit,
+      };
+    }
+  });
+}
+registerLanAdapter();
+window.addEventListener('lan:available', registerLanAdapter);
 createSolution();
 updateTraceControls();
 render();
