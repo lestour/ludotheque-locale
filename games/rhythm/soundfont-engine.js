@@ -1,4 +1,4 @@
-import { WorkletSynthesizer } from '../../vendor/spessasynth_lib/dist/index.js?v=local-2';
+import { WorkletSynthesizer } from '../../vendor/spessasynth_lib/dist/index.js?v=local-3';
 
 const programs = [
   [/celesta/i, 8], [/glockenspiel/i, 9], [/music.?box|boîte.*musique/i, 10], [/vibraphone/i, 11], [/marimba/i, 12], [/xylophone/i, 13], [/tubular|carillon/i, 14],
@@ -21,6 +21,12 @@ let synth;
 let loading;
 let playbackGeneration = 0;
 const noteOffTimers = new Set();
+const assetUrls = {
+  processor: new URL('../../vendor/spessasynth_lib/dist/spessasynth_processor.min.js?v=local-3', import.meta.url),
+  core: new URL('../../vendor/spessasynth_core/dist/index.js?v=local-3', import.meta.url),
+  decoder: new URL('../../vendor/stb-vorbis/dist/index.js?v=local-3', import.meta.url),
+  soundBank: new URL('./assets/MS-Basic.sf3?v=local-3', import.meta.url)
+};
 
 function audioContextConstructor() {
   return window.AudioContext || window.webkitAudioContext;
@@ -56,10 +62,10 @@ async function init() {
     context = new AudioContextClass({ latencyHint: 'interactive' });
     if (!context.audioWorklet?.addModule) throw new Error('AudioWorklet n’est pas disponible dans ce navigateur');
     if (context.state === 'suspended') await context.resume();
-    await context.audioWorklet.addModule(new URL('../../vendor/spessasynth_lib/dist/spessasynth_processor.min.js?v=local-2', import.meta.url));
+    await context.audioWorklet.addModule(assetUrls.processor);
     synth = new WorkletSynthesizer(context);
     synth.connect(context.destination);
-    const response = await fetch(new URL('./assets/MS-Basic.sf3', import.meta.url));
+    const response = await fetch(assetUrls.soundBank, { cache: 'no-store' });
     if (!response.ok) throw new Error(`SoundFont introuvable (${response.status})`);
     const soundBank = await response.arrayBuffer();
     if (soundBank.byteLength < 1024 * 1024) throw new Error('SoundFont incomplet ou corrompu');
@@ -77,20 +83,43 @@ async function init() {
   return loading;
 }
 
-async function play({ pitch, velocity = 80, duration = .4, instrument = '' }) {
+async function diagnose() {
+  const checks = [];
+  checks.push({ name: 'protocole HTTP local', ok: /^https?:$/.test(location.protocol), detail: `${location.protocol}//${location.host || 'sans hôte'}` });
+  checks.push({ name: 'Web Audio', ok: Boolean(audioContextConstructor()), detail: audioContextConstructor() ? 'disponible' : 'absent' });
+  checks.push({ name: 'AudioWorklet', ok: Boolean(window.AudioWorkletNode), detail: 'requis pour MS Basic' });
+  for (const [name, url] of Object.entries(assetUrls)) {
+    try {
+      const response = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      const size = Number(response.headers.get('content-length')) || 0;
+      const minimum = name === 'soundBank' ? 1024 * 1024 : 512;
+      checks.push({ name, ok: response.ok && (!size || size >= minimum), detail: response.ok ? `${size ? `${Math.round(size / 1024)} Ko` : 'taille non annoncée'} · ${response.headers.get('content-type') || 'type inconnu'}` : `HTTP ${response.status}` });
+    } catch (error) {
+      checks.push({ name, ok: false, detail: error.message });
+    }
+  }
+  return { ok: checks.every(check => check.ok), checks, userAgent: navigator.userAgent };
+}
+
+async function play({ pitch, velocity = 80, duration = .4, instrument = '', delayMs = 0 }) {
   const generation = playbackGeneration;
   await init();
   if (generation !== playbackGeneration) return;
   if (context.state === 'suspended') await context.resume();
   if (generation !== playbackGeneration) return;
-  const channel = channelFor(instrument, duration);
-  const midiPitch = Math.max(0, Math.min(127, Math.round(pitch)));
-  synth.noteOn(channel, midiPitch, Math.max(1, Math.min(127, Math.round(velocity))));
-  const timer = window.setTimeout(() => {
-    noteOffTimers.delete(timer);
-    if (generation === playbackGeneration) synth?.noteOff(channel, midiPitch);
-  }, Math.max(40, duration * 1000));
-  noteOffTimers.add(timer);
+  const startTimer = window.setTimeout(() => {
+    noteOffTimers.delete(startTimer);
+    if (generation !== playbackGeneration) return;
+    const channel = channelFor(instrument, duration);
+    const midiPitch = Math.max(0, Math.min(127, Math.round(pitch)));
+    synth.noteOn(channel, midiPitch, Math.max(1, Math.min(127, Math.round(velocity))));
+    const stopTimer = window.setTimeout(() => {
+      noteOffTimers.delete(stopTimer);
+      if (generation === playbackGeneration) synth?.noteOff(channel, midiPitch);
+    }, Math.max(40, duration * 1000));
+    noteOffTimers.add(stopTimer);
+  }, Math.max(0, delayMs));
+  noteOffTimers.add(startTimer);
 }
 
 function stopAll() {
@@ -107,6 +136,7 @@ window.SoundFontEngine = {
   play,
   stopAll,
   resume,
+  diagnose,
   get ready() { return Boolean(synth); },
   get status() { return { ready: Boolean(synth), context: context?.state || 'absent' }; }
 };

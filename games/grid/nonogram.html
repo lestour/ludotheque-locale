@@ -2,28 +2,37 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Nonogram</title>
   <style>
     :root { --grid-line: #203048; color-scheme: light dark; font-family: Arial, sans-serif; background: #f3f6fb; color: #152238; }
     body { margin: 0; }
     main { max-width: 1180px; margin: auto; padding: 24px; }
-    .panel { background: #fff; border: 1px solid #d7e0ed; border-radius: 16px; padding: 18px; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+    .panel { min-width: 0; background: #fff; border: 1px solid #d7e0ed; border-radius: 16px; padding: 18px; box-shadow: 0 8px 24px rgba(0,0,0,.08); overflow: hidden; }
     .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
     h1 { margin: 0 auto 0 0; }
     button, select, a { border: 1px solid #9baac0; border-radius: 10px; padding: 8px 12px; background: #fff; color: #152238; font: inherit; text-decoration: none; cursor: pointer; }
     button:hover, a:hover { background: #2447a8; color: #fff; border-color: #2447a8; }
     .muted { color: #61718a; font-size: 14px; }
-    #nonogram { position: relative; display: grid; width: max-content; margin: 22px auto 0; border: 2px solid var(--grid-line); background: #c6d0de; gap: 1px; user-select: none; touch-action: none; }
-    .clue { display: flex; align-items: center; justify-content: flex-end; min-width: 25px; min-height: 25px; padding: 2px; background: #eef3f9; color: #26384e; font-size: 12px; font-weight: 700; }
+    #nonogram { position: relative; display: grid; width: max-content; margin: 0; border: 2px solid var(--grid-line); background: #c6d0de; gap: 1px; user-select: none; touch-action: none; transform-origin: top left; }
+    #nonogramViewport { width: 100%; max-width: 100%; height: min(72vh, 760px); min-height: 280px; margin-top: 10px; overflow: auto; overscroll-behavior: contain; border: 1px solid #9baac0; border-radius: 12px; background: #dce5f0; box-sizing: border-box; scrollbar-gutter: stable; touch-action: none; }
+    #nonogramViewport.navigation-mode, #nonogramViewport.temporary-navigation { cursor: grab; }
+    #nonogramViewport.navigation-mode:active, #nonogramViewport.temporary-navigation:active { cursor: grabbing; }
+    #nonogramCanvas { position: relative; width: max-content; height: max-content; min-width: 100%; min-height: 100%; padding: 8px; box-sizing: content-box; }
+    .nonogram-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    .nonogram-tool-group, .nonogram-zoom-group { display: inline-flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+    .nonogram-controls button { min-width: 42px; }
+    .nonogram-controls button.selected { background: #2447a8; border-color: #2447a8; color: #fff; }
+    .clue { display: flex; align-items: center; justify-content: flex-end; min-width: 0; min-height: 0; padding: 1px; overflow: hidden; background: #eef3f9; color: #26384e; font-size: min(12px, calc(var(--cell-pixels, 27px) * .48)); font-weight: 700; }
     .top-clue { flex-direction: column; justify-content: flex-end; }
     .corner { background: #dce5f0; }
-    .cell { width: 27px; height: 27px; border: 0; border-radius: 0; padding: 0; background: #fff; }
+    .cell { width: var(--cell-pixels, 27px); height: var(--cell-pixels, 27px); border: 0; border-radius: 0; padding: 0; background: #fff; }
     .cell:hover { background: #dceaff; }
     .cell.filled { background: #17243a; }
     .cell.color-filled { box-shadow: inset 0 0 0 1px rgba(0,0,0,.18); }
     .cell.marked { background: linear-gradient(45deg, transparent 46%, #b3bfce 47%, #b3bfce 53%, transparent 54%), linear-gradient(-45deg, transparent 46%, #b3bfce 47%, #b3bfce 53%, transparent 54%), #fff; }
-    .cell.error { background: #fca5a5; }
+    .cell.error { background-color: #fca5a5; box-shadow: inset 0 0 0 3px #dc2626 !important; }
+    .cell.error::after { content: "×"; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 25px; font-weight: 900; line-height: 1; text-shadow: 0 1px 3px #7f1d1d, 0 0 2px #7f1d1d; pointer-events: none; }
     .cell, .clue, .corner { position: relative; }
     .major-right, .grid-divider-right, .major-bottom, .grid-divider-bottom { z-index: auto; box-shadow: none; }
     .major-right::after, .grid-divider-right::after, .major-bottom::before, .grid-divider-bottom::before { display: none; }
@@ -31,18 +40,27 @@
     .separator.vertical { top: 0; width: 2px; }
     .separator.horizontal { left: 0; height: 2px; }
     .clue.done { color: #17824b; text-decoration: line-through; }
+    .clue.color-selectable { cursor: pointer; }
+    .clue.color-selectable:hover, .clue.color-selectable:focus-visible { z-index: 4; outline: 2px solid var(--clue-highlight, #7c3aed); outline-offset: -2px; }
+    .clue.color-selected { z-index: 3; background: color-mix(in srgb, var(--clue-highlight) 24%, #eef3f9); box-shadow: inset 0 0 0 2px var(--clue-highlight); }
+    .clue.total-clue { justify-content: center; background: #dce5f0; color: #334155; font-size: min(11px, calc(var(--cell-pixels, 27px) * .43)); text-decoration: none; }
+    .top-clue.total-clue { justify-content: center; }
     .color-clue { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
     .color-clue i { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(0,0,0,.25); display: inline-block; }
     #palette { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
     .palette-color { width: 28px; height: 28px; padding: 0; border: 3px solid transparent; border-radius: 50%; }
     .palette-color.selected { border-color: #7c3aed; transform: scale(1.12); }
     .palette-color.erase { width: auto; padding: 5px 9px; border-radius: 9px; }
-    #imageOverview { max-width: 840px; margin: 22px auto 0; }
+    #imageOverview { max-width: min(1180px, 96vw); margin: 22px auto 0; }
+    #nonogram[hidden], #imageOverview[hidden], [hidden] { display: none !important; }
     .overview-title { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; margin-bottom: 10px; }
-    .image-mosaic { display: grid; grid-template-columns: repeat(var(--parts), minmax(120px, 1fr)); gap: 8px; padding: 10px; border: 2px solid var(--grid-line); background: #d6e0ed; }
-    .image-block { position: relative; padding: 0; border-radius: 3px; overflow: hidden; background: #fff; color: #26384e; transition: transform .12s, box-shadow .12s; }
-    .image-block canvas { display: block; width: 100%; height: auto; }
-    .image-block:hover, .image-block:focus-visible { transform: scale(1.03); outline: 3px solid #7c3aed; outline-offset: 2px; box-shadow: 0 0 0 5px #c4b5fd; background: #fff; color: #26384e; }
+    .image-mosaic { position: relative; padding: 0; border: 3px solid var(--grid-line); background: #fff; box-sizing: border-box; line-height: 0; }
+    .image-mosaic-canvas { display: block; width: 100%; height: auto; pointer-events: none; }
+    .image-mosaic-hotspots { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(var(--columns), minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), minmax(0, 1fr)); gap: 0; overflow: visible; }
+    .image-block { position: relative; z-index: 1; min-width: 0; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; outline: 0; appearance: none; background: transparent !important; color: transparent; line-height: 0; box-shadow: none; }
+    .image-block::after { content: ''; position: absolute; inset: -3px; border: 3px solid #7c3aed; opacity: 0; pointer-events: none; }
+    .image-block:hover, .image-block:focus-visible { z-index: 5; background: transparent !important; box-shadow: inset 0 0 0 4px #c4b5fdaa; }
+    .image-block:hover::after, .image-block:focus-visible::after { opacity: 1; }
     #status { min-height: 22px; font-weight: 700; }
     @media (prefers-color-scheme: dark) {
       :root { --grid-line: #c8d4e5; background: #101827; color: #e8eef8; }
@@ -55,8 +73,23 @@
       .cell.filled { background: #dce6f5; }
       .cell.error { background: #a83c4a; }
       .clue.done { color: #73d59c; }
-      .image-mosaic { background: #263447; }
-      .image-block { background: #f8fafc; }
+      .clue.color-selected { background: color-mix(in srgb, var(--clue-highlight) 30%, #263447); }
+      .clue.total-clue { background: #34445e; color: #f0f4fa; }
+      .image-mosaic { background: transparent; }
+      .image-block { background: transparent !important; }
+      #nonogramViewport { border-color: #60718a; background: #101827; }
+    }
+    @media (max-width: 720px) {
+      main { padding: 8px; }
+      .panel { padding: 10px; border-radius: 12px; }
+      .toolbar { gap: 7px; }
+      .toolbar label { max-width: 100%; }
+      .toolbar select, .toolbar input[type="file"] { max-width: 100%; }
+      #nonogramViewport { height: min(64vh, 620px); min-height: 320px; }
+      .nonogram-controls { position: sticky; top: 0; z-index: 30; padding: 7px; border-radius: 10px; background: color-mix(in srgb, Canvas 92%, transparent); box-shadow: 0 3px 12px #0002; }
+      .nonogram-tool-group, .nonogram-zoom-group { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .nonogram-controls button { min-width: 0; min-height: 44px; padding-inline: 5px; }
+      #palette { max-width: 100%; padding-block: 6px; overflow-x: auto; flex-wrap: nowrap; }
     }
   </style>
 </head>
@@ -66,8 +99,12 @@
       <div class="toolbar"><h1>Nonogram</h1><a href="../../index.html">Hub de jeux</a></div>
       <div class="toolbar">
         <label for="size">Taille</label>
-        <select id="size"><option value="5">5 × 5</option><option value="10">10 × 10</option><option value="15" selected>15 × 15</option><option value="20">20 × 20</option><option value="25">25 × 25</option></select>
+        <select id="size"><option value="5">5 × 5</option><option value="10">10 × 10</option><option value="15" selected>15 × 15</option><option value="20">20 × 20</option><option value="25">25 × 25</option><option value="30">30 × 30</option><option value="35">35 × 35</option><option value="40">40 × 40</option><option value="50">50 × 50</option><option value="60">60 × 60</option><option value="75">75 × 75</option><option value="80">80 × 80</option><option value="100">100 × 100</option></select>
+        <label class="muted">Affichage <select id="cellScale"><option value="12">Compact · 12 px</option><option value="18">Petit · 18 px</option><option value="24">Moyen · 24 px</option><option value="28" selected>Grand · 28 px</option></select></label>
         <label class="muted">Mode <select id="mode"><option value="mono">Monochrome</option><option value="color">Couleur</option></select></label>
+        <label id="paletteSizeLabel" class="muted" hidden>Palette <select id="paletteSize"><option value="2">2 couleurs</option><option value="3">3 couleurs</option><option value="4">4 couleurs</option><option value="5">5 couleurs</option><option value="6">6 couleurs</option><option value="8" selected>8 couleurs</option><option value="10">10 couleurs</option><option value="12">12 couleurs</option><option value="16">16 couleurs</option><option value="24">24 couleurs</option><option value="32">32 couleurs</option></select></label>
+        <label id="paletteSortLabel" class="muted" hidden>Ordre des couleurs <select id="paletteSort"><option value="hue">Teinte</option><option value="lightness">Luminosité</option><option value="saturation">Saturation</option><option value="usage">Fréquence dans l’image</option><option value="hex">Code couleur</option></select></label><button id="sortPalette" hidden>Trier la palette</button>
+        <label id="showColorTotalsLabel" class="muted" hidden><input id="showColorTotals" type="checkbox"> Totaux des lignes et colonnes</label>
         <button id="generate">Nouvelle grille</button><button id="reset">Réinitialiser</button>
         <label class="muted">Image <input id="imageInput" type="file" accept="image/*"></label>
         <button id="solveStep">Déduction suivante</button><button id="solveAll">Résoudre logiquement</button>
@@ -75,12 +112,14 @@
       </div>
       <div id="palette" class="toolbar" hidden aria-label="Palette de couleurs"></div>
       <div class="toolbar"><button id="traceModeToggle" disabled>Voir la trace</button><button id="previousTrace">Étape précédente</button><input id="traceSlider" type="range" min="0" max="0" value="0"><button id="nextTrace">Étape suivante</button><span id="traceLabel" class="muted"></span></div>
-      <div class="muted">Clic gauche : remplir ou effacer. Clic droit : marquer une case vide. Maintenez le clic pour dessiner.</div>
+      <div class="muted">Sur écran tactile : toucher ou glisser remplit ; maintenir environ 0,4 seconde puis glisser pose des croix. Choisissez Déplacer pour naviguer. À la souris : molette pour zoomer, Maj + molette pour défiler horizontalement, bouton du milieu ou Espace + glisser pour déplacer.</div>
       <div id="status" class="muted"></div><div id="errorCount" class="muted"></div>
       <div id="nonogram" aria-label="Grille de Nonogram"></div>
     </section>
   </main>
-  <script src="nonogram.js?v=2"></script>
-  <script src="../../shared/records.js?v=1"></script>
+  <script src="../../shared/game-runtime.js?v=8"></script>
+  <script src="nonogram.js?v=12"></script>
+  <script src="../../shared/records.js?v=3"></script>
+  <script src="../../shared/options-help.js?v=3" data-options-help="true"></script>
 </body>
 </html>

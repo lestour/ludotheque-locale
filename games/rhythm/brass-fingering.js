@@ -1,5 +1,5 @@
 (function attachBrassFingering(root) {
-  const standardFingerings = ['0', '123', '13', '23', '12', '1', '2', '0', '23', '12', '1', '2'];
+  const preferredOpenPartials = [1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 32];
   const valveCombinations = [
     { label: '0', drop: 0, penalty: 0 },
     { label: '2', drop: 1, penalty: 0 },
@@ -36,31 +36,44 @@
 
   function profileFor({ instrumentId = '', instrument = '', name = '', transpose = 0 } = {}) {
     const text = normalized(`${instrumentId} ${instrument} ${name}`);
-    if (/sousaph/.test(text)) return { id: 'sousaphone-bb', name: 'Sousaphone BB♭', fundamental: 22, standardThroughPartial: 8 };
-    if (/euphon|baritone(?!\s*sax)/.test(text)) return { id: 'euphonium-bb', name: 'Euphonium/Baritone BB♭', fundamental: 34, standardThroughPartial: 8 };
-    if (/alto\s*horn|tenor\s*horn|saxhorn\s*alto/.test(text)) return { id: 'alto-horn-eb', name: 'Saxhorn alto E♭', fundamental: 39, standardThroughPartial: 7 };
-    if (/french\s*horn|brass\.horn|cor\s*(?:en\s*)?fa|\bcor\b/.test(text)) return { id: 'horn-f', name: 'Cor en F', fundamental: 41, standardThroughPartial: 6 };
+    if (/sousaph/.test(text)) return { id: 'sousaphone-bb', name: 'Sousaphone BB♭', fundamental: 22 };
+    if (/euphon|baritone(?!\s*sax)/.test(text)) return { id: 'euphonium-bb', name: 'Euphonium/Baritone BB♭', fundamental: 34 };
+    if (/alto\s*horn|tenor\s*horn|saxhorn\s*alto/.test(text)) return { id: 'alto-horn-eb', name: 'Saxhorn alto E♭', fundamental: 39 };
+    if (/french\s*horn|brass\.horn|cor\s*(?:en\s*)?fa|\bcor\b/.test(text)) return { id: 'horn-f', name: 'Cor en F', fundamental: 41 };
     if (/tuba/.test(text)) {
       const keyClass = detectedKeyClass(text, Number(transpose), 0);
       const fundamental = midiAtOrAbove(keyClass, 22);
       const labels = { 0: 'CC', 3: 'E♭', 5: 'F', 10: 'BB♭' };
-      return { id: `tuba-${keyClass}`, name: `Tuba ${labels[keyClass] || 'accordé'}`, fundamental, standardThroughPartial: 8 };
+      return { id: `tuba-${keyClass}`, name: `Tuba ${labels[keyClass] || 'accordé'}`, fundamental };
     }
     if (/piccolo/.test(text) && /trump|cornet/.test(text)) {
       const keyClass = detectedKeyClass(text, Number(transpose), 10);
-      return { id: `piccolo-trumpet-${keyClass}`, name: 'Trompette piccolo', fundamental: midiAtOrAbove(keyClass, 57), standardThroughPartial: 4 };
+      return { id: `piccolo-trumpet-${keyClass}`, name: 'Trompette piccolo', fundamental: midiAtOrAbove(keyClass, 57) };
     }
     if (/trump|trompette|cornet|flugel|bugle/.test(text)) {
       const keyClass = detectedKeyClass(text, Number(transpose), 10);
       const labels = { 0: 'C', 2: 'D', 3: 'E♭', 5: 'F', 10: 'B♭' };
-      return { id: `trumpet-${keyClass}`, name: `Trompette/Cornet ${labels[keyClass] || 'accordé'}`, fundamental: midiAtOrAbove(keyClass, 46), standardThroughPartial: 4 };
+      return { id: `trumpet-${keyClass}`, name: `Trompette/Cornet ${labels[keyClass] || 'accordé'}`, fundamental: midiAtOrAbove(keyClass, 46) };
     }
-    return { id: 'generic-c-brass', name: 'Cuivre à pistons en C', fundamental: 48, standardThroughPartial: 4 };
+    return { id: 'generic-c-brass', name: 'Cuivre à pistons en C', fundamental: 48 };
   }
 
-  function standardFingering(pitch, profile) {
-    const writtenClass = pitchClass(pitch - pitchClass(profile.fundamental));
-    return standardFingerings[writtenClass];
+  function conventionalCandidates(pitch, profile) {
+    const candidates = [];
+    preferredOpenPartials.forEach(partial => {
+      const openResonance = profile.fundamental + 12 * Math.log2(partial);
+      valveCombinations.forEach(combination => {
+        const errorCents = Math.abs(openResonance - combination.drop - pitch) * 100;
+        if (errorCents > 48) return;
+        candidates.push({
+          fingering: combination.label,
+          partial,
+          errorCents,
+          score: errorCents + combination.drop * 4 + combination.label.length + combination.penalty
+        });
+      });
+    });
+    return candidates.sort((left, right) => left.score - right.score || left.errorCents - right.errorCents);
   }
 
   function harmonicCandidates(pitch, profile) {
@@ -84,13 +97,15 @@
   function fingeringsFor({ pitch, instrumentId = '', instrument = '', name = '', transpose = 0 } = {}) {
     const roundedPitch = Math.round(Number(pitch));
     const profile = profileFor({ instrumentId, instrument, name, transpose });
-    if (!Number.isFinite(roundedPitch)) return { primary: '0', alternatives: [], accepted: ['0'], profile };
+    if (!Number.isFinite(roundedPitch)) return { primary: '0', display: '0', alternatives: [], accepted: ['0'], profile };
+    const conventional = conventionalCandidates(roundedPitch, profile);
     const calculated = harmonicCandidates(roundedPitch, profile);
-    const standard = standardFingering(roundedPitch, profile);
-    const standardCeiling = profile.fundamental + 12 * Math.log2(profile.standardThroughPartial);
-    const primary = roundedPitch <= standardCeiling ? standard : (calculated[0]?.fingering || standard);
-    const accepted = [primary, ...calculated.map(candidate => candidate.fingering)].filter((value, index, values) => values.indexOf(value) === index);
-    return { primary, alternatives: accepted.slice(1), accepted, profile, candidates: calculated };
+    const primary = conventional[0]?.fingering || calculated[0]?.fingering || '0';
+    const accepted = [primary, ...conventional.map(candidate => candidate.fingering), ...calculated.map(candidate => candidate.fingering)]
+      .filter((value, index, values) => values.indexOf(value) === index);
+    const highRegisterAlternative = roundedPitch - profile.fundamental === 37;
+    const display = highRegisterAlternative && accepted.includes('2') && accepted.includes('12') ? '2/12' : primary;
+    return { primary, display, alternatives: accepted.slice(1), accepted, profile, candidates: conventional, physicalCandidates: calculated };
   }
 
   root.BrassFingering = { fingeringsFor, profileFor };

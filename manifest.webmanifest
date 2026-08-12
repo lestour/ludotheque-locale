@@ -1,0 +1,19 @@
+{
+  "name": "Ludothèque locale",
+  "short_name": "Ludothèque",
+  "description": "Jeux de grille, de cartes, de plateau et de rythme jouables localement.",
+  "lang": "fr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#101827",
+  "theme_color": "#173c8e",
+  "icons": [
+    {
+      "src": "./assets/hub-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

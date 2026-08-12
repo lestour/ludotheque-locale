@@ -1,3 +1,4 @@
+import('../../../shared/options-help.js?v=3');
 const playersElement = document.getElementById('players');
 document.title = 'Dernière Couleur';
 document.querySelector('h1').textContent = 'Dernière Couleur';
@@ -21,10 +22,15 @@ const colors = ['red', 'yellow', 'green', 'blue'];
 const labels = { skip: '⦸', reverse: '↺', draw2: '+2', wild: '★', draw4: '+4', swap: '⇄', shuffle: '⤨' };
 const botTimes = { easy: [900, 1500], normal: [550, 950], hard: [250, 550] };
 let game;
+let colorAutosave;
 let botTimer = null;
 let audioContext;
+let lanColorState = null;
+let lanSeatOrder = [];
+let lanNames = [];
+let lanActionPending = false;
 
-document.querySelector('.rules').insertAdjacentHTML('beforeend', '<label><input id="skipPenalty" type="checkbox" checked> +2/+4 saute le tour</label><label><input id="drawTwoOnFour" type="checkbox"> +2 sur +4</label><label><input id="chainActions" type="checkbox"> enchaîner les actions identiques</label><label><input id="extraCards" type="checkbox"> cartes échange/mélange</label>');
+document.querySelector('.rules').insertAdjacentHTML('beforeend', '<label><input id="skipPenalty" type="checkbox" checked> +2/+4 saute le tour</label><label><input id="drawTwoOnFour" type="checkbox"> +2 sur +4</label><label><input id="chainActions" type="checkbox"> enchaîner les actions identiques</label><label><input id="multipleNumbers" type="checkbox"> défausse multiple d’un nombre</label><label><input id="wildFinishPenalty" type="checkbox"> fin sur joker interdite (+2)</label><label><input id="extraCards" type="checkbox"> cartes échange/mélange</label>');
 document.querySelector('.toolbar').insertAdjacentHTML('beforeend', '<label class="muted"><input id="lightBack" type="checkbox"> Dos de cartes clair</label>');
 const lightBack = document.getElementById('lightBack');
 lightBack.checked = localStorage.getItem('derniere-couleur:light-backs') === 'true';
@@ -40,7 +46,24 @@ document.head.insertAdjacentHTML('beforeend', `<style>
 </style>`);
 
 const originalPlay = play;
-play = function safePlay(...args) { return originalPlay(...args); };
+play = function playWithHouseRules(player, index, ...args) {
+  const card = game?.hands[player]?.[index];
+  if (card?.color === 'wild' && game.hands[player].length === 1 && rule('wildFinishPenalty')) {
+    drawCards(player, 2, true);
+    log(`${name(player)} ne peut pas terminer sur un joker et reprend deux cartes.`);
+  }
+  const result = originalPlay(player, index, ...args);
+  if (!card || typeof card.value !== 'number' || !rule('multipleNumbers') || (rule('sevenZero') && (card.value === 0 || card.value === 7)) || game.over) return result;
+  const extraCards = game.hands[player].filter(other => other.value === card.value && typeof other.value === 'number');
+  if (!extraCards.length) return result;
+  game.hands[player] = game.hands[player].filter(other => !extraCards.includes(other));
+  extraCards.forEach(extra => game.discard.push(extra));
+  game.color = extraCards[extraCards.length - 1].color;
+  log(`${name(player)} défausse ${extraCards.length + 1} cartes ${card.value} ensemble.`);
+  if (!game.hands[player].length) win(player);
+  else render();
+  return result;
+};
 
 const optionDescriptions = {
   stacking: 'Autorise à répondre à une pénalité par une autre carte +2 ou +4.',
@@ -52,6 +75,8 @@ const optionDescriptions = {
   announcementPenalty: 'Oublier d’annoncer sa dernière carte coûte deux cartes.',
   skipPenalty: 'Après une pénalité, le joueur piochant passe son tour.',
   chainActions: 'Permet de jouer plusieurs actions identiques durant le même tour.',
+  multipleNumbers: 'Règle maison : toutes les cartes du même nombre peuvent être posées ensemble, quelle que soit leur couleur.',
+  wildFinishPenalty: 'Règle maison : terminer sur un joker oblige à reprendre deux cartes et la partie continue.',
   extraCards: 'Ajoute les cartes Joker échange de mains et mélange de toutes les mains.'
 };
 const rulesPanel = document.createElement('aside');
@@ -71,7 +96,7 @@ document.head.insertAdjacentHTML('beforeend', `<style>
   .deck,.pile-layer,.card-transfer-back,.player .mini-stack i{background:radial-gradient(ellipse at 50% 50%,#ef4444 0 33%,#facc15 34% 38%,#111827 39% 100%)!important}
   .light-card-backs .deck,.light-card-backs .pile-layer,.light-card-backs .card-transfer-back,.light-card-backs .player .mini-stack i{background:radial-gradient(ellipse at 50% 50%,#ef4444 0 31%,#facc15 32% 37%,#f8fafc 38% 100%)!important}
   .light-card-backs .pile-layer,.light-card-backs .card-transfer-back,.light-card-backs .player .mini-stack i{border-color:#475569!important}
-  .pile-layer::after,.card-transfer-back::after,.player .mini-stack i::after{content:'COULEUR';position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-weight:900;font-style:italic;font-family:Arial,sans-serif;font-size:12px;letter-spacing:-1px;text-shadow:2px 2px 0 #111827;transform:skew(-13deg);pointer-events:none}
+  .pile-layer::after,.card-transfer-back::after,.player .mini-stack i::after{content:'DC';position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-weight:900;font-style:italic;font-family:Arial,sans-serif;font-size:12px;letter-spacing:-1px;text-shadow:2px 2px 0 #111827;transform:skew(-13deg);pointer-events:none}
   .pile-layer::after{font-size:25px}.card-transfer-back{container-type:inline-size}.card-transfer-back::after{font-size:40cqw}.player .mini-stack i{position:relative}.player .mini-stack i::after{font-size:10px;letter-spacing:-1px;text-shadow:1px 1px 0 #111827}
 </style>`);
 
@@ -132,7 +157,7 @@ play = function animatedPlay(...args) {
     animateTransfer(source, destination, cardMarkup(card), { axis: 'horizontal', reveal: player !== 0, flip: player !== 0 });
   }
   const result = validatedPlay(...args);
-  if (player !== 0 && playable && game.discard.at(-1) === card && game.hands[player]?.length === 1 && rule('announcementPenalty')) {
+  if (player !== 0 && playable && game.discard[game.discard.length - 1] === card && game.hands[player]?.length === 1 && rule('announcementPenalty')) {
     game.announcementCandidate = player;
     render();
     const chanceToAnnounce = { easy: .35, normal: .6, hard: .82 }[difficultySelect.value];
@@ -161,9 +186,9 @@ function animateTransfer(from, to, markup, axis = 'vertical') { if (!from || !to
 function shuffle(values) { for (let index = values.length - 1; index > 0; index -= 1) { const target = Math.floor(Math.random() * (index + 1)); [values[index], values[target]] = [values[target], values[index]]; } return values; }
 function createDeck() { const cards = []; colors.forEach(color => { cards.push({ color, value: 0 }); for (let value = 1; value < 10; value += 1) cards.push({ color, value }, { color, value }); ['skip', 'reverse', 'draw2'].forEach(value => cards.push({ color, value }, { color, value })); }); for (let index = 0; index < 4; index += 1) cards.push({ color: 'wild', value: 'wild' }, { color: 'wild', value: 'draw4' }); if (rule('extraCards')) for (let index = 0; index < 2; index += 1) cards.push({ color: 'wild', value: 'swap' }, { color: 'wild', value: 'shuffle' }); return shuffle(cards); }
 function rule(id) { return document.getElementById(id).checked; }
-function name(player) { return player === 0 ? 'Vous' : `Bot ${player}`; }
+function name(player) { return lanColorState ? lanNames[player] || `Joueur ${player + 1}` : player === 0 ? 'Vous' : `Bot ${player}`; }
 function next(player, steps = 1) { let target = player; for (let step = 0; step < steps; step += 1) target = (target + game.direction + game.players) % game.players; return target; }
-function topCard() { return game.discard.at(-1); }
+function topCard() { return game.discard[game.discard.length - 1]; }
 function cardText(card) { return typeof card.value === 'number' ? card.value : labels[card.value]; }
 function cardMarkup(card, playable = false, jump = false) { return `<button class="card ${card.color}${playable ? ' playable' : ''}${jump ? ' jump' : ''}"><span>${cardText(card)}</span><strong>${cardText(card)}</strong></button>`; }
 function log(message) { game.logs.unshift(message); game.logs = game.logs.slice(0, 7); }
@@ -176,7 +201,7 @@ function canJumpIn(card, player) { return Boolean(card) && rule('jumpIn') && !ga
 function botColor(player) { return colors.reduce((best, color) => game.hands[player].filter(card => card.color === color).length > game.hands[player].filter(card => card.color === best).length ? color : best, colors[0]); }
 function changeTurn(from, steps = 1) { game.current = next(from, steps); scheduleBot(); render(); }
 function continueChain(player, value) { game.chain = { player, value }; game.current = player; status.textContent = `${name(player)} peut enchaîner ${labels[value]}.`; scheduleBot(); render(); }
-function win(player) { game.over = true; clearBot(); status.textContent = `${name(player)} gagne la manche !`; announce(`${name(player)} gagne !`); render(); }
+function win(player) { game.over = true; clearBot(); status.textContent = `${name(player)} gagne la manche !`; announce(`${name(player)} gagne !`); window.GameRecords?.finish({ won: player === 0 }); render(); }
 function applyPending() { const player = game.current; drawCards(player, game.pending.count, true); log(`${name(player)} pioche ${game.pending.count} cartes.`); announce(`${name(player)} pioche ${game.pending.count} cartes`); game.pending = null; if (rule('skipPenalty')) changeTurn(player); else { scheduleBot(); render(); } }
 function showColorPicker(index) { const picker = document.createElement('div'); picker.style.cssText = 'position:fixed;inset:0;z-index:80;display:grid;place-items:center;background:#0008'; picker.innerHTML = '<div style="width:300px;height:300px;border-radius:50%;overflow:hidden;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border:8px solid white"><button data-color="red" style="background:#e84142;border:0"></button><button data-color="yellow" style="background:#f4c430;border:0"></button><button data-color="green" style="background:#32a55d;border:0"></button><button data-color="blue" style="background:#3979d8;border:0"></button></div>'; picker.querySelectorAll('[data-color]').forEach(button => button.addEventListener('click', () => { const color = button.dataset.color; picker.remove(); if (game.hands[0][index]?.value === 'swap') showSwapPicker(index, color); else play(0, index, color); })); document.body.appendChild(picker); }
 function showSwapPicker(index, color) { const picker = document.createElement('div'); picker.style.cssText = 'position:fixed;inset:0;z-index:80;display:grid;place-items:center;background:#0008'; picker.innerHTML = `<div style="padding:22px;border-radius:16px;background:#fff;color:#152238;text-align:center"><strong>Échanger avec</strong><div class="actions">${game.hands.slice(1).map((_, player) => `<button data-player="${player + 1}">${name(player + 1)}</button>`).join('')}</div></div>`; picker.querySelectorAll('[data-player]').forEach(button => button.addEventListener('click', () => { picker.remove(); play(0, index, color, Number(button.dataset.player)); })); document.body.appendChild(picker); }
@@ -188,6 +213,7 @@ function contestAnnouncement() { if (game.announcementCandidate === null || game
 function scheduleBot() { if (game.over || game.current === 0 || botTimer !== null) return; const [minimum, maximum] = botTimes[difficultySelect.value]; botTimer = window.setTimeout(() => { botTimer = null; if (game.announcementCandidate === 0 && rule('announcementPenalty') && Math.random() < .55) { drawCards(0, 2, true); game.announcementCandidate = null; status.textContent = 'Un bot conteste votre oubli : vous piochez 2 cartes.'; render(); } if (game.pending && !rule('stacking')) { applyPending(); return; } const player = game.current; const index = game.hands[player].findIndex(card => canPlay(card, player)); if (index >= 0) play(player, index); else { drawCards(player, 1, true);const drawn=game.hands[player].length-1;if(canPlay(game.hands[player][drawn],player))window.setTimeout(()=>play(player,drawn),260);else changeTurn(player); } }, minimum + Math.random() * (maximum - minimum)); }
 function render() { playersElement.innerHTML = game.hands.map((hand, player) => `<div class="player${player === game.current ? ' active' : ''}">${name(player)}<span class="mini-stack" aria-label="${hand.length} cartes">${Array.from({ length: Math.min(hand.length, 12) }, () => '<i></i>').join('')}</span><strong>${hand.length}</strong> cartes</div>`).join(''); discardElement.innerHTML = topCard() ? cardMarkup(topCard()) : ''; handElement.innerHTML = game.hands[0].map((card, index) => `<span data-index="${index}"${game.mustPlayDrawn!==null&&index!==game.mustPlayDrawn?' style="opacity:.4;pointer-events:none"':''}>${cardMarkup(card, game.current === 0 && canPlay(card, 0)&&(game.mustPlayDrawn===null||index===game.mustPlayDrawn), canJumpIn(card, 0))}</span>`).join(''); handElement.querySelectorAll('[data-index]').forEach(item => item.addEventListener('click', () => play(0, Number(item.dataset.index)))); deckButton.textContent = `PIOCHE ${game.deck.length}`; drawButton.textContent=game.mustPlayDrawn!==null?'Passer':'Piocher';drawButton.disabled = game.over || game.current !== 0; announcementButton.disabled = game.hands[0].length !== 1; challengeButton.hidden = !(game.pending?.type === 'draw4' && game.current === 0); contestAnnouncementButton.hidden = !(rule('announcementPenalty') && game.announcementCandidate !== null && game.announcementCandidate !== 0 && game.current === 0); logElement.innerHTML = game.logs.map(item => `<li>${item}</li>`).join('') || '<li>La partie commence.</li>'; }
 function createGame() { clearBot(); const playerCount = Number(playerCountSelect.value); game = { players: playerCount, hands: Array.from({ length: playerCount }, () => []), deck: createDeck(), discard: [], color: 'red', current: 0, direction: 1, pending: null, chain: null, mustPlayDrawn:null, announcementCandidate: null, lastDrawFour: null, logs: [], over: false }; for (let index = 0; index < 7; index += 1) game.hands.forEach(hand => hand.push(game.deck.pop())); let first = game.deck.pop(); while (first.value === 'draw4') { game.deck.unshift(first); first = game.deck.pop(); } game.discard.push(first); game.color = first.color === 'wild' ? colors[Math.floor(Math.random() * colors.length)] : first.color; status.textContent = 'À vous de jouer.'; render(); }
+window.DerniereCouleurTestAPI=Object.freeze({diagnostics:()=>{const cards=createDeck();return{deckSize:cards.length,colorZeros:colors.every(color=>cards.filter(card=>card.color===color&&card.value===0).length===1),wilds:cards.filter(card=>card.color==='wild').length,initialCardsConserved:game.deck.length+game.discard.length+game.hands.reduce((total,hand)=>total+hand.length,0)===cards.length};}});
 const renderWithGenericNames = render;
 render = function renderGenericNames() {
   renderWithGenericNames();
@@ -197,3 +223,104 @@ render = function renderGenericNames() {
   document.querySelectorAll('.announcement-badge.counter').forEach(badge => { badge.title = 'Oubli contesté : pénalité en cours'; });
 };
 document.getElementById('newGame').addEventListener('click', createGame); deckButton.addEventListener('click', draw); drawButton.addEventListener('click', draw); announcementButton.addEventListener('click', announceLastCard); challengeButton.addEventListener('click', challengeDrawFour); contestAnnouncementButton.addEventListener('click', contestAnnouncement); playerCountSelect.addEventListener('change', createGame); difficultySelect.addEventListener('change', createGame); ['extraCards', 'drawTwoOnFour', 'chainActions'].forEach(id => document.getElementById(id).addEventListener('change', createGame)); localStorage.setItem('game-hub:last-game', 'derniere-couleur'); createGame();
+
+const localColorPlay = play;
+const localColorDraw = draw;
+const localColorChallenge = challengeDrawFour;
+const localColorAnnounce = announceLastCard;
+const localColorContest = contestAnnouncement;
+
+function serverSeat(localSeat) { return lanSeatOrder[localSeat] ?? -1; }
+function localSeat(serverSeatIndex) { return lanSeatOrder.indexOf(serverSeatIndex); }
+
+function sendLanColorAction(action) {
+  if (!window.LanMultiplayer?.active || lanActionPending) return Promise.resolve();
+  lanActionPending = true;
+  status.textContent = 'Coup envoyé au serveur…';
+  return window.LanMultiplayer.sendPrivateAction(action).catch(error => {
+    status.textContent = `Coup refusé : ${error.message}`;
+  }).finally(() => { lanActionPending = false; });
+}
+
+function applyLanColorState(room) {
+  const snapshot = room?.gameState;
+  if (!snapshot || snapshot.yourSeat === null || snapshot.yourSeat === undefined) {
+    if (room?.phase === 'lobby') lanColorState = null;
+    return;
+  }
+  lanColorState = snapshot;
+  lanSeatOrder = [snapshot.yourSeat, ...snapshot.handCounts.map((_, index) => index).filter(index => index !== snapshot.yourSeat)];
+  const seats = room.seats || [];
+  lanNames = lanSeatOrder.map((seat, index) => index === 0 ? 'Vous' : seats[seat]?.label || seats[seat]?.name || `Joueur ${seat + 1}`);
+  const hiddenCard = { id: -1, color: 'hidden', value: '?' };
+  const top = snapshot.discardTop;
+  game = {
+    players: snapshot.handCounts.length,
+    hands: lanSeatOrder.map((seat, index) => index === 0 ? snapshot.hand.map(card => ({ ...card })) : Array.from({ length: snapshot.handCounts[seat] }, () => hiddenCard)),
+    deck: Array.from({ length: snapshot.deckCount }, () => hiddenCard),
+    discard: [...Array.from({ length: Math.max(0, snapshot.discardCount - 1) }, () => hiddenCard), ...(top ? [{ ...top }] : [])],
+    color: snapshot.color,
+    current: localSeat(snapshot.current),
+    direction: snapshot.direction,
+    pending: snapshot.pending,
+    chain: null,
+    mustPlayDrawn: snapshot.mustPlayDrawn === null ? null : snapshot.hand.findIndex(card => card.id === snapshot.mustPlayDrawn),
+    announcementCandidate: snapshot.announcementCandidate === null ? null : localSeat(snapshot.announcementCandidate),
+    lastDrawFour: null,
+    lastCardDeclared: [],
+    contestedAnnouncement: [],
+    pendingDraws: [],
+    logs: snapshot.logs,
+    over: snapshot.over
+  };
+  clearBot();
+  status.textContent = snapshot.over
+    ? snapshot.winner === snapshot.yourSeat ? 'Vous gagnez la partie LAN !' : `${seats[snapshot.winner]?.label || 'Un adversaire'} gagne la partie LAN.`
+    : snapshot.current === snapshot.yourSeat ? 'À vous de jouer.' : `Tour de ${seats[snapshot.current]?.label || 'un adversaire'}.`;
+  render();
+  drawButton.disabled = snapshot.over || snapshot.current !== snapshot.yourSeat || lanActionPending;
+}
+
+play = function lanAwarePlay(player, index, selectedColor = null, swapTarget = null) {
+  if (!lanColorState) return localColorPlay(player, index, selectedColor, swapTarget);
+  if (player !== 0 || lanActionPending) return;
+  const card = game.hands[0]?.[index];
+  if (!card) return;
+  if (card.color === 'wild' && !selectedColor) { showColorPicker(index); return; }
+  return sendLanColorAction({ type: 'play', cardId: card.id, color: selectedColor, target: swapTarget === null ? null : serverSeat(swapTarget) });
+};
+
+draw = function lanAwareDraw() {
+  if (!lanColorState) return localColorDraw();
+  return sendLanColorAction({ type: game.mustPlayDrawn !== null ? 'pass' : 'draw' });
+};
+
+challengeDrawFour = function lanAwareChallenge() {
+  if (!lanColorState) return localColorChallenge();
+  return sendLanColorAction({ type: 'challenge' });
+};
+
+announceLastCard = function lanAwareAnnounce() {
+  if (!lanColorState) return localColorAnnounce();
+  return sendLanColorAction({ type: 'announce' });
+};
+
+contestAnnouncement = function lanAwareContest() {
+  if (!lanColorState) return localColorContest();
+  return sendLanColorAction({ type: 'contest' });
+};
+
+deckButton.removeEventListener('click', localColorDraw);
+drawButton.removeEventListener('click', localColorDraw);
+announcementButton.removeEventListener('click', localColorAnnounce);
+challengeButton.removeEventListener('click', localColorChallenge);
+contestAnnouncementButton.removeEventListener('click', localColorContest);
+deckButton.addEventListener('click', draw);
+drawButton.addEventListener('click', draw);
+announcementButton.addEventListener('click', announceLastCard);
+challengeButton.addEventListener('click', challengeDrawFour);
+contestAnnouncementButton.addEventListener('click', contestAnnouncement);
+window.addEventListener('lan:room', event => applyLanColorState(event.detail?.room));
+window.addEventListener('lan:left', () => { lanColorState = null; lanSeatOrder = []; lanNames = []; createGame(); });
+colorAutosave = window.GameRuntime?.createAutosave('partie', { capture: () => game, validate: value => Array.isArray(value?.hands) && Array.isArray(value?.deck) && Array.isArray(value?.discard), restore: value => { game = value; render(); scheduleBot(); } });
+colorAutosave?.restore();

@@ -18,9 +18,10 @@
     .draw-pile, #foundations { display: flex; gap: 12px; }
     .foundation-slot, .tableau-slot, #stock, #waste { position: relative; width: 92px; min-height: 130px; border: 2px dashed #a5b4c8; border-radius: 12px; padding: 0; background: #eef3f9; }
     .foundation-slot { border-style: solid; }
-    #stock { display: grid; place-items: center; --stock-layers: 0; }
-    #stock.has-cards::before { content: ''; position: absolute; inset: 0; z-index: 0; border: 2px solid #506b9a; border-radius: 12px; transform: translate(calc(var(--stock-layers) * 1px), calc(var(--stock-layers) * 1px)); background: #d5e1f4; }
-    #stock .card { position: relative; z-index: 1; }
+    #stock { display: grid; place-items: center; overflow: visible; }
+    #stock.has-cards { border-color: transparent; background: transparent; }
+    #stock .stock-layer { position: absolute; left: 0; top: 0; width: 92px; height: 130px; box-sizing: border-box; border: 2px solid #203048; border-radius: 11px; background: repeating-linear-gradient(45deg, #294c9c, #294c9c 8px, #e7efff 8px, #e7efff 16px); box-shadow: 1px 1px 0 rgba(32,48,72,.2); pointer-events: none; }
+    #stock .card { position: absolute; left: 0; top: 0; }
     .stock-draw-animation { position: fixed; z-index: 50; width: 92px; height: 130px; box-sizing: border-box; perspective: 500px; pointer-events: none; transition: transform .52s ease-in-out, opacity .52s ease-in-out; }
     .stock-draw-animation .flip-inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .24s ease-in-out; }
     .stock-draw-animation .flip-face { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; padding: 8px; border: 2px solid #203048; border-radius: 11px; box-shadow: 2px 3px 0 rgba(32,48,72,.18); backface-visibility: hidden; font-size: 22px; }
@@ -65,7 +66,7 @@
 </head>
 <body>
   <main><section class="panel">
-    <div class="toolbar"><h1>Solitaire Klondike</h1><a href="../../../index.html">Hub de jeux</a><button id="newGame">Nouvelle partie</button><label class="muted">Difficulté <select id="dealDifficulty"><option value="easy">Facile</option><option value="normal" selected>Moyen</option><option value="hard">Difficile</option><option value="expert">Expert</option></select></label><label class="muted">Pioche <select id="drawCount"><option value="1">1 carte</option><option value="3">3 cartes</option></select></label><label class="muted">Recyclages <select id="redealLimit"><option value="Infinity" selected>illimités</option><option value="3">3 passages</option><option value="1">1 passage</option></select></label><label class="muted">As dans le tableau <select id="acePosition"><option value="end" selected>en fin (K → A)</option><option value="start">au début (A → K)</option></select></label></div>
+    <div class="toolbar"><h1>Solitaire Klondike</h1><a href="../../../index.html">Hub de jeux</a><button id="newGame">Nouvelle partie</button><label class="muted">Difficulté <select id="dealDifficulty"><option value="easy">Facile</option><option value="normal" selected>Moyen</option><option value="hard">Difficile</option><option value="expert">Expert</option></select></label><label class="muted">Pioche <select id="drawCount"><option value="1">1 carte</option><option value="3">3 cartes</option></select></label><label class="muted">Recyclages <select id="redealLimit"><option value="Infinity" selected>illimités</option><option value="3">3 passages</option><option value="1">1 passage</option></select></label><label class="muted">As dans le tableau <select id="acePosition"><option value="end" selected>en fin (K → A)</option><option value="start">au début (A → K)</option></select></label><label class="muted">Colonne vide <select id="emptyTableauRule"><option value="king" selected>Roi uniquement</option><option value="any">Toute carte</option></select></label><label class="muted">Score <select id="solitaireScoring"><option value="classic" selected>Classique</option><option value="vegas">Casino</option></select></label></div>
     <div class="toolbar"><button id="undo" disabled>Annuler</button><button id="redo" disabled>Rétablir</button><button id="hint">Indice</button><button id="solveStep">Déduction suivante</button><button id="solveAll">Déductions automatiques</button><button id="finishGame" disabled>Terminer automatiquement</button><button id="autoFoundation">Envoyer vers une fondation</button><span class="muted">Score : <strong id="score">0</strong></span><span id="errorCount" class="muted">Erreurs : 0</span></div>
     <div class="toolbar"><button id="traceMode" disabled>Voir la trace</button><button id="previousTrace" disabled>Étape précédente</button><input id="traceSlider" type="range" min="0" max="0" value="0" disabled><button id="nextTrace" disabled>Étape suivante</button><span id="traceLabel" class="muted">Aucune trace.</span></div>
     <div class="muted">Cliquez ou glissez une carte visible vers sa destination. Les suites descendent en alternant les couleurs ; les fondations montent de l’As au Roi.</div>
@@ -75,8 +76,10 @@
       <div id="tableau" aria-label="Tableau du Solitaire"></div>
     </div>
   </section></main>
-  <script src="../../../shared/cards.js?v=17"></script>
-  <script src="klondike.js?v=20"></script>
-  <script src="../../../shared/records.js?v=1"></script>
+  <script src="../../../shared/game-runtime.js?v=11"></script>
+  <script src="../../../shared/cards.js?v=18"></script>
+  <script src="klondike.js?v=25"></script>
+  <script src="../../../shared/records.js?v=3"></script>
+  <script src="../../../shared/options-help.js?v=3" data-options-help="true"></script>
 </body>
 </html>

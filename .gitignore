@@ -1,6 +1,7 @@
 .DS_Store
 **/.DS_Store
 build/
+dist/
 *.webloc
 
 # Contenus personnels importés dans les modules.
@@ -15,6 +16,10 @@ user-content/
 *.pid
 *.tmp
 *~
+.runtime/
+browser-smoke-failure.html
+__pycache__/
+*.py[cod]
 
 # Anciens liens symboliques locaux, remplacés par les chemins vers shared/.
 /games/board/effects.js
