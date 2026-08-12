@@ -1285,6 +1285,9 @@ function regressionFixture() {
 function advancedNotationFixture() {
   return `<?xml version="1.0"?><museScore version="4.0"><Score><Part><trackName>Cuivre avancé</trackName><Instrument><instrumentId>brass.tuba</instrumentId></Instrument><Staff id="1"/></Part><Staff id="1"><Measure><voice><TimeSig><sigN>4</sigN><sigD>4</sigD></TimeSig><Dynamic><subtype>ff</subtype></Dynamic><Chord><durationType>quarter</durationType><Articulation><subtype>articStaccatoAbove</subtype></Articulation><Ornament><subtype>trill</subtype></Ornament><Tremolo><subtype>r16</subtype></Tremolo><Arpeggio><subtype>0</subtype></Arpeggio><Note><pitch>48</pitch><Accidental><subtype>accidentalSharp</subtype></Accidental><Spanner type="Glissando"><Glissando><subtype>1</subtype></Glissando></Spanner></Note></Chord><Fermata><subtype>fermataAbove</subtype></Fermata><Breath><subtype>breathComma</subtype></Breath><Chord><durationType>quarter</durationType><Note><pitch>52</pitch></Note></Chord><Rest><durationType>half</durationType></Rest></voice></Measure><Measure len="8/4"><multiMeasureRest>2</multiMeasureRest><voice><Rest><durationType>measure</durationType><duration>8/4</duration></Rest><Fermata><subtype>fermataAbove</subtype></Fermata></voice></Measure></Staff></Score></museScore>`;
 }
+function individualExcerptFixture() {
+  return `<?xml version="1.0"?><museScore version="4.0"><Score><name>Trombone</name><Part><Staff><eid>sax-source</eid></Staff><trackName>Saxophone alto</trackName><Instrument><instrumentId>wind.reed.saxophone.alto</instrumentId></Instrument></Part><Part><Staff><eid>trombone-source</eid></Staff><trackName>Trombone</trackName><Instrument><instrumentId>brass.trombone</instrumentId></Instrument></Part><Staff id="1"><Measure><voice><Chord><durationType>quarter</durationType><Note><pitch>60</pitch></Note></Chord></voice></Measure></Staff><Staff id="2"><Measure><voice><Chord><durationType>quarter</durationType><Note><pitch>48</pitch></Note></Chord></voice></Measure></Staff></Score></museScore>`;
+}
 function runRhythmTests() {
   const failures = [];
   const expected = ['123','13','23','12','1','2','0','123','13','23','12','1','2','0','23','12','1','2','0','12','1','2','0','1','2','0','23','12','1','2','0','2/12','1'];
@@ -1313,6 +1316,17 @@ function runRhythmTests() {
     if (track?.measureBeats.join(',') !== '0,4,8') failures.push('Mesures multiples MuseScore');
     if (Math.abs((first?.volume || 0) - 108 / 700) > .002) failures.push('Nuance MuseScore');
   } catch (error) { failures.push(`Parseur avancé : ${error.message}`); }
+  try {
+    const excerpt = primaryExcerptTrack({ name: 'Excerpts/3_Trombone/3_Trombone.mscx', xml: individualExcerptFixture() });
+    if (excerpt?.instrumentId !== 'brass.trombone' || excerpt?.name !== 'Trombone') failures.push('Sélection de la voix d’extrait');
+  } catch (error) { failures.push(`Sélection d’extrait : ${error.message}`); }
+  try {
+    const aligned = alignExcerptToMaster(
+      { events: [{ beat: 5, beats: 1, pitch: 60 }], rests: [], pauses: [], changes: [], measureBeats: [0, 4, 8] },
+      { events: [], measureBeats: [0, 4.5, 9] }
+    );
+    if (aligned.timelineAnchorSource !== 'measures' || aligned.timelineAnchors !== 3 || Math.abs(aligned.events[0].beat - 5.625) > .001) failures.push('Alignement de secours par mesures');
+  } catch (error) { failures.push(`Alignement par mesures : ${error.message}`); }
   const previousGame = game;
   try {
     const sharedTiming = timingFor({ tempo: 120, changes: [] }, 1);
@@ -1322,7 +1336,7 @@ function runRhythmTests() {
   } finally { game = previousGame; }
   const current = validateTracks();
   failures.push(...current.errors.map(error => `Partition : ${error}`));
-  const total = 47;
+  const total = 49;
   const passed = Math.max(0, total - failures.length);
   statusElement.textContent = failures.length ? `Autotest : ${passed}/${total} réussis · ${failures.join(' · ')}` : `Autotest Rhythm Lab : ${total}/${total} réussis${current.warnings.length ? ` · avertissements : ${current.warnings.join(' · ')}` : ''}.`;
   return { passed, failures, warnings: current.warnings };
@@ -1711,6 +1725,12 @@ function musicalTimelineAnchors(excerpt, master) {
   anchors.forEach(anchor => { if (!monotonic.length || anchor.masterBeat > monotonic[monotonic.length - 1].masterBeat) monotonic.push(anchor); });
   return monotonic;
 }
+function measureTimelineAnchors(excerpt, master) {
+  const excerptMeasures = excerpt.measureBeats || [];
+  const masterMeasures = master.measureBeats || [];
+  if (excerptMeasures.length < 2 || excerptMeasures.length !== masterMeasures.length) return [];
+  return excerptMeasures.map((excerptBeat, index) => ({ excerptBeat, masterBeat: masterMeasures[index], source: 'measures' }));
+}
 function alignExcerptToMaster(excerpt, master) {
   const masterEvents = new Map();
   master.events.filter(event => event.sourceElementId).forEach(event => { if (!masterEvents.has(event.sourceElementId)) masterEvents.set(event.sourceElementId, []); masterEvents.get(event.sourceElementId).push(event); });
@@ -1718,7 +1738,8 @@ function alignExcerptToMaster(excerpt, master) {
   const matches = new Map();
   excerpt.events.forEach(event => { if (!event.linkedMasterElementId) return; const occurrence = occurrences.get(event.linkedMasterElementId) || 0; const candidates = masterEvents.get(event.linkedMasterElementId) || []; const masterEvent = candidates[occurrence]; occurrences.set(event.linkedMasterElementId, occurrence + 1); if (masterEvent) matches.set(event, masterEvent); });
   const linkedAnchors = excerpt.events.map(event => { const masterEvent = matches.get(event); return masterEvent ? { excerptBeat: event.beat, masterBeat: masterEvent.beat, source: 'linked' } : null; }).filter(Boolean).sort((left, right) => left.excerptBeat - right.excerptBeat);
-  const rawAnchors = linkedAnchors.length ? linkedAnchors : musicalTimelineAnchors(excerpt, master);
+  const musicalAnchors = musicalTimelineAnchors(excerpt, master);
+  const rawAnchors = linkedAnchors.length ? linkedAnchors : musicalAnchors.length ? musicalAnchors : measureTimelineAnchors(excerpt, master);
   const anchors = rawAnchors.filter((anchor, index) => !index || anchor.excerptBeat > rawAnchors[index - 1].excerptBeat + .001 && anchor.masterBeat > rawAnchors[index - 1].masterBeat + .001);
   if (!anchors.length) return excerpt;
   const mapBeat = beat => {
@@ -1742,7 +1763,8 @@ function alignExcerptToMaster(excerpt, master) {
     if (Number.isFinite(event.audibleBeats)) aligned.audibleBeats = Math.max(.001, mapBeat(event.beat + event.audibleBeats) - mapBeat(event.beat));
     return aligned;
   }).sort((left, right) => left.beat - right.beat || left.pitch - right.pitch);
-    return { ...excerpt, events, rests: excerpt.rests.map(alignItem), pauses: (excerpt.pauses || []).map(alignItem), changes: excerpt.changes.map(alignItem).sort((left, right) => left.beat - right.beat), measureBeats: [...new Set(excerpt.measureBeats.map(mapBeat).map(beat => Math.round(beat * 1000) / 1000))].sort((left, right) => left - right), timelineAnchors: anchors.length, timelineAnchorSource: linkedAnchors.length ? 'linked' : 'musical' };
+  const anchorSource = linkedAnchors.length ? 'linked' : musicalAnchors.length ? 'musical' : 'measures';
+  return { ...excerpt, events, rests: excerpt.rests.map(alignItem), pauses: (excerpt.pauses || []).map(alignItem), changes: excerpt.changes.map(alignItem).sort((left, right) => left.beat - right.beat), measureBeats: [...new Set(excerpt.measureBeats.map(mapBeat).map(beat => Math.round(beat * 1000) / 1000))].sort((left, right) => left - right), timelineAnchors: anchors.length, timelineAnchorSource: anchorSource };
 }
 function combineExcerptDocuments(documents) {
   const masterDocument = documents.find(document => !document.name.includes('/'));
@@ -1786,6 +1808,15 @@ function importedDocumentLabel(document) {
   if (document.name.includes('/')) return `Partie individuelle · ${excerptDisplayName(document)}`;
   return `Version générale · ${document.name} (peut être ancienne)`;
 }
+function loadIndividualExcerpt(document) {
+  const track = primaryExcerptTrack(document);
+  if (!track?.events.length) throw new Error(`La partie individuelle « ${excerptDisplayName(document)} » ne contient aucune voix jouable.`);
+  tracks = [{ ...track, importOrder: 0 }];
+  trackIndex = 0;
+  statusElement.textContent = `Partie individuelle chargée : « ${track.name} » · ${track.events.length} notes. Les portées masquées de l’extrait sont écartées.`;
+  renderTracks();
+  render();
+}
 function loadImportedDocument(index) {
   const document = importedDocuments[index];
   if (!document) return;
@@ -1796,10 +1827,11 @@ function loadImportedDocument(index) {
     trackIndex = 0;
     const source = document.mergeInfo || {};
     const anchors = tracks.reduce((sum, track) => sum + (track.timelineAnchors || 0), 0);
-    statusElement.textContent = `${tracks.length} voix réunies : ${source.excerptCount || 0} remplacées par leur partie indépendante récente${source.fallbackCount ? `, ${source.fallbackCount} conservées depuis la partition générale faute d'extrait` : ''}. ${anchors} accords liés ont servi à synchroniser précisément les chronologies.`;
+    statusElement.textContent = `${tracks.length} voix réunies : ${source.excerptCount || 0} remplacées par leur partie indépendante récente${source.fallbackCount ? `, ${source.fallbackCount} conservées depuis la partition générale faute d'extrait` : ''}. ${anchors} points d’ancrage (liaisons, motifs ou mesures) ont synchronisé les chronologies.`;
     renderTracks();
     render();
-  } else parseImportedScore(document.xml, document.name);
+  } else if (document.name.includes('/')) loadIndividualExcerpt(document);
+  else parseImportedScore(document.xml, document.name);
   renderRecord();
 }
 
