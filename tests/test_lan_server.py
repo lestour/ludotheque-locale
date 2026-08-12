@@ -136,6 +136,12 @@ class LanRoomsTests(unittest.TestCase):
             LAN.validate_public_action("games/cards/modern/symbole-unique.html", {"type": "symbol-claim", "symbol": "🐝", "target": 1, "extra": "discarded"}),
             {"type": "symbol-claim", "symbol": "🐝", "target": 1},
         )
+        self.assertEqual(
+            LAN.validate_public_action("games/grid/minesweeper.html", {"type": "minesweeper-start", "index": 3839, "extra": "discarded"}),
+            {"type": "minesweeper-start", "index": 3839},
+        )
+        with self.assertRaises(ValueError):
+            LAN.validate_public_action("games/grid/minesweeper.html", {"type": "minesweeper-start", "index": -1})
         with self.assertRaises(ValueError):
             LAN.validate_public_action("games/cards/modern/symbole-unique.html", {"type": "symbol-claim", "symbol": ""})
 

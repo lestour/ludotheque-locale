@@ -35,6 +35,7 @@ function cancelTouchHold(pointerId = null) {
 const settings = { easy: { width: 9, height: 9, mines: 10 }, medium: { width: 16, height: 16, mines: 40 }, hard: { width: 30, height: 16, mines: 99 }, expert: { width: 40, height: 22, mines: 180 }, giant: { width: 50, height: 30, mines: 400 }, colossal: { width: 60, height: 36, mines: 600 }, titan: { width: 80, height: 48, mines: 900 } };
 let game = null;
 let lanFinished = false;
+let lanStartPending = false;
 let autosave = null;
 
 function finishGame(result) {
@@ -145,8 +146,21 @@ function revealCovered(index) {
     if (!cell.count) neighbours(current).forEach(next => { if (!game.cells[next].revealed && !game.cells[next].flagged) queue.push(next); });
   }
 }
-async function reveal(index) {
+async function reveal(index, synchronizedStart = false) {
   if (game.over || game.generating || game.cells[index].flagged) return;
+  if (!game.started && window.LanMultiplayer?.active && !synchronizedStart) {
+    if (lanStartPending) return;
+    lanStartPending = true;
+    game.generationMessage = 'Ouverture envoyée au salon LAN : attente de la grille commune…';
+    render();
+    window.LanMultiplayer.sendAction({ type: 'minesweeper-start', index }).catch(error => {
+      lanStartPending = false;
+      game.generationMessage = `Ouverture LAN refusée : ${error.message}`;
+      render();
+    });
+    return;
+  }
+  if (!game.started) game.generationMessage = '';
   if (!game.started) await placeMines(index);
   if (lanFinished || game.over) { render(); return; }
   const cell = game.cells[index];
@@ -165,7 +179,7 @@ function checkWin() {
   }
 }
 function toggleFlag(index) {
-  if (game.over || game.cells[index].revealed) return;
+  if (!game.started || game.generating || game.over || game.cells[index].revealed) return;
   game.cells[index].flagged = !game.cells[index].flagged;
   game.cells[index].autoFlagged = false;
   game.solverMistakes.delete(index);
@@ -485,6 +499,7 @@ function render() {
 }
 function createGame() {
   const config = settings[difficulty.value];
+  lanStartPending = false;
   game = { ...config, requestedMines: config.mines, started: false, over: false, lost: false, simulating: false, generating: false, logicalStart: false, generationMessage: '', lastDeduction: '', solverMistakes: new Set(), cells: Array.from({ length: config.width * config.height }, () => ({ mine: false, count: 0, revealed: false, flagged: false, autoFlagged: false })) };
   render();
   autosave?.save();
@@ -547,7 +562,8 @@ autosave = window.GameRuntime?.createAutosave('partie', {
 if (!autosave?.restore()) createGame();
 window.addEventListener('lan:start', () => {
   lanFinished = false;
-  if (!game.started && !game.generating) reveal(indexOf(Math.floor(game.height / 2), Math.floor(game.width / 2)));
+  lanStartPending = false;
+  if (game?.started || game?.over) createGame();
 });
 window.addEventListener('lan:finished', () => {
   if (!game) return;
@@ -557,3 +573,18 @@ window.addEventListener('lan:finished', () => {
   cancelTouchHold();
   render();
 });
+
+function registerLanAdapter() {
+  if (!window.LanMultiplayer || registerLanAdapter.done) return;
+  registerLanAdapter.done = true;
+  window.LanMultiplayer.registerAdapter({
+    receiveOwn: true,
+    receive(action) {
+      if (action?.type !== 'minesweeper-start' || !Number.isInteger(action.index) || action.index < 0 || action.index >= game.cells.length || game.started || game.generating) return;
+      lanStartPending = false;
+      reveal(action.index, true);
+    },
+  });
+}
+registerLanAdapter();
+window.addEventListener('lan:available', registerLanAdapter);

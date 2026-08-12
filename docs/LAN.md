@@ -45,8 +45,8 @@ Wi-Fi sans conserver indéfiniment une partie abandonnée.
 
 - Sudoku, Nonogram, Démineur, Mahjong Solitaire et Klondike : même graine et mêmes options. Le premier
   joueur qui termine correctement clôt la course pour tous et déclenche la
-  fenêtre de résultat commune. Le Démineur ouvre automatiquement la case
-  centrale pour construire exactement le même champ de mines.
+  fenêtre de résultat commune. Au Démineur, le premier clic d’un joueur est
+  relayé par le serveur : il initialise la même grille sur chaque appareil.
 - Pour un Nonogram issu d’une image, chaque appareil charge localement le même
   fichier et sélectionne le même bloc, la même résolution et la même palette.
   Seule leur empreinte est comparée : l’image ne quitte jamais les appareils.

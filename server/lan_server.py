@@ -90,6 +90,11 @@ def validate_public_action(game, value):
         if isinstance(value.get("controlledSeat"), int) and 0 <= value["controlledSeat"] < MAX_PLAYERS:
             result["controlledSeat"] = value["controlledSeat"]
         return result
+    if game == "games/grid/minesweeper.html":
+        index = value.get("index")
+        if action_type != "minesweeper-start" or not isinstance(index, int) or not 0 <= index < 3840:
+            raise ValueError("Ouverture de démineur invalide.")
+        return {"type": action_type, "index": index}
     if game == "games/board/chess.html":
         coordinates = lambda item: isinstance(item, list) and len(item) == 2 and all(isinstance(number, int) and 0 <= number < 14 for number in item)
         if action_type != "board-move" or not coordinates(value.get("from")) or not coordinates(value.get("to")):
