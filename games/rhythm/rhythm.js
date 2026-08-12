@@ -537,7 +537,21 @@ document.addEventListener('pointerup', () => { if (!slideInteracting) return; sl
 async function detectLayout() { if (keyboardLayout !== 'auto') return; try { const map = await navigator.keyboard?.getLayoutMap?.(); if (!map) return; const codes = new Set(Object.values(inputMappings).flatMap(value => Array.isArray(value) ? value : [value])); codes.forEach(code => { const label = map.get(code); if (label && label !== 'Dead') learnedKeyLabels.base[code] = /\p{L}/u.test(label) ? label.toLocaleUpperCase(navigator.language || 'fr') : label; }); refreshKeyLabels(); try { localStorage.setItem('rhythm-key-labels', JSON.stringify(learnedKeyLabels)); } catch {} renderMappingControls(); render(); } catch {} }
 function playableNotes(track, timing, countIn, codes, elapsed = -Infinity, bounds = practiceBounds(track), timelineOffset = timing.beatToMs(bounds.startBeat)) { return track.events.filter(event => event.beat >= bounds.startBeat - .001 && event.beat < bounds.endBeat - .001).map((event, index) => { const time = countIn + timing.beatToMs(event.beat) - timelineOffset + latencyOffsetMs; const durationMs = Math.max(80, (timing.beatToMs(event.beat + (event.audibleBeats || event.beats || 1)) - timing.beatToMs(event.beat)) * (event.playbackStretch || 1)); return { ...event, visualId: event.sourceElementId || `${event.beat}:${event.pitch}:${index}`, beats: event.beats || 1, lane: Math.abs(event.pitch) % codes.length, label: keyLabel(codes[Math.abs(event.pitch) % codes.length]), time, durationMs, done: time + durationMs < elapsed, active: false }; }); }
 function instrumentFamily(track) { const value = `${track.instrumentId || ''} ${track.instrument || track.name || ''}`.toLowerCase(); if (/voice|vocal|choir|chor|soprano|mezzo|contralto/.test(value)) return 'Voix'; if (/drum|percussion|batterie|timpani|xylophone|marimba|vibraphone/.test(value)) return 'Percussions'; if (/trump|trombon|tuba|sousaph|euphon|horn|brass|cuivre|cornet/.test(value)) return 'Cuivres'; if (/flute|flûte|clarinet|sax|oboe|hautbois|bassoon|basson|wind|reed/.test(value)) return 'Bois'; if (/violin|viola|cello|contrabass|string|corde|harp/.test(value)) return 'Cordes'; if (/piano|keyboard|organ|orgue|accordion|clavecin/.test(value)) return 'Claviers'; if (/guitar|guitare|banjo|mandolin|pluck/.test(value)) return 'Cordes pincées'; return 'Autres'; }
-function syncPlaybackIndexes(elapsed = game ? (game.pausedAt || performance.now()) - game.started : 0) { if (!game) return; const indexes = tracks.map(track => { const timing = timingFor(track, game.speed); const timelineOffset = timing.beatToMs(game.bounds.startBeat); const firstFuture = track.events.findIndex(event => event.beat >= game.bounds.startBeat - .001 && event.beat < game.bounds.endBeat - .001 && game.countIn + timing.beatToMs(event.beat) - timelineOffset > elapsed); return firstFuture < 0 ? track.events.length : firstFuture; }); game.backIndexes = indexes.slice(); game.guideIndexes = indexes.slice(); }
+function sharedPlaybackTiming() { return game?.timelineTiming || timingFor(tracks[trackIndex], game?.speed || 1); }
+function playbackMomentFor(timing, countIn, timelineOffset, beat) { return countIn + timing.beatToMs(beat) - timelineOffset; }
+function sharedPlaybackMoment(beat) {
+  if (!game) return 0;
+  return playbackMomentFor(sharedPlaybackTiming(), game.countIn, game.timelineOffset, beat);
+}
+function syncPlaybackIndexes(elapsed = game ? (game.pausedAt || performance.now()) - game.started : 0) {
+  if (!game) return;
+  const indexes = tracks.map(track => {
+    const firstFuture = track.events.findIndex(event => event.beat >= game.bounds.startBeat - .001 && event.beat < game.bounds.endBeat - .001 && sharedPlaybackMoment(event.beat) > elapsed);
+    return firstFuture < 0 ? track.events.length : firstFuture;
+  });
+  game.backIndexes = indexes.slice();
+  game.guideIndexes = indexes.slice();
+}
 function applyLiveSpeed() {
   if (!game) return;
   const nextSpeed = Number(speedControl.value) / 100;
@@ -555,6 +569,7 @@ function applyLiveSpeed() {
   game.speed = nextSpeed;
   const track = tracks[trackIndex];
   const timing = timingFor(track, nextSpeed);
+  game.timelineTiming = timing;
   game.timelineOffset = timing.beatToMs(game.bounds.startBeat);
   game.msToBeat = milliseconds => { let low = game.bounds.startBeat; let high = game.bounds.endBeat + 1; for (let iteration = 0; iteration < 22; iteration += 1) { const middle = (low + high) / 2; if (timing.beatToMs(middle) - game.timelineOffset < milliseconds) low = middle; else high = middle; } return (low + high) / 2; };
   syncPlaybackIndexes(now);
@@ -571,6 +586,7 @@ function selectTrack(index) {
     stopAllAudio();
     const track = tracks[trackIndex];
     const timing = timingFor(track, game.speed);
+    game.timelineTiming = timing;
     const elapsed = (game.pausedAt || performance.now()) - game.started;
     game.bounds = practiceBounds(track);
     game.timelineOffset = timing.beatToMs(game.bounds.startBeat);
@@ -753,13 +769,12 @@ function audioSchedulerTick() {
   }
   if (accompanimentToggle.checked) tracks.forEach((track, index) => {
     if (index === trackIndex) return;
-    const timing = timingFor(track, game.speed);
-    const timelineOffset = timing.beatToMs(game.bounds.startBeat);
+    const timing = sharedPlaybackTiming();
     let cursor = game.backIndexes[index] || 0;
     while (cursor < track.events.length) {
       const event = track.events[cursor];
       if (event.beat >= game.bounds.endBeat - .001) { cursor = track.events.length; break; }
-      const when = game.countIn + timing.beatToMs(event.beat) - timelineOffset;
+      const when = sharedPlaybackMoment(event.beat);
       if (when > horizon) break;
       const audibleBeats = event.audibleBeats || event.beats;
       playEventSound({ ...event, playbackDuration: Math.max(.04, (timing.beatToMs(event.beat + audibleBeats) - timing.beatToMs(event.beat)) / 1000) }, .055, false, when - now, true);
@@ -769,12 +784,12 @@ function audioSchedulerTick() {
   });
   if (currentTrackPlaybackToggle.checked) {
     const track = tracks[trackIndex];
-    const timing = timingFor(track, game.speed);
+    const timing = sharedPlaybackTiming();
     let cursor = game.guideIndexes[trackIndex] || 0;
     while (cursor < track.events.length) {
       const event = track.events[cursor];
       if (event.beat >= game.bounds.endBeat - .001) { cursor = track.events.length; break; }
-      const when = game.countIn + timing.beatToMs(event.beat) - game.timelineOffset;
+      const when = sharedPlaybackMoment(event.beat);
       if (when > horizon) break;
       const audibleBeats = event.audibleBeats || event.beats;
       playEventSound({ ...event, playbackDuration: Math.max(.04, (timing.beatToMs(event.beat + audibleBeats) - timing.beatToMs(event.beat)) / 1000) }, .12, true, when - now, true);
@@ -864,7 +879,7 @@ async function start() {
   for (let beat = bounds.startBeat; beat <= maxBeat + .001;) { const available = timeChanges.filter(change => change.beat <= beat); const signature = available[available.length - 1]; const [numerator, denominator] = String(signature?.value || track.time || '4/4').split('/').map(Number); const pulseBeats = 4 / (denominator || 4); const measureBeats = (numerator || 4) * pulseBeats; const relativeMeasure = (beat - (signature?.beat || 0)) / measureBeats; const accent = measureStarts.length ? measureStarts.some(start => Math.abs(start - beat) < .01) : Math.abs(relativeMeasure - Math.round(relativeMeasure)) < .01; clicks.push({ time: countIn + timing.beatToMs(beat) - timelineOffset, accent, prelude: false }); beat += pulseBeats; }
   const msToBeat = milliseconds => { let low = bounds.startBeat; let high = maxBeat + 1; for (let iteration = 0; iteration < 22; iteration += 1) { const middle = (low + high) / 2; if (timing.beatToMs(middle) - timelineOffset < milliseconds) low = middle; else high = middle; } return (low + high) / 2; };
   ensureAudio();
-  game = { started: performance.now(), pausedAt: 0, pausedTotal: 0, visibilityPaused: false, speed, bounds, timelineOffset, travel: Number(approachTimeControl.value), hits: 0, misses: 0, score: 0, initialBeatMs, countIn, clicks, clickIndex: 0, changes, msToBeat, backPlayed: new Set(), backIndexes: tracks.map(() => 0), guideIndexes: tracks.map(() => 0), lastRender: -Infinity, visualStepMs: 16, activeInputs: new Map(), judgements: [], lastMissBeat: null, notes: playableNotes(track, timing, countIn, codes, -Infinity, bounds, timelineOffset) };
+  game = { started: performance.now(), pausedAt: 0, pausedTotal: 0, visibilityPaused: false, speed, bounds, timelineTiming: timing, timelineOffset, travel: Number(approachTimeControl.value), hits: 0, misses: 0, score: 0, initialBeatMs, countIn, clicks, clickIndex: 0, changes, msToBeat, backPlayed: new Set(), backIndexes: tracks.map(() => 0), guideIndexes: tracks.map(() => 0), lastRender: -Infinity, visualStepMs: 16, activeInputs: new Map(), judgements: [], lastMissBeat: null, notes: playableNotes(track, timing, countIn, codes, -Infinity, bounds, timelineOffset) };
   syncPlaybackIndexes(0);
   retryBeforeError.disabled = true;
   renderPracticeHistory([]);
@@ -1298,9 +1313,16 @@ function runRhythmTests() {
     if (track?.measureBeats.join(',') !== '0,4,8') failures.push('Mesures multiples MuseScore');
     if (Math.abs((first?.volume || 0) - 108 / 700) > .002) failures.push('Nuance MuseScore');
   } catch (error) { failures.push(`Parseur avancé : ${error.message}`); }
+  const previousGame = game;
+  try {
+    const sharedTiming = timingFor({ tempo: 120, changes: [] }, 1);
+    const conflictingTiming = timingFor({ tempo: 60, changes: [] }, 1);
+    game = { timelineTiming: sharedTiming, countIn: 1000, timelineOffset: 0 };
+    if (sharedPlaybackMoment(4) !== playbackMomentFor(sharedTiming, 1000, 0, 4) || sharedPlaybackMoment(4) === playbackMomentFor(conflictingTiming, 1000, 0, 4)) failures.push('Horloge commune des voix');
+  } finally { game = previousGame; }
   const current = validateTracks();
   failures.push(...current.errors.map(error => `Partition : ${error}`));
-  const total = 46;
+  const total = 47;
   const passed = Math.max(0, total - failures.length);
   statusElement.textContent = failures.length ? `Autotest : ${passed}/${total} réussis · ${failures.join(' · ')}` : `Autotest Rhythm Lab : ${total}/${total} réussis${current.warnings.length ? ` · avertissements : ${current.warnings.join(' · ')}` : ''}.`;
   return { passed, failures, warnings: current.warnings };
