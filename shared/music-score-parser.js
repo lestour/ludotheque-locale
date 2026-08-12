@@ -31,6 +31,39 @@ window.MusicScoreParser = (() => {
     return order;
   }
 
+  function normalizedTempoChanges(changes, fallbackTempo = 120) {
+    const byBeat = new Map([[0, Math.max(20, Math.min(400, Number(fallbackTempo) || 120))]]);
+    changes.forEach(change => {
+      const beat = Number(change?.beat);
+      const bpm = Number(change?.bpm);
+      if (Number.isFinite(beat) && beat >= 0 && Number.isFinite(bpm) && bpm >= 20 && bpm <= 400) byBeat.set(Math.round(beat * 1000) / 1000, bpm);
+    });
+    return [...byBeat.entries()].map(([beat, bpm]) => ({ beat, bpm })).sort((left, right) => left.beat - right.beat);
+  }
+
+  function addEventTiming(events, changes, fallbackTempo) {
+    const tempoChanges = normalizedTempoChanges(changes, fallbackTempo);
+    const millisecondsAtBeat = targetBeat => {
+      let milliseconds = 0;
+      let cursor = 0;
+      let bpm = tempoChanges[0].bpm;
+      for (const change of tempoChanges.slice(1)) {
+        if (change.beat >= targetBeat) break;
+        milliseconds += (change.beat - cursor) * 60000 / bpm;
+        cursor = change.beat;
+        bpm = change.bpm;
+      }
+      return milliseconds + (targetBeat - cursor) * 60000 / bpm;
+    };
+    return {
+      tempoChanges,
+      events: events.map(event => {
+        const startMs = millisecondsAtBeat(event.startBeat);
+        return { ...event, startMs, durationMs: Math.max(1, millisecondsAtBeat(event.startBeat + event.beats) - startMs) };
+      })
+    };
+  }
+
   async function unzipMscz(buffer) {
     const view = new DataView(buffer);
     const bytes = new Uint8Array(buffer);
@@ -56,7 +89,7 @@ window.MusicScoreParser = (() => {
       documents.push({ name, xml });
     }
     if (!documents.length) throw new Error('Aucune partition MSCX trouvée dans l’archive.');
-    return documents;
+    return documents.sort((left, right) => Number(left.name.includes('/')) - Number(right.name.includes('/')) || left.name.localeCompare(right.name));
   }
 
   function mergeTies(events) {
@@ -76,9 +109,15 @@ window.MusicScoreParser = (() => {
     const documentNode = new DOMParser().parseFromString(xml, 'application/xml');
     if (documentNode.querySelector('parsererror')) throw new Error('Partition MuseScore XML invalide.');
     const metadata = new Map();
+    const orderedMetadata = [];
     documentNode.querySelectorAll('Score > Part').forEach((part, partIndex) => {
       const name = text(part, ':scope > trackName') || text(part, ':scope > Instrument > longName') || `Piste ${partIndex + 1}`;
-      part.querySelectorAll(':scope > Staff').forEach(staff => metadata.set(staff.getAttribute('id'), name));
+      const staffs = [...part.querySelectorAll(':scope > Staff')];
+      (staffs.length ? staffs : [null]).forEach(staff => {
+        const definition = { name, instrument: text(part, ':scope > Instrument > instrumentId') || text(part, ':scope > Instrument > longName') || name };
+        orderedMetadata.push(definition);
+        if (staff?.getAttribute('id')) metadata.set(staff.getAttribute('id'), definition);
+      });
     });
     const tempoRaw = Number(text(documentNode, 'Score Tempo tempo', '1.6667'));
     const tempo = Math.max(30, Math.min(300, Math.round(tempoRaw * 60)));
@@ -86,6 +125,7 @@ window.MusicScoreParser = (() => {
       const measures = [...staff.children].filter(element => element.tagName === 'Measure');
       const order = measureOrder(measures);
       const events = [];
+      const tempoChanges = [];
       let absoluteBeat = 0;
       let currentVelocity = 78;
       order.forEach(measureIndex => {
@@ -96,6 +136,11 @@ window.MusicScoreParser = (() => {
           let beat = absoluteBeat;
           [...voice.children].forEach(element => {
             if (element.tagName === 'Dynamic') { currentVelocity = velocity(text(element, ':scope > subtype'), currentVelocity); return; }
+            if (element.tagName === 'Tempo') {
+              const secondsPerBeat = Number(text(element, ':scope > tempo', 'NaN'));
+              if (Number.isFinite(secondsPerBeat) && secondsPerBeat > 0) tempoChanges.push({ beat, bpm: 60 / secondsPerBeat });
+              return;
+            }
             if (element.tagName !== 'Chord' && element.tagName !== 'Rest') return;
             const beats = duration(element);
             if (element.tagName === 'Chord') {
@@ -111,9 +156,13 @@ window.MusicScoreParser = (() => {
         const expected = time ? Number(text(time, 'sigN', '4')) * 4 / Number(text(time, 'sigD', '4')) : 4;
         absoluteBeat += Math.max(longestVoice, expected);
       });
-      const baseName = metadata.get(staff.getAttribute('id')) || `Piste ${staffIndex + 1}`;
+      const definition = metadata.get(staff.getAttribute('id')) || orderedMetadata[staffIndex] || { name: `Piste ${staffIndex + 1}` };
+      const baseName = definition.name;
       const voices = [...new Set(events.map(event => event.voice))];
-      return voices.map(voice => ({ name: voices.length > 1 ? `${baseName} · voix ${voice}` : baseName, sourceName, tempo, events: mergeTies(events.filter(event => event.voice === voice)) }));
+      return voices.map(voice => {
+        const timing = addEventTiming(mergeTies(events.filter(event => event.voice === voice)), tempoChanges, tempo);
+        return { name: voices.length > 1 ? `${baseName} · voix ${voice}` : baseName, instrument: definition.instrument, sourceName, tempo: timing.tempoChanges[0].bpm, tempoChanges: timing.tempoChanges, events: timing.events };
+      });
     }).filter(track => track.events.length);
   }
 
@@ -127,12 +176,16 @@ window.MusicScoreParser = (() => {
       let currentVelocity = 78;
       let absoluteBeat = 0;
       const byVoice = new Map();
+      const tempoChanges = [];
       const measures = [...part.querySelectorAll(':scope > measure')];
       measureOrder(measures).forEach(measureIndex => {
         const measure = measures[measureIndex];
         divisions = Number(text(measure, 'attributes divisions', String(divisions))) || divisions;
         const tempoNode = measure.querySelector('direction sound[tempo], direction per-minute');
-        if (tempoNode) tempo = Number(tempoNode.getAttribute?.('tempo') || tempoNode.textContent || tempo);
+        if (tempoNode) {
+          tempo = Number(tempoNode.getAttribute?.('tempo') || tempoNode.textContent || tempo) || tempo;
+          tempoChanges.push({ beat: absoluteBeat, bpm: tempo });
+        }
         const dynamicNode = measure.querySelector('direction-type dynamics > *, direction sound[dynamics]');
         if (dynamicNode) currentVelocity = dynamicNode.getAttribute?.('dynamics') ? Math.max(1, Math.min(127, Math.round(Number(dynamicNode.getAttribute('dynamics')) * 1.27))) : velocity(dynamicNode.tagName, currentVelocity);
         const voiceBeats = new Map();
@@ -161,7 +214,10 @@ window.MusicScoreParser = (() => {
         absoluteBeat += Math.max(numerator * 4 / denominator, ...[...voiceBeats.values()].map(value => value - absoluteBeat), 0);
       });
       const partName = names.get(part.getAttribute('id')) || `Piste ${partIndex + 1}`;
-      return [...byVoice.entries()].map(([voice, events]) => ({ name: byVoice.size > 1 ? `${partName} · voix ${voice}` : partName, sourceName, tempo, events: mergeTies(events) }));
+      return [...byVoice.entries()].map(([voice, events]) => {
+        const timing = addEventTiming(mergeTies(events), tempoChanges, tempo);
+        return { name: byVoice.size > 1 ? `${partName} · voix ${voice}` : partName, sourceName, tempo: timing.tempoChanges[0].bpm, tempoChanges: timing.tempoChanges, events: timing.events };
+      });
     }).filter(track => track.events.length);
   }
 
@@ -170,10 +226,11 @@ window.MusicScoreParser = (() => {
     const buffer = await file.arrayBuffer();
     if (file.name.toLowerCase().endsWith('.mscz')) {
       const documents = await unzipMscz(buffer);
-      return documents.flatMap(document => parseMuseScore(document.xml, document.name));
+      const master = documents.find(document => !document.name.includes('/')) || documents[0];
+      return parseMuseScore(master.xml, master.name);
     }
     return parseXml(new TextDecoder().decode(buffer), file.name);
   }
 
-  return { parseFile, parseXml, parseMuseScore, parseMusicXml, unzipMscz, duration, velocity };
+  return { parseFile, parseXml, parseMuseScore, parseMusicXml, unzipMscz, duration, velocity, addEventTiming };
 })();

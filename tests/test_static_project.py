@@ -61,6 +61,12 @@ class StaticProjectTests(unittest.TestCase):
         self.assertIn("listAutosaves", runtime)
         self.assertIn("manageSaves", hub)
 
+    def test_every_game_gets_option_help(self):
+        runtime = (ROOT / "shared/game-runtime.js").read_text(encoding="utf-8")
+        help_script = (ROOT / "shared/options-help.js").read_text(encoding="utf-8")
+        self.assertIn("data-options-help", runtime)
+        self.assertIn("GameOptionsHelp", help_script)
+
     def test_replay_reader_is_packaged_and_accepts_lan_exports(self):
         replay_page = (ROOT / "replay.html").read_text(encoding="utf-8")
         replay_script = (ROOT / "replay.js").read_text(encoding="utf-8")
@@ -78,6 +84,9 @@ class StaticProjectTests(unittest.TestCase):
         packager = (ROOT / "tools/package_release.py").read_text(encoding="utf-8")
         self.assertIn("Ludotheque-locale.zip", packager)
         self.assertIn("MS-Basic.sf3", packager)
+        release_guide = (ROOT / "docs/RELEASE.md").read_text(encoding="utf-8")
+        self.assertIn("package_release.py", release_guide)
+        self.assertIn("run_browser_smoke.py", release_guide)
 
     def test_runtime_state_is_excluded_from_publication(self):
         ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")

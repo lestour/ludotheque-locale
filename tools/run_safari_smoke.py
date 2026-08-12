@@ -71,7 +71,14 @@ def main():
                 break
             time.sleep(1)
         if not result or result.get("pending") != "0" or result.get("failed") != "0" or result.get("passed") in {"", "0"}:
-            print(f"Diagnostic Safari incomplet : {result}", file=sys.stderr)
+            details = request(
+                f"{endpoint}/session/{session_id}/execute/sync",
+                {"script": "return [...document.querySelectorAll('#results tr')].filter(row=>row.querySelector('.fail')).map(row=>row.innerText).join('\\n');", "args": []},
+                "POST",
+                30,
+            ).get("value")
+            suffix = f"\n{details}" if details else ""
+            print(f"Diagnostic Safari incomplet : {result}{suffix}", file=sys.stderr)
             return 1
         print(f"Diagnostic Safari réussi : {result['passed']} contrôles.")
         return 0

@@ -47,12 +47,13 @@ async function testRuntime() {
 }
 
 async function testMusicParser() {
-  const musicXml = `<?xml version="1.0"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Chant</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>2</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes><direction><sound tempo="96"/></direction><note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><lyric><text>Bon</text></lyric><tie type="start"/></note><note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><lyric><text>jour</text></lyric><tie type="stop"/></note><note><rest/><duration>4</duration><voice>1</voice></note></measure></part></score-partwise>`;
+  const musicXml = `<?xml version="1.0"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Chant</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>2</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes><direction><sound tempo="96"/></direction><note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><lyric><text>Bon</text></lyric><tie type="start"/></note><note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><lyric><text>jour</text></lyric><tie type="stop"/></note><note><rest/><duration>4</duration><voice>1</voice></note></measure><measure number="2"><direction><sound tempo="60"/></direction><note><pitch><step>D</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><lyric><text>suite</text></lyric></note></measure></part></score-partwise>`;
   const tracks = MusicScoreParser.parseXml(musicXml, 'fixture.musicxml');
   assert(tracks.length === 1, 'La voix MusicXML n’est pas détectée.');
-  assert(tracks[0].events.length === 1 && tracks[0].events[0].beats === 2, 'La liaison MusicXML n’est pas fusionnée.');
+  assert(tracks[0].events.length === 2 && tracks[0].events[0].beats === 2, 'La liaison MusicXML n’est pas fusionnée.');
   assert(tracks[0].events[0].lyric === 'Bon' && tracks[0].tempo === 96, 'Paroles ou tempo MusicXML incorrects.');
-  return 'Voix, parole, tempo et liaison MusicXML validés.';
+  assert(tracks[0].tempoChanges.length === 2 && Math.abs(tracks[0].events[1].startMs - 2500) < 2 && Math.abs(tracks[0].events[1].durationMs - 1000) < 2, 'Les changements de tempo MusicXML ne sont pas chronométrés.');
+  return 'Voix, parole, tempo variable et liaison MusicXML validés.';
 }
 
 async function testRhythmAssets() {
@@ -203,7 +204,7 @@ async function waitForGameInvariant(frameWindow, route) {
       if (summary) {
         assert(summary.do4 === 60 && summary.c4 === 60 && summary.siFlat3 === 58, 'La notation des notes du Karaoké est mal interprétée.');
         assert(summary.sequenceLength > 0 && summary.positiveDuration && summary.fourBeatCountIn, 'La chronologie du Karaoké est invalide.');
-        assert(summary.frenchNotationDefault && summary.pauseControl && summary.microphoneControl && summary.importedScoreControl && summary.backingControl && summary.synchronizedPause, 'Les options audio, le décompte ou la pause de Karaoké Lab sont incomplets.');
+        assert(summary.frenchNotationDefault && summary.pauseControl && summary.microphoneControl && summary.importedScoreControl && summary.backingControl && summary.synchronizedPause && summary.mobileFocusControl, 'Les options audio, le décompte, la pause ou la vue mobile de Karaoké Lab sont incomplets.');
         return `${summary.sequenceLength} notes, audio et pause synchronisée validés.`;
       }
     } else if (route.includes('/minesweeper.html')) {

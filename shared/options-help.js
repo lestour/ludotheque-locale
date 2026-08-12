@@ -1,4 +1,6 @@
 (() => {
+  if (window.GameOptionsHelp) return;
+  window.GameOptionsHelp = true;
   const descriptions = {
     newGame: 'Recommence avec une nouvelle distribution ou une nouvelle grille en utilisant les paramètres actuels.',
     generate: 'Génère une nouvelle grille avec les variantes et la difficulté sélectionnées.',

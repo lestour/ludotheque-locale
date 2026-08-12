@@ -2,6 +2,7 @@ const microphoneButton = document.getElementById('microphone');
 const startButton = document.getElementById('start');
 const pauseButton = document.getElementById('pauseGame');
 const stopButton = document.getElementById('stop');
+const focusButton = document.getElementById('focusGame');
 const calibrateButton = document.getElementById('calibrate');
 const statusElement = document.getElementById('status');
 const targetNoteElement = document.getElementById('targetNote');
@@ -92,8 +93,10 @@ function builtInSequence() {
     const track = importedTracks[Number(scoreTrackSelect.value) || 0];
     let previousEnd = 0;
     return track.events.map(event => {
-      const prepared = { midi: event.midi, beats: event.beats, gapBefore: Math.max(0, event.startBeat - previousEnd), lyric: event.lyric || '—', velocity: event.velocity || 78 };
-      previousEnd = Math.max(previousEnd, event.startBeat + event.beats);
+      const start = Number.isFinite(event.startMs) ? event.startMs : event.startBeat * 60000 / (track.tempo || 90);
+      const duration = Number.isFinite(event.durationMs) ? event.durationMs : event.beats * 60000 / (track.tempo || 90);
+      const prepared = { midi: event.midi, beats: event.beats, gapBeforeMs: Math.max(0, start - previousEnd), durationMs: duration, lyric: event.lyric || '—', velocity: event.velocity || 78 };
+      previousEnd = Math.max(previousEnd, start + duration);
       return prepared;
     });
   }
@@ -108,8 +111,13 @@ function builtInSequence() {
 function prepareRun() {
   const beatDuration = 60000 / Number(tempoInput.value);
   let elapsed = 0;
-  const notes = builtInSequence().map(note => { elapsed += (note.gapBefore || 0) * beatDuration; const prepared = { ...note, start: elapsed, duration: note.beats * beatDuration }; elapsed += prepared.duration; return prepared; });
-  return { notes, beatDuration, total: elapsed, startAt: performance.now() + beatDuration * 4, accumulatedAccuracy: 0, accumulatedVolumeAccuracy: 0, volumeTime: 0, detectedTime: 0, expectedTime: 0, samples: 0, complete: false, trail: [], pausedAt: 0, visibilityPaused: false, backingTimer: 0 };
+  const notes = builtInSequence().map(note => {
+    elapsed += Number.isFinite(note.gapBeforeMs) ? note.gapBeforeMs : (note.gapBefore || 0) * beatDuration;
+    const prepared = { ...note, start: elapsed, duration: Number.isFinite(note.durationMs) ? note.durationMs : note.beats * beatDuration };
+    elapsed += prepared.duration;
+    return prepared;
+  });
+  return { notes, beatDuration, total: elapsed, startAt: performance.now() + beatDuration * 4, accumulatedAccuracy: 0, accumulatedVolumeAccuracy: 0, volumeTime: 0, detectedTime: 0, accurateHeldTime: 0, expectedTime: 0, samples: 0, complete: false, trail: [], pausedAt: 0, visibilityPaused: false, backingTimer: 0 };
 }
 
 function playClick(time, accent) { const oscillator = audioContext.createOscillator(); const gain = audioContext.createGain(); oscillator.frequency.value = accent ? 1250 : 880; gain.gain.setValueAtTime(.0001, time); gain.gain.exponentialRampToValueAtTime(.18, time + .006); gain.gain.exponentialRampToValueAtTime(.0001, time + .07); oscillator.connect(gain).connect(audioContext.destination); oscillator.start(time); oscillator.stop(time + .09); }
@@ -176,7 +184,7 @@ async function resumeRun(message = 'Partie reprise.') {
 
 function finishRun() {
   const pitchScore = run.detectedTime ? Math.round(run.accumulatedAccuracy / run.detectedTime * 100) : 0;
-  const holdScore = run.expectedTime ? Math.round(run.detectedTime / run.expectedTime * 100) : 0;
+  const holdScore = run.expectedTime ? Math.round(run.accurateHeldTime / run.expectedTime * 100) : 0;
   const volumeScore = run.volumeTime ? Math.round(run.accumulatedVolumeAccuracy / run.volumeTime * 100) : 0;
   const total = Math.round(scoreVolumeInput.checked ? pitchScore * .6 + holdScore * .25 + volumeScore * .15 : pitchScore * .7 + holdScore * .3);
   const key = window.GameRuntime?.profileKey(`game-hub:karaoke:${exerciseSelect.value}:${tempoInput.value}`) || `game-hub:karaoke:${exerciseSelect.value}:${tempoInput.value}`;
@@ -221,6 +229,7 @@ function updateRun(now) {
   if (detectedMidi !== null) {
     run.detectedTime += delta;
     run.accumulatedAccuracy += Math.max(0, 1 - Math.abs(cents) / 100) * delta;
+    if (Math.abs(cents) <= 50) run.accurateHeldTime += delta;
     const expectedRms = .018 + (active.velocity || 78) / 127 * .09;
     const volumeAccuracy = Math.max(0, 1 - Math.abs(Math.log2(Math.max(.001, pitch.rms) / expectedRms)) / 3);
     run.accumulatedVolumeAccuracy += volumeAccuracy * delta;
@@ -232,7 +241,7 @@ function updateRun(now) {
   holdMeter.style.width = `${Math.min(100, (elapsed - active.start) / active.duration * 100)}%`;
   drawPitch(active.midi, detectedMidi);
   const pitchScore = run.detectedTime ? Math.round(run.accumulatedAccuracy / run.detectedTime * 100) : 0;
-  const holdScore = run.expectedTime ? Math.round(run.detectedTime / run.expectedTime * 100) : 0;
+  const holdScore = run.expectedTime ? Math.round(run.accurateHeldTime / run.expectedTime * 100) : 0;
   const volumeScore = run.volumeTime ? Math.round(run.accumulatedVolumeAccuracy / run.volumeTime * 100) : 0;
   const total = Math.round(scoreVolumeInput.checked ? pitchScore * .6 + holdScore * .25 + volumeScore * .15 : pitchScore * .7 + holdScore * .3);
   renderScore(pitchScore, holdScore, volumeScore, total);
@@ -279,6 +288,12 @@ startButton.addEventListener('click', () => {
   startRun();
 });
 stopButton.addEventListener('click', () => stopRun());
+focusButton.addEventListener('click', () => {
+  const focused = document.body.classList.toggle('karaoke-focus');
+  focusButton.setAttribute('aria-pressed', String(focused));
+  focusButton.textContent = focused ? 'Options' : 'Vue jeu';
+  if (focused) document.querySelector('.stage')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+});
 pauseButton.addEventListener('click', () => {
   if (!run || run.complete) { statusElement.textContent = 'Démarrez un exercice avant de le mettre en pause.'; return; }
   if (run.pausedAt) resumeRun();
@@ -309,7 +324,7 @@ scoreFileInput.addEventListener('change', async () => {
     exerciseSelect.value = 'score';
     tempoInput.value = Math.max(Number(tempoInput.min), Math.min(Number(tempoInput.max), Math.round(importedTracks[0].tempo || 90)));
     tempoValue.textContent = `${tempoInput.value} BPM`;
-    statusElement.textContent = `${importedTracks.length} voix importée${importedTracks.length > 1 ? 's' : ''}. Choisissez la voix puis démarrez.`;
+    statusElement.textContent = `${importedTracks.length} voix importée${importedTracks.length > 1 ? 's' : ''} depuis la partition générale. Les changements de tempo sont conservés. Choisissez la voix puis démarrez.`;
     renderScore();
   } catch (error) { importedTracks = []; statusElement.textContent = `Import impossible : ${error.message}`; }
 });
@@ -375,7 +390,8 @@ window.KaraokeTestAPI = {
       microphoneControl: Boolean(microphoneButton),
       importedScoreControl: Boolean(scoreFileInput),
       backingControl: Boolean(backingInput),
-      synchronizedPause: true
+      synchronizedPause: true,
+      mobileFocusControl: Boolean(focusButton)
     };
   }
 };

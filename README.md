@@ -79,6 +79,8 @@ Les licences et attributions des composants redistribués sont regroupées dans 
 Le code original est publié sous licence MIT (`LICENSE`). Cette licence ne
 s'applique pas aux composants et ressources tiers. Les règles de contribution
 et de publication sont détaillées dans `CONTRIBUTING.md` et `LEGAL.md`.
+La procédure reproductible de contrôle, d’archive et de test multiplateforme
+est dans [`docs/RELEASE.md`](docs/RELEASE.md).
 
 Rhythm Lab utilise les positions physiques standard du clavier (`KeyboardEvent.code`) et propose une sélection explicite AZERTY, QWERTY ou QWERTZ. Le panneau **Mapper les commandes** permet de remplacer chaque touche.
 

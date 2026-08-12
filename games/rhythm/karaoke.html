@@ -34,7 +34,21 @@
     .score div { padding: 9px; border-radius: 9px; background: #f0e8f7; text-align: center; }
     .muted { color: #695b78; line-height: 1.5; }
     #sequence { min-height: 92px; resize: vertical; }
+    #focusGame[aria-pressed="true"] { background: #5b21b6; border-color: #5b21b6; color: #fff; }
+    body.karaoke-focus .side { display: none; }
+    body.karaoke-focus .layout { grid-template-columns: 1fr; }
+    body.karaoke-focus .stage { min-height: min(72dvh, 720px); }
     @media (max-width: 850px) { .layout { grid-template-columns: 1fr; } }
+    @media (pointer: coarse), (max-width: 700px) {
+      main { padding: 10px; }
+      .panel { padding: 11px; }
+      .toolbar { gap: 7px; }
+      .toolbar button, .toolbar a { min-height: 42px; }
+      .stage { min-height: 380px; }
+      canvas { height: min(48dvh, 390px); }
+      body.karaoke-focus .toolbar h1 { width: 100%; }
+      body.karaoke-focus .toolbar a, body.karaoke-focus #microphone, body.karaoke-focus #stop { display: none; }
+    }
     @media (prefers-color-scheme: dark) {
       :root { background: #130f1d; color: #f5efff; }
       .panel, .card { background: #21182e; border-color: #4f3d64; }
@@ -46,7 +60,7 @@
 </head>
 <body>
   <main><section class="panel">
-    <div class="toolbar"><h1>Karaoké Lab</h1><a href="../../index.html">Hub</a><button id="microphone" title="Autorise l’analyse locale de votre voix.">Activer le microphone</button><button id="start" title="Lance une mesure de décompte avant l’exercice.">Démarrer</button><button id="pauseGame" title="Met en pause l’exercice. En LAN, la pause est commune à tout le salon.">Pause</button><button id="stop" title="Arrête l’exercice sans enregistrer de résultat.">Arrêter</button></div>
+    <div class="toolbar"><h1>Karaoké Lab</h1><a href="../../index.html">Hub</a><button id="microphone" title="Autorise l’analyse locale de votre voix.">Activer le microphone</button><button id="start" title="Lance une mesure de décompte avant l’exercice.">Démarrer</button><button id="pauseGame" title="Met en pause l’exercice. En LAN, la pause est commune à tout le salon.">Pause</button><button id="stop" title="Arrête l’exercice sans enregistrer de résultat.">Arrêter</button><button id="focusGame" type="button" aria-pressed="false" title="Masque les options pour garder la note, les paroles et les commandes visibles sur petit écran.">Vue jeu</button></div>
     <p id="status" class="muted">Le microphone reste local : aucun son n’est envoyé.</p>
     <div class="layout">
       <section class="stage"><canvas id="pitchCanvas" width="820" height="330"></canvas><div class="target"><strong id="targetNote">—</strong><span id="lyric">En attente</span></div><div class="meter"><i id="holdMeter"></i></div></section>
@@ -71,7 +85,7 @@
   </section></main>
   <script src="../../shared/game-runtime.js?v=10"></script>
   <script src="../../shared/options-help.js?v=3"></script>
-  <script src="../../shared/music-score-parser.js?v=1"></script>
-  <script src="karaoke.js?v=7"></script>
+    <script src="../../shared/music-score-parser.js?v=2"></script>
+    <script src="karaoke.js?v=8"></script>
 </body>
 </html>

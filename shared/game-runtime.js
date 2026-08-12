@@ -394,6 +394,16 @@
     }
   }
 
+  if (location.pathname.includes('/games/') && !window.GameOptionsHelp && !document.querySelector('script[data-options-help]')) {
+    const currentSource = document.currentScript?.src;
+    if (currentSource) {
+      const optionsHelpScript = document.createElement('script');
+      optionsHelpScript.src = new URL('options-help.js?v=3', currentSource).href;
+      optionsHelpScript.dataset.optionsHelp = 'true';
+      document.head.appendChild(optionsHelpScript);
+    }
+  }
+
   if (location.pathname.includes('/games/') && !window.LanMultiplayer && !document.querySelector('script[data-lan-multiplayer]')) {
     const currentSource = document.currentScript?.src;
     if (currentSource) {
