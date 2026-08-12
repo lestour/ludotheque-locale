@@ -8,11 +8,15 @@
     'games/grid/sudoku.html',
     'games/grid/nonogram.html',
     'games/grid/minesweeper.html',
+    'games/board/chess.html',
+    'games/board/go.html',
     'games/rhythm/rhythm.html',
+    'games/rhythm/karaoke.html',
     'games/cards/classic/bataille.html',
     'games/cards/modern/derniere-couleur.html'
   ]);
   const synchronizationAvailable = synchronizedGames.has(game);
+  const twoPlayerGames = new Set(['games/board/chess.html', 'games/board/go.html']);
   const sessionKey = `ludotheque:lan:${location.host}:${game}`;
   const personalOptions = /^(?:sound|volume|masterVolume|trackVolume|keyboardLayout|audioStyle|microphone|microphoneSensitivity|showErrors|colorNotes|showFingering|cellScale)$/i;
   let credentials = null;
@@ -113,10 +117,12 @@
   }
 
   function selectedSeatCount() {
+    if (twoPlayerGames.has(game)) return 2;
     return Math.max(2, Math.min(8, Number(document.getElementById('lanSeatCount')?.value) || 2));
   }
 
   function seatCountOptions() {
+    if (twoPlayerGames.has(game)) return '<option value="2" selected>2 places</option>';
     const gameControl = document.getElementById('playerCount') || document.getElementById('players');
     const values = gameControl
       ? [...gameControl.options].map(option => Number(option.value)).filter(value => Number.isInteger(value) && value >= 2 && value <= 8)
@@ -163,15 +169,17 @@
   }
 
   async function localAsset() {
-    const input = document.querySelector('#file[type="file"],#scoreFile[type="file"],#imageInput[type="file"]');
-    const file = input?.files?.[0];
-    if (!file) return null;
+    const inputs = game === 'games/rhythm/karaoke.html'
+      ? [...document.querySelectorAll('#scoreFile[type="file"],#backingFile[type="file"]')]
+      : [document.querySelector('#file[type="file"],#scoreFile[type="file"],#imageInput[type="file"]')].filter(Boolean);
+    const files = inputs.flatMap(input => [...(input.files || [])]);
+    if (!files.length) return null;
     if (game === 'games/grid/nonogram.html') throw new Error('Le partage des nonograms issus d’une image sera ajouté avec le transfert privé des puzzles. Utilisez une grille générée pour ce salon LAN.');
-    const buffer = await file.arrayBuffer();
+    const buffer = await new Blob((await Promise.all(files.map(async file => [`${file.name}:${file.size}:`, await file.arrayBuffer()]))).flat()).arrayBuffer();
     const hash = crypto.subtle?.digest
       ? [...new Uint8Array(await crypto.subtle.digest('SHA-256', buffer))].map(value => value.toString(16).padStart(2, '0')).join('')
       : sha256Fallback(buffer);
-    return { name: file.name, size: file.size, hash };
+    return { name: files.map(file => file.name).join(' + '), size: files.reduce((total, file) => total + file.size, 0), hash };
   }
 
   function command(commandName, payload = {}) {
@@ -334,7 +342,7 @@
     if (!room?.seed || startScheduledFor === room.startAt) return;
     const url = new URL(location.href);
     const currentSeed = url.searchParams.get('seed');
-    const preservePage = game === 'games/rhythm/rhythm.html' || game === 'games/cards/modern/derniere-couleur.html';
+    const preservePage = game === 'games/rhythm/rhythm.html' || game === 'games/rhythm/karaoke.html' || game === 'games/cards/modern/derniere-couleur.html';
     if (!preservePage && currentSeed !== room.seed) {
       url.searchParams.set('seed', room.seed);
       url.searchParams.set('lan', room.code);
@@ -487,6 +495,7 @@
     document.getElementById('lanRandom').onclick = () => run(() => joinRoom(true));
     document.getElementById('lanReady').onclick = () => run(async () => {
       const ready = !currentPlayer()?.ready;
+      if (ready) await adapter?.prepareReady?.();
       await command('ready', { ready, asset: ready ? await localAsset() : null });
     });
     document.getElementById('lanStart').onclick = () => run(() => command('start'));
@@ -549,7 +558,10 @@
     get active() { return Boolean(credentials && room); },
     get room() { return room; },
     get playerId() { return credentials?.playerId || null; },
-    get playerIndex() { return room?.players?.findIndex(player => player.id === credentials?.playerId) ?? -1; },
+    get playerIndex() {
+      const seatIndex = room?.seats?.findIndex(seat => seat.playerId === credentials?.playerId) ?? -1;
+      return seatIndex >= 0 ? seatIndex : room?.players?.findIndex(player => player.id === credentials?.playerId) ?? -1;
+    },
     registerAdapter,
     sendAction,
     sendPrivateAction,

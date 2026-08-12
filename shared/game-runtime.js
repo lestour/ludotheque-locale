@@ -165,11 +165,12 @@
     style.textContent = `
       html{-webkit-text-size-adjust:100%;text-size-adjust:100%}body{max-width:100%;overflow-x:hidden;padding-bottom:env(safe-area-inset-bottom)}
       main,.panel,.layout,.game-layout,.side,aside,section{min-width:0;box-sizing:border-box}.toolbar,.bar,.actions,.controls,.rules{max-width:100%;box-sizing:border-box}.board-wrap,.stage-wrap,.goban-wrap{max-width:100%;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-      button,a,select,input,label,[role="button"]{touch-action:manipulation}dialog{max-width:calc(100vw - 20px);max-height:calc(100dvh - 20px);box-sizing:border-box}.hand{max-width:100%;overscroll-behavior-inline:contain}
+      button,a,select,input,label,[role="button"]{touch-action:manipulation}dialog{max-width:calc(100vw - 20px);max-height:calc(100dvh - 20px);box-sizing:border-box;overscroll-behavior:contain}.hand{max-width:100%;overscroll-behavior-inline:contain}
+      :where(.board,.grid,.goban,.hand,.tableau,.mahjong-board,.player-area){-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
       @media(max-width:760px){
         main{width:100%;max-width:100%!important;padding:10px!important;margin-inline:0!important}.layout,.game-layout{width:100%;max-width:100%;padding:10px!important;gap:10px!important}
         .panel{width:100%;max-width:100%;padding:11px!important;border-radius:12px!important}.toolbar,.bar,.actions,.controls,.rules{gap:7px!important}
-        button,a,[role="button"]{min-height:42px}select,input[type="text"],input[type="number"],input[type="file"],textarea{max-width:100%;min-height:42px;font-size:16px!important;box-sizing:border-box}
+        :where(button,a,[role="button"]):not(.cell):not(.card):not(.tile):not(.piece):not(.image-block){min-height:42px}select,input[type="text"],input[type="number"],input[type="file"],textarea{max-width:100%;min-height:42px;font-size:16px!important;box-sizing:border-box}
         input[type="range"]{min-height:34px}.hand{overflow-x:auto;flex-wrap:nowrap!important;justify-content:flex-start!important;padding:8px 2px 14px;-webkit-overflow-scrolling:touch}
         .hand>.card,.hand>button,.hand>span{flex:0 0 auto}.side{width:100%;max-width:100%}table{display:block;max-width:100%;overflow:auto}.muted{line-height:1.4}
         #lanButton{left:max(10px,env(safe-area-inset-left))!important;right:auto!important;bottom:max(10px,env(safe-area-inset-bottom))!important}
@@ -181,10 +182,24 @@
     document.documentElement.classList.toggle('touch-device', matchMedia('(pointer:coarse)').matches);
   }
 
+  function mobileInterface(root = document) {
+    const viewport = root.querySelector('meta[name="viewport"]');
+    const layoutStyle = root.querySelector('style[data-mobile-layout]');
+    const scrollRegions = root.querySelectorAll('.board-wrap,.stage-wrap,.goban-wrap,.hand,.tableau,.viewport,[class*="viewport"]').length;
+    return {
+      viewport: Boolean(viewport?.content.includes('width=device-width')),
+      viewportFit: Boolean(viewport?.content.includes('viewport-fit=cover')),
+      layoutInstalled: Boolean(layoutStyle),
+      coarsePointer: Boolean(matchMedia('(pointer:coarse)').matches),
+      scrollRegions,
+      interactiveControls: root.querySelectorAll('button,a,select,input,[role="button"]').length
+    };
+  }
+
   const lanBootOptions = decodeLanOptions();
   applyLanOptions(lanBootOptions);
   const seededRandom = reproducibleRandom();
-  window.GameRuntime = { version: 6, hashSeed, createRandom, shuffle, clone, createHistory, storage, settingsSignature, createWorkerTask, randomSeed, rememberRecent, applyLanOptions, lanBootOptions, seededRandom };
+  window.GameRuntime = { version: 8, hashSeed, createRandom, shuffle, clone, createHistory, storage, settingsSignature, createWorkerTask, randomSeed, rememberRecent, applyLanOptions, mobileInterface, lanBootOptions, seededRandom };
   installMobileLayout();
 
   if (location.pathname.includes('/games/')) {
@@ -197,7 +212,7 @@
     const currentSource = document.currentScript?.src;
     if (currentSource) {
       const recordsScript = document.createElement('script');
-      recordsScript.src = new URL('records.js?v=5', currentSource).href;
+      recordsScript.src = new URL('records.js?v=6', currentSource).href;
       recordsScript.dataset.gameRecords = 'true';
       document.head.append(recordsScript);
     }
@@ -217,7 +232,7 @@
     const currentSource = document.currentScript?.src;
     if (currentSource) {
       const lanScript = document.createElement('script');
-      lanScript.src = new URL('lan-multiplayer.js?v=3', currentSource).href;
+      lanScript.src = new URL('lan-multiplayer.js?v=4', currentSource).href;
       lanScript.dataset.lanMultiplayer = 'true';
       document.head.appendChild(lanScript);
     }

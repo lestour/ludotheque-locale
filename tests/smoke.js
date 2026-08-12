@@ -115,7 +115,11 @@ function loadRoute(route) {
         assert(loaded?.body && loaded.title, 'Document chargé incomplet.');
         const text = loaded.body.innerText.trim();
         assert(text.length > 20, 'Interface vide après chargement.');
-        if (route.includes('/games/')) assert(loaded.querySelector('style[data-mobile-layout]'), 'La couche responsive mobile commune n’est pas chargée.');
+        if (route.includes('/games/')) {
+          assert(loaded.querySelector('style[data-mobile-layout]'), 'La couche responsive mobile commune n’est pas chargée.');
+          const mobile = sandbox.contentWindow.GameRuntime?.mobileInterface(loaded);
+          assert(mobile?.viewport && mobile.layoutInstalled && mobile.interactiveControls > 0, 'Le diagnostic mobile commun est incomplet.');
+        }
         resolve(`Interface chargée : ${loaded.title}.`);
       } catch (error) { reject(error); }
     };

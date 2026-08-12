@@ -24,6 +24,7 @@ const faces = [
 ];
 
 const layoutNames = {
+  guaranteed: 'Secours garanti',
   random: 'Aléatoire',
   turtle: 'Tortue',
   pyramid: 'Pyramide',
@@ -199,6 +200,18 @@ function randomLayout() {
   ]);
 }
 
+function guaranteedLayout(tileCount) {
+  const pairsPerRow = 6;
+  const positions = [];
+  for (let pair = 0; pair < tileCount / 2; pair += 1) {
+    const row = Math.floor(pair / pairsPerRow);
+    const column = pair % pairsPerRow;
+    positions.push({ x: column * 3, y: row * 2, z: 0 });
+    positions.push({ x: column * 3 + 1, y: row * 2, z: 0 });
+  }
+  return finalizeLayout(positions, tileCount);
+}
+
 function createLayout(type, tileCount = 72) {
   const creators = {
     turtle: turtleLayout,
@@ -283,7 +296,9 @@ function buildSolvableLayout(type) {
       return fallback;
     }
   }
-  throw new Error('Impossible de construire un ordre de retrait valide.');
+  game.positions = guaranteedLayout(game.tileCount);
+  game.layoutType = 'guaranteed';
+  return Array.from({ length: game.tileCount / 2 }, (_, pair) => [game.positions[pair * 2], game.positions[pair * 2 + 1]]);
 }
 
 function displayRemoved() {
@@ -334,7 +349,7 @@ function newGame() {
   const actual = layoutNames[game.layoutType];
   statusElement.textContent = requested === actual
     ? `${actual} vérifiée : ${game.tileCount} tuiles, ${game.tileCount / 2} paires, difficulté ${difficultySelect.selectedOptions[0].textContent.toLowerCase()} et retrait complet garanti.`
-    : `${requested} n’a pas pu être validée cette fois : une Tortue solvable a été générée.`;
+    : `${requested} n’a pas pu être validée cette fois : le plateau de secours « ${actual} » garantit un retrait complet.`;
   render();
 }
 
@@ -377,6 +392,20 @@ function availablePairs(removed = game.removed) {
 
 function solveRemaining() {
   const initial = new Set(game.positions.map(position => position.id).filter(id => !game.removed.has(id)));
+  const knownContinuation = [];
+  const knownRemaining = new Set(initial);
+  let knownValid = true;
+  for (const pair of game.solution) {
+    const present = pair.filter(id => knownRemaining.has(id));
+    if (!present.length) continue;
+    if (present.length !== 2 || !pair.every(id => freePosition(game.positions.find(position => position.id === id), knownRemaining))) {
+      knownValid = false;
+      break;
+    }
+    knownContinuation.push(pair.slice());
+    pair.forEach(id => knownRemaining.delete(id));
+  }
+  if (knownValid && knownRemaining.size === 0) return knownContinuation;
   const memo = new Set();
   let visits = 0;
   const visitLimit = 240000 * Math.max(1, game.tileCount / 72);

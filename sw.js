@@ -1,9 +1,9 @@
-const CACHE_NAME = 'ludotheque-local-v4';
+const CACHE_NAME = 'ludotheque-local-v6';
 const SHELL_ASSETS = [
   './',
   './index.html',
   './hub.js?v=26',
-  './shared/game-runtime.js?v=6',
+  './shared/game-runtime.js?v=8',
   './shared/options-help.js?v=3',
   './shared/effects.js?v=3',
   './assets/hub-icon.svg',

@@ -50,6 +50,7 @@ const difficulty = document.getElementById('difficulty');
 const generateButton = document.getElementById('generate');
 const randomVariantsButton = document.getElementById('randomVariants');
 const generationStatus = document.getElementById('generationStatus');
+let lanFinished = false;
 
 const VARIANT_DEFINITIONS = Object.freeze({
   killer: { button: typeKiller, label: 'Killer', choice: 'cages Killer' },
@@ -2172,7 +2173,7 @@ function renderManual() {
             : 'Aucune contrainte sélectionnée';
   const highlightedDigits = [...lockedHighlightDigits].sort((left, right) => left - right);
   errorCount.textContent = `Erreurs : ${errorCellIndexes(manualSnapshot).size}`;
-  if (isSolved(manualSnapshot) && errorCellIndexes(manualSnapshot).size === 0) window.GameRecords?.finish({ won: true });
+  if (!lanFinished && isSolved(manualSnapshot) && errorCellIndexes(manualSnapshot).size === 0) window.GameRecords?.finish({ score: 1, scoreLabel: 'Grille terminée', won: true, raceWinner: true });
   eventChanges.innerHTML = `<div>${pencilMode ? 'Saisie de possibilités activée.' : 'Saisie de valeurs finales activée.'}</div><div>${capsLockActive ? `Verr. Maj. actif${highlightedDigits.length ? ` : ${highlightedDigits.join(', ')}` : ''}.` : 'Verr. Maj. inactif.'}</div>`;
   updateKeypadHighlight();
   renderActiveGame({ snapshot: manualSnapshot, removals: [], assignments: [] });
@@ -2367,6 +2368,17 @@ manualReset.addEventListener('click', () => {
 manualUndo.addEventListener('click', () => restoreHistory(manualHistoryIndex - 1));
 manualRedo.addEventListener('click', () => restoreHistory(manualHistoryIndex + 1));
 hintButton.addEventListener('click', showSudokuHint);
+window.addEventListener('lan:start', () => {
+  lanFinished = false;
+  board.style.pointerEvents = '';
+  keypad.style.pointerEvents = '';
+});
+window.addEventListener('lan:finished', () => {
+  lanFinished = true;
+  board.style.pointerEvents = 'none';
+  keypad.style.pointerEvents = 'none';
+  eventDetail.textContent = 'Partie LAN terminée : un joueur a résolu la grille en premier.';
+});
 autoCandidates.addEventListener('change', () => { if (manualMode) renderManual(); });
 showErrors.addEventListener('change', () => { if (manualMode) renderManual(); });
 constraintCombinations.addEventListener('change', () => { if (manualMode) { recalculateActiveCandidates(); renderManual(); } });

@@ -21,6 +21,22 @@ let game;
 let botTimer;
 const motionDuration = 440;
 
+function lanActive() { return Boolean(window.LanMultiplayer?.active); }
+function lanPlaying() { return !lanActive() || window.LanMultiplayer.room?.phase === 'playing'; }
+function localColor() { return lanActive() && window.LanMultiplayer.playerIndex === 1 ? 'b' : 'w'; }
+function colorSeat(color) { return color === 'w' ? 0 : 1; }
+function stopBot() { clearTimeout(botTimer); botTimer = 0; }
+function colorName(color) {
+  if (!lanActive()) return color === 'w' ? 'Vous' : 'Bot';
+  return window.LanMultiplayer.room?.seats?.[colorSeat(color)]?.label || (color === 'w' ? 'Blancs' : 'Noirs');
+}
+function localCanPlay() { return lanPlaying() && !game.over && game.turn === localColor(); }
+function controlsLanBot(color) {
+  const room = window.LanMultiplayer?.room;
+  const seat = room?.seats?.[colorSeat(color)];
+  return Boolean(lanActive() && room?.hostId === window.LanMultiplayer.playerId && seat?.controller === 'bot');
+}
+
 function reducedMotion() { return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; }
 function cellAt(position) {
   return position ? boardElement.querySelector(`[data-row="${position[0]}"][data-column="${position[1]}"]`) : null;
@@ -80,13 +96,18 @@ function animateBoardMove(move) {
   setTimeout(() => { if (game?.motion?.until <= Date.now()) game.motion = null; }, motionDuration + 100);
 }
 
-function finishResult(text, outcome) {
+function finishResult(text, outcome, winnerColor = null) {
   game.over = true;
+  stopBot();
   game.outcome = outcome;
   statusElement.textContent = text;
   window.GameEffects?.play(outcome === 'win' ? 'win' : outcome === 'loss' ? 'error' : 'draw');
-  window.GameRecords?.finish({ score: outcome === 'win' ? 1 : 0, scoreLabel: outcome === 'draw' ? 'Partie nulle' : outcome === 'win' ? 'Victoire' : 'Défaite', won: outcome === 'win' });
+  window.GameRecords?.finish({ score: outcome === 'win' ? 1 : 0, scoreLabel: outcome === 'draw' ? 'Partie nulle' : outcome === 'win' ? 'Victoire' : 'Défaite', won: outcome === 'win', winnerSeat: winnerColor === null ? null : colorSeat(winnerColor) });
   return true;
+}
+
+function finishForColor(text, winnerColor = null) {
+  return finishResult(text, winnerColor === null ? 'draw' : winnerColor === localColor() ? 'win' : 'loss', winnerColor);
 }
 
 function inBoard(row, column, size = game.size) { return row >= 0 && row < size && column >= 0 && column < size; }
@@ -328,10 +349,10 @@ function insufficientMaterial() {
 
 function checkEnd(lastMover = null) {
   if (game.type === 'chess' && game.variant === 'kinghill' && lastMover && kingInHill(game.board, lastMover)) {
-    return finishResult(lastMover === 'w' ? 'Votre roi atteint le centre : vous gagnez.' : 'Le roi du bot atteint le centre : il gagne.', lastMover === 'w' ? 'win' : 'loss');
+    return finishForColor(`${colorName(lastMover)} atteint le centre et gagne.`, lastMover);
   }
   if (game.type === 'chess' && lastMover && game.variant === 'threecheck' && game.checks[lastMover] >= 3) {
-    return finishResult(lastMover === 'w' ? 'Troisième échec donné : vous gagnez.' : 'Le bot donne son troisième échec et gagne.', lastMover === 'w' ? 'win' : 'loss');
+    return finishForColor(`${colorName(lastMover)} donne le troisième échec et gagne.`, lastMover);
   }
   if (game.type === 'chess' && (game.halfmove >= 100 || (game.repetitions.get(chessPositionKey()) || 0) >= 3 || insufficientMaterial())) {
     return finishResult(game.halfmove >= 100 ? 'Partie nulle : cinquante coups sans prise ni mouvement de pion.' : insufficientMaterial() ? 'Partie nulle : matériel insuffisant.' : 'Partie nulle : troisième répétition de la position.', 'draw');
@@ -340,27 +361,31 @@ function checkEnd(lastMover = null) {
   const blackPieces = game.board.flat().filter(piece => piece?.c === 'b').length;
   const moves = allMoves(game.turn);
   if (game.type === 'checkers' && game.variant === 'giveaway') {
-    if (!whitePieces || (!moves.length && game.turn === 'w')) return finishResult('Vous n’avez plus de pièce ou de coup : vous gagnez.', 'win');
-    if (!blackPieces || (!moves.length && game.turn === 'b')) return finishResult('Le bot n’a plus de pièce ou de coup : il gagne.', 'loss');
+    if (!whitePieces || (!moves.length && game.turn === 'w')) return finishForColor(`${colorName('w')} n’a plus de pièce ou de coup et gagne.`, 'w');
+    if (!blackPieces || (!moves.length && game.turn === 'b')) return finishForColor(`${colorName('b')} n’a plus de pièce ou de coup et gagne.`, 'b');
   } else if (!moves.length || (game.type === 'checkers' && (!whitePieces || !blackPieces))) {
-    if (game.type === 'checkers') return finishResult(game.turn === 'w' ? 'Vous n’avez plus de coup légal : le bot gagne.' : 'Le bot n’a plus de coup légal : vous gagnez.', game.turn === 'w' ? 'loss' : 'win');
+    if (game.type === 'checkers') {
+      const winner = other(game.turn);
+      return finishForColor(`${colorName(game.turn)} n’a plus de coup légal : ${colorName(winner)} gagne.`, winner);
+    }
     {
       const king = game.board.flatMap((line, row) => line.map((piece, column) => piece?.c === game.turn && piece.t === 'k' ? [row, column] : null)).find(Boolean);
       const checked = king && chessAttacked(game.board, king[0], king[1], other(game.turn));
-      return finishResult(checked ? (game.turn === 'w' ? 'Échec et mat : le bot gagne.' : 'Échec et mat : vous gagnez.') : 'Pat : aucun coup légal, partie nulle.', checked ? (game.turn === 'w' ? 'loss' : 'win') : 'draw');
+      const winner = checked ? other(game.turn) : null;
+      return finishForColor(checked ? `Échec et mat : ${colorName(winner)} gagne.` : 'Pat : aucun coup légal, partie nulle.', winner);
     }
   }
-  statusElement.textContent = game.turn === 'w' ? 'À vous de jouer.' : 'Le bot réfléchit.';
+  statusElement.textContent = game.turn === localColor() ? 'À vous de jouer.' : `${colorName(game.turn)} réfléchit.`;
   return false;
 }
 
-function applyMove(move) {
+function applyMove(move, broadcast = false, controlledSeat = null) {
   if (!move || game.over) { checkEnd(); render(); return; }
   const piece = at(...move.from);
   if (!piece) return;
   const movedType = piece.t;
   const wasCapture = Boolean(move.capture || at(...move.to));
-  if (game.type === 'chess' && piece.c === 'w' && piece.t === 'p' && (move.to[0] === 0 || move.to[0] === 7)) move.promotion = promotionSelect.value;
+  if (game.type === 'chess' && piece.t === 'p' && (move.to[0] === 0 || move.to[0] === 7)) move.promotion = broadcast ? promotionSelect.value : move.promotion || 'q';
   game.history.push(snapshotState());
   game.future = [];
   animateBoardMove(move);
@@ -371,8 +396,9 @@ function applyMove(move) {
     game.enPassant = movedType === 'p' && Math.abs(move.to[0] - move.from[0]) === 2 ? { row: (move.to[0] + move.from[0]) / 2, column: move.to[1], color: piece.c } : null;
     game.halfmove = movedType === 'p' || wasCapture ? 0 : game.halfmove + 1;
   }
-  game.log.unshift(`${game.turn === 'w' ? 'Vous' : 'Bot'} : ${label(...move.from)} → ${label(...move.to)}${move.capture ? ' ×' : ''}`);
+  game.log.unshift(`${colorName(game.turn)} : ${label(...move.from)} → ${label(...move.to)}${move.capture ? ' ×' : ''}`);
   game.log = game.log.slice(0, 10);
+  if (broadcast && lanActive()) sendLanMove(move, controlledSeat);
   if (game.type === 'checkers' && move.capture && chainCaptures.checked) {
     const continuations = checkerRawMoves(game.board, move.to[0], move.to[1], true);
     if (continuations.length) {
@@ -381,9 +407,9 @@ function applyMove(move) {
       game.forced = [...move.to];
       game.selected = [...move.to];
       game.legal = continuations.filter((nextMove, index) => depths[index] === maximum);
-      statusElement.textContent = game.turn === 'w' ? 'Vous devez poursuivre la prise maximale.' : 'Le bot poursuit sa prise.';
+      statusElement.textContent = game.turn === localColor() ? 'Vous devez poursuivre la prise maximale.' : `${colorName(game.turn)} poursuit sa prise.`;
       render();
-      if (game.turn === 'b') scheduleBot();
+      scheduleBot();
       return;
     }
   }
@@ -401,7 +427,12 @@ function applyMove(move) {
   }
   checkEnd(lastMover);
   render();
-  if (!game.over && game.turn === 'b') scheduleBot();
+  if (!game.over) scheduleBot();
+}
+
+function sendLanMove(move, controlledSeat = null) {
+  window.LanMultiplayer.sendAction({ type: 'board-move', from: move.from, to: move.to, promotion: move.promotion || null, controlledSeat })
+    .catch(error => { statusElement.textContent = `Synchronisation LAN interrompue : ${error.message}`; });
 }
 
 function materialScore(board) {
@@ -454,28 +485,46 @@ function chooseBotMove() {
   }).sort((left, right) => right.score - left.score)[0].move;
 }
 
+function chooseAutomatedMove(color) {
+  if (color === 'b') return chooseBotMove();
+  const moves = game.forced ? game.legal : allMoves(color);
+  if (!moves.length) return null;
+  const noise = difficultySelect.value === 'easy' ? 9 : difficultySelect.value === 'normal' ? 4 : 1;
+  return moves.map(move => {
+    const target = game.board[move.to[0]][move.to[1]];
+    const captureValue = move.capture ? game.type === 'chess' ? values[target?.t] || 1 : 4 + checkerCaptureDepth(game.board, move) : 0;
+    return { move, score: captureValue + Math.random() * noise };
+  }).sort((left, right) => right.score - left.score)[0].move;
+}
+
 function scheduleBot() {
-  clearTimeout(botTimer);
+  if (botTimer || game.over) return;
+  const automatedColor = game.turn;
+  if (lanActive()) {
+    if (!lanPlaying() || !controlsLanBot(automatedColor)) return;
+  } else if (automatedColor !== 'b') return;
   const delays = { easy: 950, normal: 550, hard: 260, extreme: 80 };
   botTimer = setTimeout(() => {
-    if (game.over || game.turn !== 'b') return;
-    const move = chooseBotMove();
+    botTimer = 0;
+    if (game.over || game.turn !== automatedColor || (lanActive() ? !controlsLanBot(automatedColor) : automatedColor !== 'b')) return;
+    const move = chooseAutomatedMove(automatedColor);
     if (!move) { checkEnd(); render(); return; }
-    applyMove(move);
+    applyMove(move, lanActive(), lanActive() ? colorSeat(automatedColor) : null);
   }, Math.max(motionDuration + 70, delays[difficultySelect.value]));
 }
 
 function selectCell(row, column) {
-  if (game.over || game.turn !== 'w') return;
+  if (!localCanPlay()) return;
   const selectedMove = game.legal.find(move => move.to[0] === row && move.to[1] === column);
-  if (selectedMove) { applyMove(selectedMove); return; }
+  if (selectedMove) { applyMove(selectedMove, lanActive()); return; }
   if (game.forced) return;
   const legal = selectedMoves(row, column);
-  if (at(row, column)?.c === 'w' && legal.length) { game.selected = [row, column]; game.legal = legal; render(); }
+  if (at(row, column)?.c === localColor() && legal.length) { game.selected = [row, column]; game.legal = legal; render(); }
 }
 
 function undoMove() {
-  clearTimeout(botTimer);
+  if (lanActive()) return;
+  stopBot();
   if (!game.history.length) return;
   const steps = game.turn === 'w' && !game.forced ? Math.min(2, game.history.length) : 1;
   for (let step = 0; step < steps; step += 1) {
@@ -486,7 +535,8 @@ function undoMove() {
 }
 
 function redoMove() {
-  clearTimeout(botTimer);
+  if (lanActive()) return;
+  stopBot();
   if (!game.future.length) return;
   game.history.push(snapshotState());
   restoreState(game.future.pop());
@@ -544,10 +594,10 @@ function render() {
   boardElement.querySelectorAll('.cell').forEach(cell => cell.addEventListener('click', () => selectCell(Number(cell.dataset.row), Number(cell.dataset.column))));
   const white = game.board.flat().filter(piece => piece?.c === 'w').length;
   const black = game.board.flat().filter(piece => piece?.c === 'b').length;
-  scoreElement.innerHTML = `<div>Vous<br><strong>${white}</strong></div><div>Bot<br><strong>${black}</strong></div>`;
-  historyElement.innerHTML = game.log.map(entry => `<li>${entry}</li>`).join('') || '<li>Déplacez une pièce blanche.</li>';
-  undoButton.disabled = !game.history.length;
-  redoButton.disabled = !game.future.length;
+  scoreElement.innerHTML = `<div>${colorName('w')} · Blancs<br><strong>${white}</strong></div><div>${colorName('b')} · Noirs<br><strong>${black}</strong></div>`;
+  historyElement.innerHTML = game.log.map(entry => `<li>${entry}</li>`).join('') || `<li>${colorName('w')} commence avec les Blancs.</li>`;
+  undoButton.disabled = lanActive() || !game.history.length;
+  redoButton.disabled = lanActive() || !game.future.length;
 }
 
 function updateRuleVariants() {
@@ -563,13 +613,13 @@ function updateRuleVariants() {
 }
 
 function newGame(fromVariant = false) {
-  clearTimeout(botTimer);
+  stopBot();
   updateRuleVariants();
   if (typeSelect.value === 'checkers' && ruleVariantSelect.value === 'canadian' && fromVariant) boardSizeSelect.value = '12';
   const size = typeSelect.value === 'chess' ? 8 : Number(boardSizeSelect.value);
   game = { type: typeSelect.value, variant: ruleVariantSelect.value, size, board: typeSelect.value === 'chess' ? initialChess() : initialCheckers(size), turn: 'w', selected: null, legal: [], forced: null, over: false, outcome: null, motion: null, log: [], enPassant: null, halfmove: 0, repetitions: new Map(), checks: { w: 0, b: 0 }, history: [], future: [] };
   if (game.type === 'chess') game.repetitions.set(chessPositionKey(), 1);
-  statusElement.textContent = 'À vous de jouer.';
+  statusElement.textContent = localColor() === 'w' ? 'À vous de jouer.' : `${colorName('w')} commence.`;
   render();
   const currentUrl = new URL(location.href);
   currentUrl.searchParams.set('variant', game.type);
@@ -594,6 +644,33 @@ ruleVariantSelect.addEventListener('change', () => newGame(true));
 boardSizeSelect.addEventListener('change', () => newGame());
 difficultySelect.addEventListener('change', () => newGame());
 newGame();
+
+function registerLanAdapter() {
+  if (!window.LanMultiplayer || registerLanAdapter.done) return;
+  registerLanAdapter.done = true;
+  window.LanMultiplayer.registerAdapter({
+    receive(action, playerId) {
+      if (action?.type !== 'board-move' || game.over) return;
+      const senderIndex = window.LanMultiplayer.room?.seats?.findIndex(seat => seat.playerId === playerId);
+      const controlledSeat = Number.isInteger(action.controlledSeat) ? action.controlledSeat : senderIndex;
+      const controlledByHost = window.LanMultiplayer.room?.hostId === playerId && window.LanMultiplayer.room?.seats?.[controlledSeat]?.controller === 'bot';
+      if (controlledSeat !== senderIndex && !controlledByHost) return;
+      const senderColor = controlledSeat === 1 ? 'b' : 'w';
+      if (senderColor !== game.turn || !Array.isArray(action.from) || !Array.isArray(action.to)) return;
+      const candidates = game.forced ? game.legal : selectedMoves(Number(action.from[0]), Number(action.from[1]));
+      const move = candidates.find(candidate => candidate.to[0] === Number(action.to[0]) && candidate.to[1] === Number(action.to[1]));
+      if (!move) return;
+      if (['q', 'r', 'b', 'n'].includes(action.promotion)) move.promotion = action.promotion;
+      applyMove(move, false);
+    }
+  });
+}
+
+registerLanAdapter();
+window.addEventListener('lan:available', registerLanAdapter);
+window.addEventListener('lan:start', () => { newGame(); scheduleBot(); });
+window.addEventListener('lan:room', () => { render(); scheduleBot(); });
+window.addEventListener('lan:finished', () => { stopBot(); if (!game.over) { game.over = true; render(); } });
 
 window.ChessBoardTestAPI = {
   diagnostics() {

@@ -1008,6 +1008,31 @@ async function startMicrophone() {
   } catch (error) { statusElement.textContent = `Microphone inaccessible : ${error.message}`; }
 }
 function stopMicrophone() { if (microphoneCalibration) finishMicrophoneCalibration(true); clearInterval(microphoneTimer); microphoneTimer = 0; microphoneStream?.getTracks().forEach(track => track.stop()); microphoneStream = null; microphoneAnalyser = null; microphoneCandidate = null; microphonePitch = null; microphoneFrequency = 0; microphoneStableFrames = 0; microphoneActiveInput = ''; }
+async function prepareLanReady() {
+  ensureAudio();
+  await audio.resume();
+  if (audioStyle.value === 'soundfont') {
+    statusElement.textContent = 'Préchargement de MS Basic avant la partie LAN…';
+    const engine = await ensureSoundFontEngine();
+    await engine.init();
+  }
+  if (inputStyle.value === 'midi-device') {
+    if (!midiAccess) await enableMidi();
+    if (!midiAccess?.inputs?.size) throw new Error('Connectez et activez un clavier MIDI avant de vous déclarer prêt.');
+  }
+  if (inputStyle.value === 'microphone') {
+    if (!microphoneAnalyser) await startMicrophone();
+    if (!microphoneAnalyser) throw new Error('Autorisez le microphone avant de vous déclarer prêt.');
+  }
+  statusElement.textContent = 'Audio et commandes prêts pour le départ synchronisé.';
+}
+function registerLanAdapter() {
+  if (!window.LanMultiplayer || registerLanAdapter.done) return;
+  registerLanAdapter.done = true;
+  window.LanMultiplayer.registerAdapter({ prepareReady: prepareLanReady });
+}
+registerLanAdapter();
+window.addEventListener('lan:available', registerLanAdapter);
 document.addEventListener('keydown', event => {
   rememberKeyLabel(event);
   if (calibration) { event.preventDefault(); if (!event.repeat) registerCalibrationTap(); return; }
@@ -1049,6 +1074,11 @@ window.addEventListener('lan:start', () => { if (!game) { lanStartAuthorized = t
 window.addEventListener('lan:pause', event => {
   const shouldPause = Boolean(event.detail?.paused);
   if (game && Boolean(game.pausedAt) !== shouldPause) togglePause();
+});
+window.addEventListener('lan:finished', () => {
+  if (!game) return;
+  stop();
+  statusElement.textContent = 'Partie LAN terminée. Le résultat commun est affiché.';
 });
 speedControl.oninput = () => { document.getElementById('speedValue').value = `${speedControl.value} %`; applyLiveSpeed(); };
 speedControl.onchange = renderRecord;

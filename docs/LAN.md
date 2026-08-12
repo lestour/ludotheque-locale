@@ -24,6 +24,10 @@ réseau Wi-Fi ou Ethernet.
 - Rhythm Lab conserve les partitions sur chaque appareil et compare leur
   empreinte SHA-256 avant d’autoriser le départ ; aucun fichier musical n’est
   envoyé au serveur.
+- Rhythm Lab précharge aussi son moteur sonore et demande les autorisations
+  MIDI ou microphone nécessaires au moment où le joueur se déclare prêt.
+- Karaoké compare localement les empreintes de la partition et de
+  l’accompagnement, puis demande l’accès au microphone avant le départ.
 
 Les salons sont uniquement conservés en mémoire. Fermer le serveur les détruit.
 Après le lancement, aucun nouveau joueur ne peut entrer. Un joueur déjà inscrit
@@ -34,11 +38,17 @@ Wi-Fi sans conserver indéfiniment une partie abandonnée.
 
 ## Jeux actuellement synchronisés
 
-- Sudoku, Nonogram généré et Démineur : même graine et mêmes options, progression
-  individuelle puis classement commun. Le Démineur ouvre automatiquement la
-  case centrale pour construire exactement le même champ de mines.
+- Sudoku, Nonogram généré et Démineur : même graine et mêmes options. Le premier
+  joueur qui termine correctement clôt la course pour tous et déclenche la
+  fenêtre de résultat commune. Le Démineur ouvre automatiquement la case
+  centrale pour construire exactement le même champ de mines.
 - Rhythm Lab : départ, options, pause et résultats communs. Une partition
   importée doit être chargée localement par chaque joueur avec la même empreinte.
+- Karaoké : partition, accompagnement, départ, pause et résultat communs ;
+  l’analyse du microphone reste locale à chaque appareil.
+- Échecs/Dames et Go : deux sièges synchronisés, validation locale des coups,
+  résultat commun et remplacement temporaire d’un joueur déconnecté par le bot
+  de l’hôte.
 - Bataille : paquet, plis, animations, noms et résultat synchronisés entre les
   navigateurs.
 - Dernière Couleur : paquet, tours, pénalités et bots sont arbitrés par le

@@ -31,6 +31,7 @@ let animationFrame;
 let run;
 let backingUrl;
 let importedTracks = [];
+let lanStartAuthorized = false;
 
 const englishNoteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 const frenchNoteNames = ['Do', 'Do♯', 'Ré', 'Ré♯', 'Mi', 'Fa', 'Fa♯', 'Sol', 'Sol♯', 'La', 'La♯', 'Si'];
@@ -147,6 +148,7 @@ function drawPitch(targetMidi, detectedMidi) {
 
 function updateRun(now) {
   if (!run || run.complete) return;
+  if (run.pausedAt) return;
   const elapsed = now - run.startAt + Number(latencyInput.value);
   if (elapsed < 0) { statusElement.textContent = `Départ dans ${Math.max(1, Math.ceil(-elapsed / run.beatDuration))} temps…`; animationFrame = requestAnimationFrame(updateRun); return; }
   const active = run.notes.find(note => elapsed >= note.start && elapsed < note.start + note.duration);
@@ -198,7 +200,13 @@ async function calibrate() {
 }
 
 microphoneButton.addEventListener('click', ensureMicrophone);
-startButton.addEventListener('click', startRun);
+startButton.addEventListener('click', () => {
+  if (window.LanMultiplayer?.active && !lanStartAuthorized) {
+    statusElement.textContent = 'Le départ est contrôlé par le salon LAN.';
+    return;
+  }
+  startRun();
+});
 stopButton.addEventListener('click', () => stopRun());
 calibrateButton.addEventListener('click', calibrate);
 tempoInput.addEventListener('input', () => { tempoValue.textContent = `${tempoInput.value} BPM`; renderScore(); });
@@ -229,6 +237,44 @@ scoreFileInput.addEventListener('change', async () => {
     renderScore();
   } catch (error) { importedTracks = []; statusElement.textContent = `Import impossible : ${error.message}`; }
 });
+window.addEventListener('lan:start', () => {
+  lanStartAuthorized = true;
+  startButton.click();
+  lanStartAuthorized = false;
+});
+window.addEventListener('lan:pause', event => {
+  if (!run || run.complete) return;
+  const paused = Boolean(event.detail?.paused);
+  if (paused && !run.pausedAt) {
+    run.pausedAt = performance.now();
+    cancelAnimationFrame(animationFrame);
+    backingAudio.pause();
+    statusElement.textContent = 'Partie LAN en pause.';
+  } else if (!paused && run.pausedAt) {
+    run.startAt += performance.now() - run.pausedAt;
+    run.pausedAt = 0;
+    if (backingAudio.src) backingAudio.play().catch(() => {});
+    animationFrame = requestAnimationFrame(updateRun);
+    statusElement.textContent = 'Partie LAN reprise.';
+  }
+});
+window.addEventListener('lan:finished', () => {
+  if (run && !run.complete) stopRun('Partie LAN terminée.');
+});
+
+function registerLanAdapter() {
+  if (!window.LanMultiplayer || registerLanAdapter.done) return;
+  registerLanAdapter.done = true;
+  window.LanMultiplayer.registerAdapter({
+    async prepareReady() {
+      if (!await ensureMicrophone()) throw new Error('Activez et autorisez le microphone avant de vous déclarer prêt.');
+      await audioContext.resume();
+    }
+  });
+}
+
+registerLanAdapter();
+window.addEventListener('lan:available', registerLanAdapter);
 scoreTrackSelect.addEventListener('change', () => {
   const track = importedTracks[Number(scoreTrackSelect.value) || 0];
   if (!track) return;

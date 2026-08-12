@@ -191,6 +191,7 @@ let imageSuggestedSizes = new Map();
 let traceIsColor = false;
 let paletteLimit = Number(paletteSizeSelect.value);
 let cellPixels = Number(cellScaleSelect.value);
+let lanFinished = false;
 const TOUCH_CROSS_DELAY = 420;
 const TOUCH_PAINT_THRESHOLD = 8;
 let touchPaintGesture = null;
@@ -1132,7 +1133,7 @@ function render() {
   const mistakes = player.reduce((total, value, index) => total + Number((value === 1 && !solution[index]) || (value === -1 && solution[index])), 0);
   errorCount.textContent = `Erreurs : ${mistakes}`;
   status.textContent = complete ? 'Grille terminée !' : (solverMessage || 'Complète les groupes indiqués par les nombres de chaque ligne et colonne.');
-  if (complete) window.GameRecords?.finish({ won: true });
+  if (complete && !lanFinished) window.GameRecords?.finish({ score: 1, scoreLabel: 'Grille terminée', won: true, raceWinner: true });
 }
 
 function colorRuns(values) {
@@ -1369,7 +1370,7 @@ function renderColor() {
   const mistakes = colorPlayer.reduce((total, value, index) => total + Number((value && value !== -1 && value !== colorSolution[index]) || (value === -1 && colorSolution[index])), 0);
   errorCount.textContent = `Erreurs : ${mistakes}`;
   status.textContent = complete ? 'Nonogram couleur terminé !' : (solverMessage || 'Choisis une couleur dans la palette, puis remplis les indices colorés.');
-  if (complete) window.GameRecords?.finish({ won: true });
+  if (complete && !lanFinished) window.GameRecords?.finish({ score: 1, scoreLabel: 'Grille terminée', won: true, raceWinner: true });
   updateImageProgressDisplays();
 }
 
@@ -1625,6 +1626,19 @@ sizeSelect.addEventListener('change', () => {
   quantizeImage(importedImage, importedCrop);
 });
 localStorage.setItem('game-hub:last-game', 'nonogram');
+window.addEventListener('lan:start', () => {
+  lanFinished = false;
+  board.style.pointerEvents = '';
+  solveStepButton.disabled = false;
+  solveAllButton.disabled = false;
+});
+window.addEventListener('lan:finished', () => {
+  lanFinished = true;
+  board.style.pointerEvents = 'none';
+  solveStepButton.disabled = true;
+  solveAllButton.disabled = true;
+  status.textContent = 'Partie LAN terminée : un joueur a résolu la grille en premier.';
+});
 createSolution();
 updateTraceControls();
 render();

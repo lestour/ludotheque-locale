@@ -62,6 +62,24 @@ class LanRoomsTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.rooms.authenticate(first["code"], "x" * 40)
 
+    def test_two_player_board_games_reject_extra_seats_and_share_winner(self):
+        with self.assertRaises(ValueError):
+            self.rooms.create("Alice", "games/board/chess.html", "private", {}, 3)
+        first, first_token = self.rooms.create("Alice", "games/board/go.html", "private", {}, 2)
+        _, second_token = self.rooms.join(first["code"], "Bob", "games/board/go.html")
+        room, alice = self.rooms.authenticate(first["code"], first_token)
+        _, bob = self.rooms.authenticate(first["code"], second_token)
+        self.rooms.command(room, alice, "ready", {"ready": True})
+        self.rooms.command(room, bob, "ready", {"ready": True})
+        self.rooms.command(room, alice, "start", {})
+        self.rooms.command(room, alice, "action", {"action": {"type": "go-move", "index": 40}})
+        self.assertEqual(room["events"][-1]["payload"]["action"]["index"], 40)
+        self.rooms.command(room, alice, "finish", {"result": {"score": 0, "winnerSeat": 1, "won": False}})
+        finished = self.rooms.command(room, bob, "finish", {"result": {"score": 1, "winnerSeat": 1, "won": True}})
+        self.assertEqual(finished["phase"], "finished")
+        self.assertFalse(finished["results"][alice["id"]]["won"])
+        self.assertTrue(finished["results"][bob["id"]]["won"])
+
     def test_mismatched_assets_block_start(self):
         first, first_token = self.rooms.create("Alice", "games/rhythm/rhythm.html", "private", {})
         _, second_token = self.rooms.join(first["code"], "Bob", "games/rhythm/rhythm.html")

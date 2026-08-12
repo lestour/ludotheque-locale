@@ -15,6 +15,22 @@ let game;
 let botTimer;
 const stoneAnimationDuration = 430;
 
+function lanActive() { return Boolean(window.LanMultiplayer?.active); }
+function lanPlaying() { return !lanActive() || window.LanMultiplayer.room?.phase === 'playing'; }
+function localColor() { return lanActive() && window.LanMultiplayer.playerIndex === 1 ? 2 : 1; }
+function colorSeat(color) { return color - 1; }
+function stopBot() { clearTimeout(botTimer); botTimer = 0; }
+function colorName(color) {
+  if (!lanActive()) return color === 1 ? 'Vous' : 'Bot';
+  return window.LanMultiplayer.room?.seats?.[colorSeat(color)]?.label || (color === 1 ? 'Noirs' : 'Blancs');
+}
+function localCanPlay() { return lanPlaying() && !game.over && game.turn === localColor(); }
+function controlsLanBot(color) {
+  const room = window.LanMultiplayer?.room;
+  const seat = room?.seats?.[colorSeat(color)];
+  return Boolean(lanActive() && room?.hostId === window.LanMultiplayer.playerId && seat?.controller === 'bot');
+}
+
 function reducedMotion() { return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; }
 function pointAt(index) { return boardElement.querySelector(`[data-index="${index}"]`); }
 
@@ -141,19 +157,20 @@ function restore(state) {
 
 function finishGame(reason, winnerColor = null) {
   game.over = true;
-  clearTimeout(botTimer);
+  stopBot();
   let outcome;
-  if (winnerColor) statusElement.textContent = `${reason} ${winnerColor === 1 ? 'Vous gagnez.' : 'Le bot gagne.'}`;
+  if (winnerColor) statusElement.textContent = `${reason} ${colorName(winnerColor)} gagne.`;
   else {
     const score = territoryScore();
-    const winner = score[1] > score[2] ? 'Vous gagnez' : score[2] > score[1] ? 'Le bot gagne' : 'Égalité';
+    const winner = score[1] > score[2] ? `${colorName(1)} gagne` : score[2] > score[1] ? `${colorName(2)} gagne` : 'Égalité';
     statusElement.textContent = `${reason} ${winner}, ${score[1].toFixed(1)} à ${score[2].toFixed(1)}.`;
-    outcome = score[1] > score[2] ? 'win' : score[2] > score[1] ? 'loss' : 'draw';
+    outcome = score[1] === score[2] ? 'draw' : (score[1] > score[2] ? 1 : 2) === localColor() ? 'win' : 'loss';
   }
-  game.outcome = outcome || (winnerColor === 1 ? 'win' : 'loss');
+  game.outcome = outcome || (winnerColor === localColor() ? 'win' : 'loss');
   window.GameEffects?.play(game.outcome === 'win' ? 'win' : game.outcome === 'loss' ? 'error' : 'draw');
   const finalScore = territoryScore();
-  window.GameRecords?.finish({ score: finalScore[1], scoreLabel: `${finalScore[1].toFixed(1)} points`, won: winnerColor ? winnerColor === 1 : finalScore[1] > finalScore[2] });
+  const resolvedWinner = winnerColor || (finalScore[1] === finalScore[2] ? null : finalScore[1] > finalScore[2] ? 1 : 2);
+  window.GameRecords?.finish({ score: finalScore[localColor()], scoreLabel: `${finalScore[localColor()].toFixed(1)} points`, won: resolvedWinner === localColor(), winnerSeat: resolvedWinner === null ? null : colorSeat(resolvedWinner) });
   render();
 }
 
@@ -163,7 +180,7 @@ function checkForcedEnding(lastColor) {
   return false;
 }
 
-function playMove(index, color = game.turn) {
+function playMove(index, color = game.turn, broadcast = false, controlledSeat = null) {
   if (game.over || color !== game.turn) return false;
   const result = simulateMove(game.board, index, color);
   if (!result) {
@@ -181,15 +198,16 @@ function playMove(index, color = game.turn) {
   game.last = index;
   game.hint = -1;
   game.passes = 0;
-  game.log.unshift(`${color === 1 ? 'Vous' : 'Bot'} joue ${moveLabel(index)}${result.captured ? ` et capture ${result.captured}` : ''}.`);
+  game.log.unshift(`${colorName(color)} joue ${moveLabel(index)}${result.captured ? ` et capture ${result.captured}` : ''}.`);
   game.log = game.log.slice(0, 20);
   window.GameEffects?.play(result.captured ? 'success' : 'move');
+  if (broadcast && lanActive()) sendLanAction({ type: 'go-move', index, controlledSeat });
   if (game.variant === 'atari' && result.captured) { finishGame('Première capture.', color); return true; }
   if (checkForcedEnding(color)) return true;
   game.turn = other(color);
-  statusElement.textContent = game.turn === 1 ? 'À vous de jouer.' : 'Le bot réfléchit.';
+  statusElement.textContent = game.turn === localColor() ? 'À vous de jouer.' : `${colorName(game.turn)} réfléchit.`;
   render();
-  if (game.turn === 2) scheduleBot();
+  scheduleBot();
   return true;
 }
 
@@ -230,8 +248,8 @@ function bestMoveFor(color) {
 }
 
 function showHint() {
-  if (game.over || game.turn !== 1) return;
-  const hint = bestMoveFor(1);
+  if (!localCanPlay() || lanActive()) return;
+  const hint = bestMoveFor(localColor());
   if (!hint) { statusElement.textContent = 'Aucun coup légal : il faut passer.'; return; }
   const result = simulateMove(game.board, hint.index, 1);
   const liberties = groupAt(result.board, hint.index).liberties.length;
@@ -240,21 +258,22 @@ function showHint() {
   render();
 }
 
-function chooseBotMove() {
+function chooseBotMove(color = 2) {
   const level = difficultySelect.value;
-  const moves = candidateMoves(2);
+  const moves = candidateMoves(color);
   if (!moves.length) return null;
   const noise = level === 'easy' ? 22 : level === 'normal' ? 7 : level === 'hard' ? 1.4 : 0;
-  const ranked = moves.map(index => ({ index, score: tacticalScore(index, 2) + Math.random() * noise })).sort((left, right) => right.score - left.score);
+  const ranked = moves.map(index => ({ index, score: tacticalScore(index, color) + Math.random() * noise })).sort((left, right) => right.score - left.score);
   if (level !== 'extreme') return ranked[0].index;
   const shortlist = ranked.slice(0, game.size >= 19 ? 12 : 18);
   shortlist.forEach(candidate => {
-    const result = simulateMove(game.board, candidate.index, 2);
+    const result = simulateMove(game.board, candidate.index, color);
     const savedBoard = game.board;
     const savedPrevious = game.previousBoard;
     game.board = result.board;
     game.previousBoard = boardKey(savedBoard);
-    const replies = candidateMoves(1).map(index => tacticalScore(index, 1)).sort((left, right) => right - left).slice(0, 10);
+    const opponent = other(color);
+    const replies = candidateMoves(opponent).map(index => tacticalScore(index, opponent)).sort((left, right) => right - left).slice(0, 10);
     game.board = savedBoard;
     game.previousBoard = savedPrevious;
     candidate.score -= (replies[0] || 0) * .78;
@@ -264,32 +283,42 @@ function chooseBotMove() {
 }
 
 function scheduleBot() {
-  clearTimeout(botTimer);
+  if (botTimer || game.over) return;
+  const automatedColor = game.turn;
+  if (lanActive()) {
+    if (!lanPlaying() || !controlsLanBot(automatedColor)) return;
+  } else if (automatedColor !== 2) return;
   const delays = { easy: 720, normal: 430, hard: 230, extreme: 120 };
   botTimer = setTimeout(() => {
-    if (game.over || game.turn !== 2) return;
-    const move = chooseBotMove();
+    botTimer = 0;
+    if (game.over || game.turn !== automatedColor || (lanActive() ? !controlsLanBot(automatedColor) : automatedColor !== 2)) return;
+    const move = chooseBotMove(automatedColor);
     if (move === null) {
-      if (game.variant === 'nogo') finishGame('Le bot ne dispose plus d’aucun coup légal.', 1);
-      else passTurn(2);
+      if (game.variant === 'nogo') finishGame(`${colorName(automatedColor)} ne dispose plus d’aucun coup légal.`, other(automatedColor));
+      else passTurn(automatedColor, lanActive(), lanActive() ? colorSeat(automatedColor) : null);
       return;
     }
-    if (game.variant === 'area' && game.board.filter(Boolean).length > game.board.length * .72 && Math.random() < .28) passTurn(2);
-    else playMove(move, 2);
+    if (game.variant === 'area' && game.board.filter(Boolean).length > game.board.length * .72 && Math.random() < .28) passTurn(automatedColor, lanActive(), lanActive() ? colorSeat(automatedColor) : null);
+    else playMove(move, automatedColor, lanActive(), lanActive() ? colorSeat(automatedColor) : null);
   }, Math.max(stoneAnimationDuration + 70, delays[difficultySelect.value]));
 }
 
-function passTurn(color = game.turn) {
+function passTurn(color = game.turn, broadcast = false, controlledSeat = null) {
   if (game.over || color !== game.turn || game.variant !== 'area') return;
   game.history.push(snapshot());
   game.future = [];
   game.hint = -1;
   game.passes += 1;
-  game.log.unshift(`${color === 1 ? 'Vous' : 'Bot'} passe.`);
+  game.log.unshift(`${colorName(color)} passe.`);
   game.turn = other(color);
+  if (broadcast && lanActive()) sendLanAction({ type: 'go-pass', controlledSeat });
   if (game.passes >= 2) { finishGame('Deux passes consécutives.'); return; }
   render();
-  if (game.turn === 2) scheduleBot();
+  scheduleBot();
+}
+
+function sendLanAction(action) {
+  window.LanMultiplayer.sendAction(action).catch(error => { statusElement.textContent = `Synchronisation LAN interrompue : ${error.message}`; });
 }
 
 function rulesText() {
@@ -312,31 +341,35 @@ function render() {
     const placed = game.motion?.until > Date.now() && game.motion.placed === index;
     return `<button class="point${edges}${game.last === index ? ' last' : ''}${game.hint === index ? ' hint' : ''}" data-index="${index}">${color ? `<span class="stone ${color === 1 ? 'black' : 'white'}${placed ? ' placed' : ''}"></span>` : ''}</button>`;
   }).join('');
-  boardElement.querySelectorAll('.point').forEach(point => point.addEventListener('click', () => playMove(Number(point.dataset.index), 1)));
+  boardElement.querySelectorAll('.point').forEach(point => point.addEventListener('click', () => {
+    if (!localCanPlay()) return;
+    playMove(Number(point.dataset.index), localColor(), lanActive());
+  }));
   const score = territoryScore();
-  scoreElement.innerHTML = `<div>Noir · vous<br><strong>${score[1].toFixed(1)}</strong><small><br>${game.captures[1]} capture(s)</small></div><div>Blanc · bot<br><strong>${score[2].toFixed(1)}</strong><small><br>${game.captures[2]} capture(s) + komi</small></div>`;
-  historyElement.innerHTML = game.log.map(entry => `<li>${entry}</li>`).join('') || '<li>Posez une pierre noire.</li>';
+  scoreElement.innerHTML = `<div>Noir · ${colorName(1)}<br><strong>${score[1].toFixed(1)}</strong><small><br>${game.captures[1]} capture(s)</small></div><div>Blanc · ${colorName(2)}<br><strong>${score[2].toFixed(1)}</strong><small><br>${game.captures[2]} capture(s) + komi</small></div>`;
+  historyElement.innerHTML = game.log.map(entry => `<li>${entry}</li>`).join('') || `<li>${colorName(1)} pose la première pierre.</li>`;
   rulesElement.textContent = rulesText();
-  passButton.disabled = game.variant !== 'area' || game.over || game.turn !== 1;
-  undoButton.disabled = !game.history.length;
-  redoButton.disabled = !game.future.length;
-  hintButton.disabled = game.over || game.turn !== 1;
+  passButton.disabled = game.variant !== 'area' || !localCanPlay();
+  undoButton.disabled = lanActive() || !game.history.length;
+  redoButton.disabled = lanActive() || !game.future.length;
+  hintButton.disabled = lanActive() || !localCanPlay();
 }
 
 function newGame() {
-  clearTimeout(botTimer);
+  stopBot();
   const size = Number(sizeSelect.value);
   const board = Array(size * size).fill(0);
   game = { size, variant: variantSelect.value, board, previousBoard: '', seenPositions: new Set([boardKey(board)]), turn: 1, passes: 0, captures: [0, 0, 0], last: -1, hint: -1, over: false, outcome: null, motion: null, log: [], history: [], future: [] };
-  statusElement.textContent = 'À vous de jouer avec les Noirs.';
+  statusElement.textContent = localColor() === 1 ? 'À vous de jouer avec les Noirs.' : `${colorName(1)} commence avec les Noirs.`;
   render();
 }
 
 document.getElementById('newGame').addEventListener('click', newGame);
-passButton.addEventListener('click', () => passTurn(1));
+passButton.addEventListener('click', () => { if (localCanPlay()) passTurn(localColor(), lanActive()); });
 hintButton.addEventListener('click', showHint);
 undoButton.addEventListener('click', () => {
-  clearTimeout(botTimer);
+  if (lanActive()) return;
+  stopBot();
   if (!game.history.length) return;
   const steps = game.turn === 1 ? Math.min(2, game.history.length) : 1;
   for (let step = 0; step < steps; step += 1) {
@@ -346,7 +379,8 @@ undoButton.addEventListener('click', () => {
   render();
 });
 redoButton.addEventListener('click', () => {
-  clearTimeout(botTimer);
+  if (lanActive()) return;
+  stopBot();
   if (!game.future.length) return;
   game.history.push(snapshot());
   restore(game.future.pop());
@@ -356,6 +390,30 @@ redoButton.addEventListener('click', () => {
 [sizeSelect, variantSelect, difficultySelect].forEach(control => control.addEventListener('change', newGame));
 komiInput.addEventListener('change', render);
 newGame();
+
+function registerLanAdapter() {
+  if (!window.LanMultiplayer || registerLanAdapter.done) return;
+  registerLanAdapter.done = true;
+  window.LanMultiplayer.registerAdapter({
+    receive(action, playerId) {
+      if (!action || game.over) return;
+      const senderIndex = window.LanMultiplayer.room?.seats?.findIndex(seat => seat.playerId === playerId);
+      const controlledSeat = Number.isInteger(action.controlledSeat) ? action.controlledSeat : senderIndex;
+      const controlledByHost = window.LanMultiplayer.room?.hostId === playerId && window.LanMultiplayer.room?.seats?.[controlledSeat]?.controller === 'bot';
+      if (controlledSeat !== senderIndex && !controlledByHost) return;
+      const senderColor = controlledSeat === 1 ? 2 : 1;
+      if (senderColor !== game.turn) return;
+      if (action.type === 'go-move' && Number.isInteger(action.index) && action.index >= 0 && action.index < game.board.length) playMove(action.index, senderColor, false);
+      else if (action.type === 'go-pass') passTurn(senderColor, false);
+    }
+  });
+}
+
+registerLanAdapter();
+window.addEventListener('lan:available', registerLanAdapter);
+window.addEventListener('lan:start', () => { newGame(); scheduleBot(); });
+window.addEventListener('lan:room', () => { render(); scheduleBot(); });
+window.addEventListener('lan:finished', () => { stopBot(); if (!game.over) { game.over = true; render(); } });
 
 window.GoTestAPI = {
   diagnostics() {

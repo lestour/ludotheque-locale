@@ -33,6 +33,7 @@ PRESENCE_TIMEOUT_SECONDS = 12
 EMPTY_ROOM_GRACE_SECONDS = 90
 MAX_EVENTS = 600
 PRIVATE_COLOR_GAME = "games/cards/modern/derniere-couleur.html"
+TWO_PLAYER_GAMES = {"games/board/chess.html", "games/board/go.html"}
 COLOR_GAME_COLORS = ("red", "yellow", "green", "blue")
 
 
@@ -561,7 +562,7 @@ class LanRooms:
                 "phase": "lobby",
                 "hostId": host["id"],
                 "players": [host],
-                "seatCount": validate_seat_count(seat_count),
+                "seatCount": validate_game_seat_count(game, seat_count),
                 "seats": [],
                 "options": options,
                 "seed": None,
@@ -805,6 +806,13 @@ def validate_seat_count(value):
     count = int(value or 2)
     if count < 2 or count > MAX_PLAYERS:
         raise ValueError(f"Le salon doit contenir entre 2 et {MAX_PLAYERS} places.")
+    return count
+
+
+def validate_game_seat_count(game, value):
+    count = validate_seat_count(value)
+    if game in TWO_PLAYER_GAMES and count != 2:
+        raise ValueError("Ce jeu LAN se joue obligatoirement à deux places.")
     return count
 
 
