@@ -315,6 +315,13 @@ class LanHttpTests(unittest.TestCase):
         self.assertEqual(error.exception.code, 403)
         error.exception.close()
 
+    def test_same_origin_diagnostics_can_embed_game_pages(self):
+        request = urllib.request.Request(f"http://127.0.0.1:{self.port}/games/grid/sudoku.html")
+        with urllib.request.urlopen(request, timeout=3) as response:
+            policy = response.headers.get("Content-Security-Policy", "")
+        self.assertIn("frame-ancestors 'self'", policy)
+        self.assertNotIn("frame-ancestors 'none'", policy)
+
     def test_websocket_room_stream_uses_subprotocol_token(self):
         _, created = self.request("/api/rooms/create", {"name": "Socket", "game": "games/grid/sudoku.html", "visibility": "private", "options": {}})
         room = created["room"]
