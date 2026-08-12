@@ -189,6 +189,23 @@ class LanRoomsTests(unittest.TestCase):
         self.assertFalse(finished["results"]["bot-2"]["won"])
         self.assertEqual(finished["events"][-1]["type"], "finished")
 
+    def test_minesweeper_first_opening_is_persisted_and_unique(self):
+        first, first_token = self.rooms.create("Alice", "games/grid/minesweeper.html", "private", {}, 2)
+        _, second_token = self.rooms.join(first["code"], "Bob", "games/grid/minesweeper.html")
+        room, alice = self.rooms.authenticate(first["code"], first_token)
+        _, bob = self.rooms.authenticate(first["code"], second_token)
+        self.rooms.command(room, alice, "ready", {"ready": True})
+        self.rooms.command(room, bob, "ready", {"ready": True})
+        self.rooms.command(room, alice, "start", {})
+
+        self.rooms.command(room, alice, "action", {"action": {"type": "minesweeper-start", "index": 42}})
+        sequence = room["sequence"]
+        duplicate = self.rooms.command(room, bob, "action", {"action": {"type": "minesweeper-start", "index": 0}})
+
+        self.assertEqual(room["publicState"], {"minesweeperStart": 42})
+        self.assertEqual(room["sequence"], sequence)
+        self.assertEqual(duplicate["publicState"], {"minesweeperStart": 42})
+
     def test_empty_seats_and_disconnects_use_bots(self):
         first, first_token = self.rooms.create("Alice", "games/cards/classic/bataille.html", "private", {"playerCount": 4}, 4)
         _, second_token = self.rooms.join(first["code"], "Bob", "games/cards/classic/bataille.html")

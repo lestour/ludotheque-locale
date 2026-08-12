@@ -580,11 +580,19 @@ function registerLanAdapter() {
   window.LanMultiplayer.registerAdapter({
     receiveOwn: true,
     receive(action) {
-      if (action?.type !== 'minesweeper-start' || !Number.isInteger(action.index) || action.index < 0 || action.index >= game.cells.length || game.started || game.generating) return;
-      lanStartPending = false;
-      reveal(action.index, true);
+      applyLanStart(action);
     },
   });
 }
+
+function applyLanStart(action) {
+  if (action?.type !== 'minesweeper-start' || !Number.isInteger(action.index) || action.index < 0 || action.index >= game.cells.length || game.started || game.generating) return;
+  lanStartPending = false;
+  reveal(action.index, true);
+}
 registerLanAdapter();
 window.addEventListener('lan:available', registerLanAdapter);
+window.addEventListener('lan:room', event => {
+  const index = event.detail?.room?.publicState?.minesweeperStart;
+  if (Number.isInteger(index)) applyLanStart({ type: 'minesweeper-start', index });
+});

@@ -2435,6 +2435,8 @@ class LanRooms:
             "sequence": room["sequence"],
             "events": [event for event in room["events"] if event["sequence"] > since],
         }
+        if room.get("publicState"):
+            result["publicState"] = dict(room["publicState"])
         if room["phase"] != "lobby" and room["game"] in PRIVATE_GAME_ENGINES:
             result["gameState"] = PRIVATE_GAME_ENGINES[room["game"]]["public_state"](room, player_id)
         return result
@@ -2469,6 +2471,7 @@ class LanRooms:
                 "updatedAt": now,
                 "emptySince": None,
                 "gameState": None,
+                "publicState": {},
             }
             self.rooms[code] = room
             self.emit(room, "room-created", {"visibility": visibility}, host["id"])
@@ -2558,6 +2561,7 @@ class LanRooms:
                 room["startAt"] = time.time() + 4
                 room["paused"] = False
                 room["results"] = {}
+                room["publicState"] = {}
                 room["rematchVotes"].clear()
                 room["rematchDeclines"].clear()
                 if room["game"] in PRIVATE_GAME_ENGINES:
@@ -2583,6 +2587,11 @@ class LanRooms:
                 if room["game"] in PRIVATE_GAMES:
                     raise ValueError("Ce jeu exige une action privée validée par le serveur.")
                 action = validate_public_action(room["game"], payload.get("action"))
+                if room["game"] == "games/grid/minesweeper.html" and action["type"] == "minesweeper-start":
+                    previous_index = room.get("publicState", {}).get("minesweeperStart")
+                    if previous_index is not None:
+                        return self.serialize(room, player["id"])
+                    room.setdefault("publicState", {})["minesweeperStart"] = action["index"]
                 if room["game"] == PUBLIC_BOARD_GAMES:
                     sender_seat = color_game_seat(room, player["id"])
                     controlled_seat = action.get("controlledSeat", sender_seat)
@@ -2660,6 +2669,7 @@ class LanRooms:
                     room["paused"] = False
                     room["seats"] = []
                     room["gameState"] = None
+                    room["publicState"] = {}
                     room["rematchVotes"].clear()
                     room["rematchDeclines"].clear()
                     for member in room["players"]:
