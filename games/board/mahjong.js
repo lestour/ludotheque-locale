@@ -586,6 +586,44 @@ function verifyGeneratedSolution() {
   return remaining.size === 0;
 }
 
+function validateConfiguration(layoutType, tileCount) {
+  const currentGame = game;
+  try {
+    game = {
+      layoutType,
+      tileCount,
+      positions: [],
+      tiles: new Map(),
+      removed: new Set(),
+      solution: [],
+    };
+    const pairs = buildSolvableLayout(layoutType);
+    pairs.forEach((pair, index) => {
+      const face = faces[index % faces.length];
+      game.solution.push(pair.map(position => position.id));
+      pair.forEach(position => game.tiles.set(position.id, { ...face, pair: index }));
+    });
+    return {
+      requestedLayout: layoutType,
+      actualLayout: game.layoutType,
+      tileCount,
+      valid: game.positions.length === tileCount && game.solution.length * 2 === tileCount && verifyGeneratedSolution(),
+    };
+  } catch (error) {
+    return { requestedLayout: layoutType, actualLayout: 'error', tileCount, valid: false, error: error.message };
+  } finally {
+    game = currentGame;
+  }
+}
+
+function validateConfigurations() {
+  const compactLayouts = Object.keys(layoutNames).filter(layout => layout !== 'guaranteed');
+  return [
+    ...compactLayouts.map(layout => validateConfiguration(layout, 72)),
+    ...[144, 216, 288].map(tileCount => validateConfiguration('random', tileCount)),
+  ];
+}
+
 window.MahjongTestAPI = Object.freeze({
   summary: () => ({
     layout: game.layoutType,
@@ -595,6 +633,7 @@ window.MahjongTestAPI = Object.freeze({
     generatedSolutionValid: verifyGeneratedSolution(),
   }),
   solveRemaining: () => solveRemaining()?.map(pair => pair.slice()) || null,
+  validateConfigurations,
 });
 
 document.getElementById('newGame').onclick = newGame;

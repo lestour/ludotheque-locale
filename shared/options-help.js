@@ -284,7 +284,14 @@
   const initialize = () => {
     enhance(document);
     document.querySelectorAll('.toolbar,.bar,.rules').forEach(groupContainerOptions);
-    new MutationObserver(mutations => mutations.forEach(mutation => mutation.addedNodes.forEach(node => { if (node.nodeType === Node.ELEMENT_NODE) enhance(node); }))).observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(mutations => mutations.forEach(mutation => {
+      if (mutation.type === 'attributes') {
+        const target = mutation.target;
+        if (suitableTarget(target)) captureNativeTitle(target);
+        return;
+      }
+      mutation.addedNodes.forEach(node => { if (node.nodeType === Node.ELEMENT_NODE) enhance(node); });
+    })).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['title'] });
     document.addEventListener('pointerdown', event => { if (!event.target.closest('.game-options-menu') && !event.target.closest('.game-options-content')) document.querySelectorAll('.game-options-menu[open]').forEach(menu => { menu.open = false; }); });
     addEventListener('scroll', () => {
       hideTooltip();

@@ -145,7 +145,9 @@ async function waitForGameInvariant(frameWindow, route) {
       if (summary) {
         assert(summary.generatedSolutionValid, 'L’ordre garanti du Mahjong est invalide.');
         assert(summary.solutionPairs * 2 === summary.tileCount, 'Le Mahjong ne couvre pas toutes les tuiles.');
-        return `${summary.tileCount} tuiles et ordre complet validé.`;
+        const configurations = frameWindow.MahjongTestAPI.validateConfigurations?.() || [];
+        assert(configurations.length >= 13 && configurations.every(configuration => configuration.valid), 'Au moins une disposition ou taille Mahjong ne génère pas un plateau complet.');
+        return `${summary.tileCount} tuiles et ${configurations.length} configurations validées.`;
       }
     } else if (route.includes('/rami-tuiles.html')) {
       const summary = frameWindow.RamiTuilesTestAPI?.diagnostics();
