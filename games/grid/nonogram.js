@@ -814,17 +814,18 @@ function propagateConstraintState(initialState, rowClues, columnClues) {
   }
 }
 
-function searchConstraintSolution(initialState, rowClues, columnClues) {
+function searchConstraintSolutions(initialState, rowClues, columnClues, maximumSolutions = 1) {
   const started = performance.now();
   const deadline = started + Math.max(3000, Math.min(9000, size * 150));
   const maximumNodes = Math.max(40000, Math.min(180000, size * size * 70));
   let nodes = 0;
   let cutoff = false;
+  const solutions = [];
   const visit = state => {
     nodes += 1;
-    if (nodes > maximumNodes || performance.now() > deadline) { cutoff = true; return null; }
+    if (nodes > maximumNodes || performance.now() > deadline) { cutoff = true; return; }
     const propagated = propagateConstraintState(state, rowClues, columnClues);
-    if (propagated.contradiction) return null;
+    if (propagated.contradiction) return;
     let bestIndex = -1;
     let bestValues = null;
     propagated.candidates.forEach((possible, index) => {
@@ -832,18 +833,24 @@ function searchConstraintSolution(initialState, rowClues, columnClues) {
       bestIndex = index;
       bestValues = possible;
     });
-    if (bestIndex === -1) return propagated.state;
+    if (bestIndex === -1) {
+      solutions.push(propagated.state);
+      return;
+    }
     const orderedValues = [...bestValues].sort((left, right) => Number(left === EMPTY_CELL) - Number(right === EMPTY_CELL));
     for (const value of orderedValues) {
       const branch = propagated.state.slice();
       branch[bestIndex] = value;
-      const result = visit(branch);
-      if (result) return result;
-      if (cutoff) break;
+      visit(branch);
+      if (cutoff || solutions.length >= maximumSolutions) break;
     }
-    return null;
   };
-  return { solution: visit(initialState.slice()), nodes, cutoff, elapsed: performance.now() - started };
+  visit(initialState.slice());
+  return { solution: solutions[0] || null, solutions, solutionCount: solutions.length, nodes, cutoff, elapsed: performance.now() - started };
+}
+
+function searchConstraintSolution(initialState, rowClues, columnClues) {
+  return searchConstraintSolutions(initialState, rowClues, columnClues);
 }
 
 function monoConstraintClues() {
@@ -1376,23 +1383,35 @@ function renderColor() {
 
 function createColorPuzzle() {
   paletteColors = generatedPalette(paletteLimit);
-  const attempts = size <= 25 ? 10 : size <= 40 ? 4 : 1;
+  const attempts = size <= 25 ? 28 : size <= 40 ? 8 : 1;
   let verified = false;
+  let unique = false;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     createRandomSolution();
     colorSolution = solution.map(value => value ? paletteColors[Math.floor(Math.random() * paletteColors.length)] : null);
     if (size > 40) { verified = true; break; }
     const clues = colorConstraintClues();
     const propagated = propagateConstraintState(Array(size * size).fill(null), clues.rows, clues.columns);
-    if (!propagated.contradiction && propagated.state.every(value => value !== null)) { verified = true; break; }
+    if (!propagated.contradiction && propagated.state.every(value => value !== null)) {
+      verified = true;
+      unique = true;
+      break;
+    }
   }
   if (!verified && size <= 40) {
     const clues = colorConstraintClues();
-    verified = Boolean(searchConstraintSolution(Array(size * size).fill(null), clues.rows, clues.columns).solution);
+    const search = searchConstraintSolutions(Array(size * size).fill(null), clues.rows, clues.columns, 2);
+    verified = Boolean(search.solution);
+    unique = verified && search.solutionCount === 1 && !search.cutoff;
+    if (verified && !unique) colorSolution = search.solution;
   }
   colorPlayer = Array(size * size).fill(null);
   selectedColor = paletteColors[0];
-  solverMessage = verified ? 'Grille couleur vérifiée par le solveur.' : 'Grande grille générée ; sa résolution complète peut nécessiter des hypothèses.';
+  solverMessage = unique
+    ? 'Grille couleur vérifiée, avec une solution déterminée.'
+    : verified
+      ? 'Grille couleur vérifiée par le solveur ; les très grandes grilles peuvent admettre plusieurs tracés.'
+      : 'Grande grille générée ; sa résolution complète peut nécessiter des hypothèses.';
 }
 
 function quantizeImage(image, crop = importedCrop) {
@@ -1693,8 +1712,8 @@ function runNonogramDiagnostics() {
   const valid = searched.solution && rows.every((clues, row) => JSON.stringify(colorRuns(searched.solution.slice(row * size, (row + 1) * size))) === JSON.stringify(clues)) && columns.every((clues, column) => JSON.stringify(colorRuns(Array.from({ length: size }, (_, row) => searched.solution[row * size + column]))) === JSON.stringify(clues));
   checks.push(Boolean(valid));
   const permutationClues = Array.from({ length: size }, () => [{ color: '#f00', length: 1 }]);
-  const permutation = searchConstraintSolution(Array(size * size).fill(null), permutationClues, permutationClues);
-  checks.push(Boolean(permutation.solution) && permutation.nodes > 1);
+  const permutation = searchConstraintSolutions(Array(size * size).fill(null), permutationClues, permutationClues, 2);
+  checks.push(permutation.solutionCount === 2 && !permutation.cutoff && permutation.nodes > 1);
   size = previousSize;
   const previousBoardHidden = board.hidden;
   const previousOverviewHidden = imageOverview.hidden;

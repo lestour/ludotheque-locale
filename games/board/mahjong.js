@@ -281,25 +281,39 @@ function solvableAssignment() {
   return null;
 }
 
+function createGuaranteedPairs() {
+  game.positions = guaranteedLayout(game.tileCount);
+  game.layoutType = 'guaranteed';
+  return Array.from({ length: game.tileCount / 2 }, (_, pair) => [game.positions[pair * 2], game.positions[pair * 2 + 1]]);
+}
+
 function buildSolvableLayout(type) {
   const attempts = type === 'random' ? 24 : 2;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const positions = createLayout(type, game.tileCount);
+    let positions;
+    try {
+      positions = createLayout(type, game.tileCount);
+    } catch (error) {
+      console.warn(`Disposition Mahjong ignorée : ${error.message}`);
+      continue;
+    }
     game.positions = positions;
     const pairs = solvableAssignment();
     if (pairs) return pairs;
   }
   if (type !== 'turtle') {
-    game.positions = createLayout('turtle', game.tileCount);
-    const fallback = solvableAssignment();
-    if (fallback) {
-      game.layoutType = 'turtle';
-      return fallback;
+    try {
+      game.positions = createLayout('turtle', game.tileCount);
+      const fallback = solvableAssignment();
+      if (fallback) {
+        game.layoutType = 'turtle';
+        return fallback;
+      }
+    } catch (error) {
+      console.warn(`Disposition de secours Mahjong ignorée : ${error.message}`);
     }
   }
-  game.positions = guaranteedLayout(game.tileCount);
-  game.layoutType = 'guaranteed';
-  return Array.from({ length: game.tileCount / 2 }, (_, pair) => [game.positions[pair * 2], game.positions[pair * 2 + 1]]);
+  return createGuaranteedPairs();
 }
 
 function displayRemoved() {
