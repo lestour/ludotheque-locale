@@ -198,6 +198,14 @@ async function waitForGameInvariant(frameWindow, route) {
         assert(mobile.dock && mobile.controls > 0 && mobile.focusButton && mobile.landscapeHint, 'Les commandes tactiles de Rhythm Lab sont incomplètes.');
         return `${summary.passed} contrôles musicaux validés.`;
       }
+    } else if (route.includes('/karaoke.html')) {
+      const summary = frameWindow.KaraokeTestAPI?.diagnostics();
+      if (summary) {
+        assert(summary.do4 === 60 && summary.c4 === 60 && summary.siFlat3 === 58, 'La notation des notes du Karaoké est mal interprétée.');
+        assert(summary.sequenceLength > 0 && summary.positiveDuration && summary.fourBeatCountIn, 'La chronologie du Karaoké est invalide.');
+        assert(summary.frenchNotationDefault && summary.pauseControl && summary.microphoneControl && summary.importedScoreControl && summary.backingControl && summary.synchronizedPause, 'Les options audio, le décompte ou la pause de Karaoké Lab sont incomplets.');
+        return `${summary.sequenceLength} notes, audio et pause synchronisée validés.`;
+      }
     } else if (route.includes('/minesweeper.html')) {
       const summary = frameWindow.MinesweeperTestAPI?.diagnostics();
       if (summary) {
@@ -293,14 +301,6 @@ async function waitForGameInvariant(frameWindow, route) {
         assert(summary.totalCards === 52 && summary.distributionBalanced, 'La distribution de Bataille est invalide.');
         assert(summary.validTurnState, 'La Bataille est dans un état de tour bloqué.');
         return `52 cartes réparties entre ${summary.players} joueurs.`;
-      }
-    } else if (route.includes('/karaoke.html')) {
-      const summary = frameWindow.KaraokeTestAPI?.diagnostics();
-      if (summary) {
-        assert(summary.do4 === 60 && summary.c4 === 60 && summary.siFlat3 === 58, 'La notation des notes du Karaoké est mal interprétée.');
-        assert(summary.sequenceLength > 0 && summary.positiveDuration && summary.fourBeatCountIn, 'La chronologie du Karaoké est invalide.');
-        assert(summary.frenchNotationDefault, 'La notation française ne devrait pas être désactivée par défaut.');
-        return `${summary.sequenceLength} notes, notation française et décompte validés.`;
       }
     } else return 'Aucun invariant spécialisé.';
     await new Promise(resolve => setTimeout(resolve, 50));

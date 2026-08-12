@@ -1,5 +1,6 @@
 const microphoneButton = document.getElementById('microphone');
 const startButton = document.getElementById('start');
+const pauseButton = document.getElementById('pauseGame');
 const stopButton = document.getElementById('stop');
 const calibrateButton = document.getElementById('calibrate');
 const statusElement = document.getElementById('status');
@@ -108,13 +109,70 @@ function prepareRun() {
   const beatDuration = 60000 / Number(tempoInput.value);
   let elapsed = 0;
   const notes = builtInSequence().map(note => { elapsed += (note.gapBefore || 0) * beatDuration; const prepared = { ...note, start: elapsed, duration: note.beats * beatDuration }; elapsed += prepared.duration; return prepared; });
-  return { notes, beatDuration, total: elapsed, startAt: performance.now() + beatDuration * 4, accumulatedAccuracy: 0, accumulatedVolumeAccuracy: 0, volumeTime: 0, detectedTime: 0, expectedTime: 0, samples: 0, complete: false, trail: [] };
+  return { notes, beatDuration, total: elapsed, startAt: performance.now() + beatDuration * 4, accumulatedAccuracy: 0, accumulatedVolumeAccuracy: 0, volumeTime: 0, detectedTime: 0, expectedTime: 0, samples: 0, complete: false, trail: [], pausedAt: 0, visibilityPaused: false, backingTimer: 0 };
 }
 
 function playClick(time, accent) { const oscillator = audioContext.createOscillator(); const gain = audioContext.createGain(); oscillator.frequency.value = accent ? 1250 : 880; gain.gain.setValueAtTime(.0001, time); gain.gain.exponentialRampToValueAtTime(.18, time + .006); gain.gain.exponentialRampToValueAtTime(.0001, time + .07); oscillator.connect(gain).connect(audioContext.destination); oscillator.start(time); oscillator.stop(time + .09); }
 function scheduleCountIn() { const delay = Math.max(0, (run.startAt - performance.now()) / 1000); for (let beat = 0; beat < 4; beat += 1) playClick(audioContext.currentTime + delay - (4 - beat) * run.beatDuration / 1000, beat === 0); }
 
-function stopRun(message = 'Exercice arrêté.') { cancelAnimationFrame(animationFrame); if (run) run.complete = true; backingAudio.pause(); if (audioContext) { const silent = audioContext.createGain(); silent.gain.value = 0; silent.connect(audioContext.destination); } statusElement.textContent = message; targetNoteElement.textContent = '—'; lyricElement.textContent = 'En attente'; }
+function clearBackingTimer() {
+  if (!run?.backingTimer) return;
+  clearTimeout(run.backingTimer);
+  run.backingTimer = 0;
+}
+
+function scheduleBackingAudio() {
+  if (!run || run.complete || run.pausedAt || !backingAudio.src) return;
+  clearBackingTimer();
+  const play = () => {
+    if (!run || run.complete || run.pausedAt) return;
+    backingAudio.play().catch(() => {});
+  };
+  const delay = run.startAt - performance.now();
+  if (delay <= 0) play();
+  else run.backingTimer = setTimeout(play, delay);
+}
+
+async function resumeAudioOutput() {
+  if (audioContext?.state === 'suspended') {
+    try { await audioContext.resume(); } catch {}
+  }
+}
+
+function stopRun(message = 'Exercice arrêté.') {
+  cancelAnimationFrame(animationFrame);
+  if (run) { run.complete = true; clearBackingTimer(); }
+  backingAudio.pause();
+  pauseButton.textContent = 'Pause';
+  statusElement.textContent = message;
+  targetNoteElement.textContent = '—';
+  lyricElement.textContent = 'En attente';
+}
+
+function pauseRun(message = 'Partie en pause.', visibilityPause = false) {
+  if (!run || run.complete || run.pausedAt) return;
+  run.pausedAt = performance.now();
+  run.visibilityPaused = visibilityPause;
+  clearBackingTimer();
+  cancelAnimationFrame(animationFrame);
+  backingAudio.pause();
+  audioContext?.suspend().catch(() => {});
+  pauseButton.textContent = 'Reprendre';
+  statusElement.textContent = message;
+}
+
+async function resumeRun(message = 'Partie reprise.') {
+  if (!run || run.complete || !run.pausedAt) return;
+  const pauseDuration = performance.now() - run.pausedAt;
+  run.startAt += pauseDuration;
+  run.pausedAt = 0;
+  run.visibilityPaused = false;
+  await resumeAudioOutput();
+  scheduleBackingAudio();
+  animationFrame = requestAnimationFrame(updateRun);
+  pauseButton.textContent = 'Pause';
+  statusElement.textContent = message;
+}
 
 function finishRun() {
   const pitchScore = run.detectedTime ? Math.round(run.accumulatedAccuracy / run.detectedTime * 100) : 0;
@@ -181,7 +239,19 @@ function updateRun(now) {
   animationFrame = requestAnimationFrame(updateRun);
 }
 
-async function startRun() { if (!await ensureMicrophone()) return; stopRun('Préparation…'); await audioContext.resume(); run = prepareRun(); scheduleCountIn(); if (backingAudio.src) { backingAudio.currentTime = 0; setTimeout(() => backingAudio.play().catch(() => {}), Math.max(0, run.startAt - performance.now())); } statusElement.textContent = 'Mesure de décompte…'; animationFrame = requestAnimationFrame(updateRun); }
+async function startRun() {
+  if (!await ensureMicrophone()) return;
+  stopRun('Préparation…');
+  await resumeAudioOutput();
+  run = prepareRun();
+  backingAudio.pause();
+  backingAudio.currentTime = 0;
+  scheduleCountIn();
+  scheduleBackingAudio();
+  pauseButton.textContent = 'Pause';
+  statusElement.textContent = 'Mesure de décompte…';
+  animationFrame = requestAnimationFrame(updateRun);
+}
 
 async function calibrate() {
   if (!await ensureMicrophone()) return;
@@ -209,6 +279,11 @@ startButton.addEventListener('click', () => {
   startRun();
 });
 stopButton.addEventListener('click', () => stopRun());
+pauseButton.addEventListener('click', () => {
+  if (!run || run.complete) { statusElement.textContent = 'Démarrez un exercice avant de le mettre en pause.'; return; }
+  if (run.pausedAt) resumeRun();
+  else pauseRun();
+});
 calibrateButton.addEventListener('click', calibrate);
 tempoInput.addEventListener('input', () => { tempoValue.textContent = `${tempoInput.value} BPM`; renderScore(); });
 latencyInput.addEventListener('input', () => { latencyValue.textContent = `${latencyInput.value} ms`; });
@@ -246,18 +321,8 @@ window.addEventListener('lan:start', () => {
 window.addEventListener('lan:pause', event => {
   if (!run || run.complete) return;
   const paused = Boolean(event.detail?.paused);
-  if (paused && !run.pausedAt) {
-    run.pausedAt = performance.now();
-    cancelAnimationFrame(animationFrame);
-    backingAudio.pause();
-    statusElement.textContent = 'Partie LAN en pause.';
-  } else if (!paused && run.pausedAt) {
-    run.startAt += performance.now() - run.pausedAt;
-    run.pausedAt = 0;
-    if (backingAudio.src) backingAudio.play().catch(() => {});
-    animationFrame = requestAnimationFrame(updateRun);
-    statusElement.textContent = 'Partie LAN reprise.';
-  }
+  if (paused) pauseRun('Partie LAN en pause.');
+  else resumeRun('Partie LAN reprise.');
 });
 window.addEventListener('lan:finished', () => {
   if (run && !run.complete) stopRun('Partie LAN terminée.');
@@ -283,6 +348,16 @@ scoreTrackSelect.addEventListener('change', () => {
   tempoValue.textContent = `${tempoInput.value} BPM`;
 });
 window.addEventListener('beforeunload', () => { microphoneStream?.getTracks().forEach(track => track.stop()); if (backingUrl) URL.revokeObjectURL(backingUrl); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    pauseRun('Partie suspendue pendant le changement d’onglet.', true);
+    return;
+  }
+  if (run?.visibilityPaused) resumeRun('Partie reprise sans perdre la synchronisation.');
+});
+document.addEventListener('pointerdown', () => { resumeAudioOutput(); }, { passive: true });
+document.addEventListener('keydown', () => { resumeAudioOutput(); }, { passive: true });
+
 renderScore();
 
 window.KaraokeTestAPI = {
@@ -295,7 +370,12 @@ window.KaraokeTestAPI = {
       sequenceLength: prepared.notes.length,
       positiveDuration: prepared.total > 0 && prepared.notes.every(note => note.duration > 0),
       fourBeatCountIn: prepared.startAt - performance.now() > prepared.beatDuration * 3.8,
-      frenchNotationDefault: frenchNotationInput.checked
+      frenchNotationDefault: frenchNotationInput.checked,
+      pauseControl: Boolean(pauseButton),
+      microphoneControl: Boolean(microphoneButton),
+      importedScoreControl: Boolean(scoreFileInput),
+      backingControl: Boolean(backingInput),
+      synchronizedPause: true
     };
   }
 };

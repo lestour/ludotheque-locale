@@ -44,8 +44,20 @@ const keyboardLayoutDefinitions = {
   }
 };
 const friendlyCodeLabels = { Space: 'Espace', Escape: 'Échap', Backspace: 'Retour arrière', Enter: 'Entrée', Tab: 'Tab', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/' };
-let keyboardLayout = 'azerty';
-try { keyboardLayout = localStorage.getItem('rhythm-keyboard-layout') || keyboardLayout; } catch {}
+function localeKeyboardLayout() {
+  const language = (navigator.languages?.[0] || navigator.language || '').toLowerCase();
+  if (/^de(?:-|$)/.test(language)) return 'qwertz';
+  return /^fr(?:-|$)/.test(language) ? 'azerty' : 'qwerty';
+}
+let keyboardLayout = localeKeyboardLayout();
+let keyboardLayoutStored = false;
+try {
+  const storedLayout = localStorage.getItem('rhythm-keyboard-layout');
+  if (storedLayout && (keyboardLayoutDefinitions[storedLayout] || storedLayout === 'auto')) {
+    keyboardLayout = storedLayout;
+    keyboardLayoutStored = true;
+  }
+} catch {}
 let learnedKeyLabels = { base: {}, shift: {} };
 try { learnedKeyLabels = { ...learnedKeyLabels, ...JSON.parse(localStorage.getItem('rhythm-key-labels') || '{}') }; } catch {}
 let keyLabels = {};
@@ -56,6 +68,28 @@ function refreshKeyLabels() {
   shiftedKeyLabels = { ...(definition?.shift || {}), ...(keyboardLayout === 'auto' ? learnedKeyLabels.shift : {}) };
 }
 refreshKeyLabels();
+async function detectKeyboardLayoutFromBrowser() {
+  if (keyboardLayoutStored || !navigator.keyboard?.getLayoutMap) return;
+  try {
+    const layoutMap = await navigator.keyboard.getLayoutMap();
+    const codes = new Set(Object.values(keyCodes).flat());
+    let found = 0;
+    codes.forEach(code => {
+      const label = layoutMap.get(code);
+      if (!label || label === 'Dead') return;
+      learnedKeyLabels.base[code] = /\p{L}/u.test(label) ? label.toLocaleUpperCase(navigator.language || 'fr') : label;
+      found += 1;
+    });
+    if (!found) return;
+    keyboardLayout = 'auto';
+    refreshKeyLabels();
+    if (typeof keyboardLayoutSelect !== 'undefined') keyboardLayoutSelect.value = 'auto';
+    try { localStorage.setItem('rhythm-keyboard-layout', 'auto'); localStorage.setItem('rhythm-key-labels', JSON.stringify(learnedKeyLabels)); } catch {}
+    renderMappingControls();
+    renderInstrumentGuide();
+    render();
+  } catch {}
+}
 const demoEvents = [60, 62, 64, 67, 64, 62, 60, 67, 69, 67, 64, 62].map((pitch, beat) => ({ pitch, beats: 1, beat }));
 let tracks = [{ name: 'Démo', notes: demoEvents.map(event => event.pitch), events: demoEvents, clef: '𝄞', key: 'Do majeur', tempo: 100, time: '4/4' }];
 let trackIndex = 0;
@@ -106,6 +140,7 @@ const currentTrackPlaybackToggle = document.getElementById('currentTrackPlayback
 const inputStyle = document.getElementById('inputStyle');
 const keyboardLayoutSelect = document.getElementById('keyboardLayout');
 keyboardLayoutSelect.value = keyboardLayout;
+window.setTimeout(detectKeyboardLayoutFromBrowser, 0);
 const breathEnabled = document.getElementById('breathEnabled');
 const requireHoldToggle = document.getElementById('requireHold');
 const masterVolume = document.getElementById('masterVolume');

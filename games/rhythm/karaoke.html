@@ -46,7 +46,7 @@
 </head>
 <body>
   <main><section class="panel">
-    <div class="toolbar"><h1>Karaoké Lab</h1><a href="../../index.html">Hub</a><button id="microphone">Activer le microphone</button><button id="start">Démarrer</button><button id="stop">Arrêter</button></div>
+    <div class="toolbar"><h1>Karaoké Lab</h1><a href="../../index.html">Hub</a><button id="microphone" title="Autorise l’analyse locale de votre voix.">Activer le microphone</button><button id="start" title="Lance une mesure de décompte avant l’exercice.">Démarrer</button><button id="pauseGame" title="Met en pause l’exercice. En LAN, la pause est commune à tout le salon.">Pause</button><button id="stop" title="Arrête l’exercice sans enregistrer de résultat.">Arrêter</button></div>
     <p id="status" class="muted">Le microphone reste local : aucun son n’est envoyé.</p>
     <div class="layout">
       <section class="stage"><canvas id="pitchCanvas" width="820" height="330"></canvas><div class="target"><strong id="targetNote">—</strong><span id="lyric">En attente</span></div><div class="meter"><i id="holdMeter"></i></div></section>
@@ -64,7 +64,7 @@
           <label>Séquence personnalisée <textarea id="sequence" placeholder="Do4:1:La Ré4:1:la Mi4:2:la"></textarea></label>
         </div></section>
         <section class="card"><h2>Performance</h2><div id="score" class="score"></div><p id="detected" class="muted">Note captée : —</p></section>
-        <details class="card" open><summary><strong>Règles du jeu</strong></summary><p class="muted">Chantez la note cible pendant sa durée. La justesse mesure l’écart en cents, la tenue mesure la proportion de la note effectivement détectée. Une mesure de décompte précède l’exercice. Un accompagnement audio peut être chargé localement.</p></details>
+        <details class="card" open><summary><strong>Règles du jeu</strong></summary><p class="muted">Chantez la note cible pendant sa durée. La justesse mesure l’écart en cents, la tenue mesure la proportion de la note effectivement détectée. Une mesure de décompte précède l’exercice. La pause, un changement d’onglet et la reprise conservent le décompte et l’accompagnement ; en LAN, la pause concerne tout le salon.</p></details>
       </aside>
     </div>
     <audio id="backing"></audio>
@@ -72,6 +72,6 @@
   <script src="../../shared/game-runtime.js?v=10"></script>
   <script src="../../shared/options-help.js?v=3"></script>
   <script src="../../shared/music-score-parser.js?v=1"></script>
-  <script src="karaoke.js?v=6"></script>
+  <script src="karaoke.js?v=7"></script>
 </body>
 </html>
