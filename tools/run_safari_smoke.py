@@ -41,6 +41,7 @@ def main():
     parser.add_argument("--server-port", type=int, default=8877)
     parser.add_argument("--driver-port", type=int, default=4444)
     parser.add_argument("--timeout", type=int, default=360)
+    parser.add_argument("--campaign", action="store_true", help="Exécute aussi la campagne de générateurs reproductibles.")
     arguments = parser.parse_args()
     driver_binary = shutil.which("safaridriver")
     if not driver_binary:
@@ -58,7 +59,8 @@ def main():
         session_id = value.get("sessionId") or created.get("sessionId")
         if not session_id:
             raise RuntimeError(f"Safari refuse la session WebDriver : {created}")
-        request(f"{endpoint}/session/{session_id}/url", {"url": f"http://127.0.0.1:{arguments.server_port}/tests/index.html"}, "POST", 30)
+        campaign = "?campaign=1" if arguments.campaign else ""
+        request(f"{endpoint}/session/{session_id}/url", {"url": f"http://127.0.0.1:{arguments.server_port}/tests/index.html{campaign}"}, "POST", 30)
         deadline = time.time() + arguments.timeout
         result = None
         script = "return ['passed','failed','pending'].reduce((result,id)=>(result[id]=document.getElementById(id)?.textContent||'',result),{});"

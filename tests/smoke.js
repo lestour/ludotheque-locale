@@ -373,4 +373,5 @@ async function runStressCampaign() {
 
 document.getElementById('run').addEventListener('click', run);
 document.getElementById('stress').addEventListener('click', runStressCampaign);
-run();
+if (new URLSearchParams(location.search).has('campaign')) runStressCampaign();
+else run();
