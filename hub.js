@@ -342,6 +342,45 @@ function portableEntries() {
     .map(key => [key, localStorage.getItem(key)]));
 }
 
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Kio`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} Mio`;
+}
+
+function openSaveManager() {
+  const dialog = document.getElementById('saveDialog');
+  const saves = window.GameRuntime?.listAutosaves() || [];
+  const list = document.getElementById('saveList');
+  const total = saves.reduce((sum, save) => sum + save.bytes, 0);
+  document.getElementById('saveSummary').textContent = saves.length ? `${saves.length} partie${saves.length > 1 ? 's' : ''} · ${formatBytes(total)} · profil actif uniquement.` : 'Aucune partie sauvegardée pour ce profil.';
+  list.innerHTML = saves.map((save, index) => `<li class="save-item"><strong>${String(save.title).replace(/[<>]/g, '')}</strong><small>${new Date(save.savedAt).toLocaleString()} · ${formatBytes(save.bytes)}</small><span class="save-actions"><a class="open" href="${save.route}">Reprendre</a><button type="button" data-delete-save="${index}">Supprimer</button></span></li>`).join('');
+  list.querySelectorAll('[data-delete-save]').forEach(button => button.addEventListener('click', () => {
+    const save = saves[Number(button.dataset.deleteSave)];
+    if (save && confirm(`Supprimer la sauvegarde « ${save.title} » ?`)) { window.GameRuntime.removeAutosave(save.key); openSaveManager(); }
+  }));
+  if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
+  else dialog.setAttribute('open', '');
+}
+
+function gameTitleForPage(pageId) {
+  const [base, variant] = pageId.split(':');
+  const direct = games.find(game => game.href?.includes(`${base}.html`) && (!variant || game.href.includes(`variant=${variant}`)));
+  return direct?.title || ({ estate: 'Empire Immobilier', world: 'Marchés du Monde', payday: 'Fin de Mois' }[variant]) || base.replaceAll('-', ' ');
+}
+
+function openStatistics() {
+  const key = window.GameRuntime?.profileKey('game-hub:statistics') || 'game-hub:statistics';
+  let statistics = {};
+  try { statistics = JSON.parse(localStorage.getItem(key) || '{}'); } catch {}
+  const entries = Object.entries(statistics).map(([pageId, value]) => ({ pageId, ...value })).sort((left, right) => (right.plays || 0) - (left.plays || 0));
+  const totals = entries.reduce((result, entry) => ({ plays: result.plays + (entry.plays || 0), finishes: result.finishes + (entry.finishes || 0), wins: result.wins + (entry.wins || 0), seconds: result.seconds + (entry.totalSeconds || 0) }), { plays: 0, finishes: 0, wins: 0, seconds: 0 });
+  const hours = Math.floor(totals.seconds / 3600), minutes = Math.floor(totals.seconds % 3600 / 60);
+  document.getElementById('statisticsContent').innerHTML = `<div class="stats-grid"><div class="stats-card"><strong>${totals.plays}</strong>parties</div><div class="stats-card"><strong>${totals.finishes}</strong>terminées</div><div class="stats-card"><strong>${totals.wins}</strong>victoires</div><div class="stats-card"><strong>${hours} h ${minutes}</strong>jouées</div></div>${entries.length ? `<table class="stats-table"><thead><tr><th>Jeu</th><th>Parties</th><th>Terminées</th><th>Victoires</th><th>Réussite</th></tr></thead><tbody>${entries.map(entry => `<tr><td>${gameTitleForPage(entry.pageId)}</td><td>${entry.plays || 0}</td><td>${entry.finishes || 0}</td><td>${entry.wins || 0}</td><td>${entry.finishes ? Math.round((entry.wins || 0) / entry.finishes * 100) : 0} %</td></tr>`).join('')}</tbody></table>` : '<p class="muted">Aucune partie enregistrée pour ce profil.</p>'}`;
+  const dialog = document.getElementById('statisticsDialog');
+  if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+}
+
 function downloadData() {
   const payload = { format: 'ludotheque-local-data', version: 1, exportedAt: new Date().toISOString(), values: portableEntries() };
   const link = document.createElement('a');
@@ -468,6 +507,10 @@ renderProfiles();
 document.getElementById('activeProfile').addEventListener('change', event => { localStorage.setItem(activeProfileKey, event.target.value); location.reload(); });
 document.getElementById('addProfile').addEventListener('click', createProfile);
 document.getElementById('deleteProfile').addEventListener('click', deleteProfile);
+document.getElementById('manageSaves').addEventListener('click', openSaveManager);
+document.querySelector('[data-close-save]').addEventListener('click', () => document.getElementById('saveDialog').close());
+document.getElementById('showStatistics').addEventListener('click', openStatistics);
+document.querySelector('[data-close-statistics]').addEventListener('click', () => document.getElementById('statisticsDialog').close());
 
 let lastGame = null;
 let lastRoute = null;

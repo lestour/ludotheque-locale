@@ -15,8 +15,9 @@ active le bouton **Jouer en LAN** dans chaque jeu. Le lanceur local classique re
 `docs/LAN.md`.
 
 Les salons utilisent un WebSocket authentifié avec repli HTTP automatique.
-Dernière Couleur dispose en plus d’un moteur serveur : les mains adverses et la
-graine secrète du paquet ne sont jamais envoyées aux navigateurs.
+Dernière Couleur et Sixième Carte disposent en plus d’un moteur serveur : les
+mains adverses, choix simultanés et graines secrètes ne sont jamais envoyés aux
+navigateurs avant que les règles n’exigent leur révélation.
 
 ## Téléphones et tablettes
 
@@ -48,11 +49,18 @@ Depuis un navigateur compatible, la ludothèque peut aussi être installée comm
 Le bouton **Accessibilité** présent sur chaque page règle localement la taille du
 texte, le thème clair/sombre, le contraste renforcé et la réduction des
 animations. Les profils du hub séparent les records, statistiques, options et
-sauvegardes. Échecs/Dames, Go et Klondike reprennent automatiquement leur
-position locale, sauf en LAN. Depuis le hub,
+sauvegardes. Échecs/Dames, Go, Klondike, Démineur, Mahjong, Rami Cartes,
+Rami Tuiles, Rami Cartes, Grille Zéro, Dernière Couleur, Sixième Carte, Course 1000, Roi Pirate et Chatastrophe reprennent
+automatiquement leur position locale, sauf en LAN. Le hub permet de lister,
+reprendre ou supprimer ces parties et affiche un tableau de bord de statistiques
+pour le profil actif. Depuis le hub,
 **Exporter mes données** crée une sauvegarde JSON des records, préférences et
 sauvegardes de jeu. Les codes, jetons et identifiants des salons LAN sont
 volontairement exclus de ce fichier.
+
+En LAN, les trois grands plateaux (`Empire Immobilier`, `Marchés du Monde` et
+`Fin de Mois`) partagent aussi les tirages et décisions. Les dés proviennent du
+serveur et les paquets sont reconstruits avec la graine commune du salon.
 
 Pour partager l’application, compresser le dossier complet sous le nom `Ludotheque-locale`, sans retirer `vendor`, `games/rhythm/assets/MS-Basic.sf3` ni les quatre fichiers `Lancer le Hub…`. L’application ne dépend plus des liens symboliques pour charger ses scripts partagés.
 
@@ -92,7 +100,13 @@ Les éventuels liens symboliques historiques présents dans certains sous-dossie
 ## Diagnostic et reproduction
 
 - Ouvrir `http://127.0.0.1:PORT/tests/index.html` depuis le serveur local pour contrôler toutes les pages, leurs scripts et les invariants des principaux moteurs. Le passage complet peut durer quelques minutes, notamment pour Rhythm Lab et les générateurs certifiés.
-- Le bouton **Campagne générateurs** du diagnostic répète Sudoku, Sudoku combiné, Nonogram, Mahjong et Klondike avec plusieurs graines reproductibles.
+- `python3 tools/check_javascript.py` vérifie tous les scripts avec Node.js sur Windows/Linux et utilise automatiquement JavaScriptCore sur macOS si Node.js est absent.
+- Sur macOS, `python3 tools/run_safari_smoke.py` exécute le même diagnostic dans Safari lorsque l’option Développement → Autoriser l’automatisation à distance est active.
+- Le bouton **Campagne générateurs** du diagnostic exécute 200 scénarios :
+  Sudoku, Sudoku combiné, Nonogram, Mahjong et Klondike avec quarante graines
+  reproductibles chacun.
+- Le lecteur `replay.html` importe les replays JSON LAN, filtre leurs événements
+  et les parcourt automatiquement ou avec les flèches gauche/droite.
 - Ajouter `?seed=ma-graine` à l’adresse d’un jeu pour rendre les appels à `Math.random()` reproductibles pendant cette session.
 - Le runtime commun `shared/game-runtime.js` fournit aussi un historique annuler/rétablir, un stockage versionné et un exécuteur Web Worker pour les solveurs et bots lourds.
 - Le hub mémorise automatiquement la dernière route visitée, y compris sa variante, et propose de reprendre directement cette partie.

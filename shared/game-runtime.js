@@ -182,12 +182,23 @@
 
   function createAutosave(name, handlers = {}) {
     const key = profileKey(`game-hub:autosave:${location.pathname}:${name}`);
-    const enabled = () => !new URLSearchParams(location.search).has('lan') && (typeof handlers.enabled !== 'function' || handlers.enabled());
+    const profile = activeProfileId();
+    const enabled = () => !new URLSearchParams(location.search).has('lan') && !window.LanMultiplayer?.active && (typeof handlers.enabled !== 'function' || handlers.enabled());
     const save = () => {
       if (!enabled() || typeof handlers.capture !== 'function') return false;
       try {
         const value = handlers.capture();
-        localStorage.setItem(key, JSON.stringify({ version: 1, savedAt: Date.now(), value }));
+        if (value == null) return false;
+        localStorage.setItem(key, JSON.stringify({
+          version: 2,
+          savedAt: Date.now(),
+          profile,
+          name,
+          title: handlers.title || document.title || name,
+          route: `${location.pathname}${location.search}`,
+          value
+        }));
+        window.dispatchEvent(new CustomEvent('game-runtime:autosaved', { detail: { key, name } }));
         return true;
       } catch { return false; }
     };
@@ -195,16 +206,37 @@
       if (!enabled() || typeof handlers.restore !== 'function') return false;
       try {
         const payload = JSON.parse(localStorage.getItem(key) || 'null');
-        if (!payload || payload.version !== 1 || Date.now() - Number(payload.savedAt || 0) > (handlers.maxAge || 30 * 24 * 60 * 60 * 1000)) return false;
+        if (!payload || ![1, 2].includes(payload.version) || Date.now() - Number(payload.savedAt || 0) > (handlers.maxAge || 30 * 24 * 60 * 60 * 1000)) return false;
         if (typeof handlers.validate === 'function' && !handlers.validate(payload.value)) return false;
         handlers.restore(payload.value);
         return true;
       } catch { return false; }
     };
-    const clear = () => { try { localStorage.removeItem(key); } catch {} };
+    const clear = () => { try { localStorage.removeItem(key); window.dispatchEvent(new CustomEvent('game-runtime:autosave-cleared', { detail: { key, name } })); } catch {} };
     const interval = window.setInterval(save, Math.max(1000, Number(handlers.interval) || 3000));
     window.addEventListener('pagehide', save);
     return { key, save, restore, clear, stop() { clearInterval(interval); window.removeEventListener('pagehide', save); } };
+  }
+
+  function listAutosaves(profile = activeProfileId()) {
+    const saves = [];
+    try {
+      Object.keys(localStorage).filter(key => key.startsWith('game-hub:autosave:')).forEach(key => {
+        let payload;
+        try { payload = JSON.parse(localStorage.getItem(key) || 'null'); } catch { return; }
+        if (!payload || ![1, 2].includes(payload.version)) return;
+        const belongsToProfile = payload.profile ? payload.profile === profile : profile === 'default' ? !/:p-[a-z0-9-]+(?::|$)/i.test(key) : key.endsWith(`:${profile}`) || key.includes(`:${profile}:`);
+        if (!belongsToProfile) return;
+        const route = payload.route || key.slice('game-hub:autosave:'.length).split(/:[^/]*$/)[0];
+        saves.push({ key, name: payload.name || key.split(':').at(-1), title: payload.title || route.split('/').pop() || 'Partie', route, savedAt: Number(payload.savedAt || 0), bytes: new Blob([localStorage.getItem(key) || '']).size });
+      });
+    } catch {}
+    return saves.sort((left, right) => right.savedAt - left.savedAt);
+  }
+
+  function removeAutosave(key) {
+    if (typeof key !== 'string' || !key.startsWith('game-hub:autosave:')) return false;
+    try { localStorage.removeItem(key); return true; } catch { return false; }
   }
 
   function installMobileLayout() {
@@ -331,7 +363,7 @@
   installControlPreferences();
   applyLanOptions(lanBootOptions);
   const seededRandom = reproducibleRandom();
-  window.GameRuntime = { version: 11, hashSeed, createRandom, shuffle, clone, createHistory, createAutosave, storage, settingsSignature, createWorkerTask, randomSeed, rememberRecent, activeProfileId, profileKey, applyLanOptions, mobileInterface, lanBootOptions, seededRandom };
+  window.GameRuntime = { version: 12, hashSeed, createRandom, shuffle, clone, createHistory, createAutosave, listAutosaves, removeAutosave, storage, settingsSignature, createWorkerTask, randomSeed, rememberRecent, activeProfileId, profileKey, applyLanOptions, mobileInterface, lanBootOptions, seededRandom };
   installMobileLayout();
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installAccessibilityPreferences, { once: true });
   else installAccessibilityPreferences();

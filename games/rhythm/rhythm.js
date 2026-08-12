@@ -789,7 +789,11 @@ function loop() {
       document.getElementById('speedValue').value = `${speedControl.value} %`;
     }
     statusElement.textContent = `Terminé : ${finished.hits} notes réussies.${isRecord ? ' Nouveau record !' : ''}${repeat ? ` Nouvelle boucle à ${speedControl.value} %…` : ''}`;
-    if (!repeat) window.LanMultiplayer?.finish({ score: finished.score, scoreLabel: `${finished.score} points · ${Math.round(accuracy * 100)} %`, won: true, accuracy: Math.round(accuracy * 100) });
+    if (!repeat) {
+      const result = { score: finished.score, scoreLabel: `${finished.score} points · ${Math.round(accuracy * 100)} %`, won: true, accuracy: Math.round(accuracy * 100) };
+      if (window.GameRecords) window.GameRecords.finish(result);
+      else window.LanMultiplayer?.finish(result);
+    }
     stopAudioScheduler(); game = null;
     if (repeat) window.setTimeout(() => startButton.click(), 800);
     return;

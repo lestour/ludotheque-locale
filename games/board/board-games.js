@@ -32,6 +32,44 @@ let game;
 let botTimer;
 let wheelRotation = 0;
 let flashSequence = 0;
+let seededRandom = null;
+let lanActionQueue = Promise.resolve();
+let pendingLanModal = null;
+let lanRollPending = false;
+const queuedLanModalChoices = [];
+
+function hashSeed(text) {
+  let value = 2166136261;
+  for (const character of String(text)) {
+    value ^= character.charCodeAt(0);
+    value = Math.imul(value, 16777619);
+  }
+  return value >>> 0;
+}
+
+function resetRandom() {
+  const seed = new URLSearchParams(location.search).get('seed');
+  if (!seed) { seededRandom = null; return; }
+  let state = hashSeed(`${seed}:${variantSelect.value}`) || 1;
+  seededRandom = () => {
+    state += 0x6D2B79F5;
+    let result = state;
+    result = Math.imul(result ^ result >>> 15, result | 1);
+    result ^= result + Math.imul(result ^ result >>> 7, result | 61);
+    return ((result ^ result >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function gameRandom() { return seededRandom ? seededRandom() : Math.random(); }
+function lanActive() { return Boolean(window.LanMultiplayer?.active); }
+function humanSeat() { return lanActive() ? Math.max(0, window.LanMultiplayer.playerIndex) : 0; }
+function seatLabel(index) { return window.LanMultiplayer?.room?.seats?.[index]?.label; }
+function seatIsBot(index) { return Boolean(window.LanMultiplayer?.room?.seats?.[index]?.controller === 'bot'); }
+function automatedSeat(index) { return lanActive() ? seatIsBot(index) : index !== 0; }
+function hostControlsBot(index) { return lanActive() && window.LanMultiplayer.room?.hostId === window.LanMultiplayer.playerId && seatIsBot(index); }
+function sendBoardAction(action) {
+  return window.LanMultiplayer.sendAction({ ...action, controlledSeat: action.controlledSeat ?? game.turn }).catch(error => { statusElement.textContent = `Synchronisation LAN interrompue : ${error.message}`; });
+}
 
 const estateGroups = [
   ['brun', '#7a4b2b', 2], ['bleu ciel', '#7bd2e8', 3], ['rose', '#d56a9d', 3],
@@ -134,7 +172,7 @@ const paydayDeals = [
 function shuffle(values) {
   const copy = values.slice();
   for (let index = copy.length - 1; index > 0; index -= 1) {
-    const target = Math.floor(Math.random() * (index + 1));
+    const target = Math.floor(gameRandom() * (index + 1));
     [copy[index], copy[target]] = [copy[target], copy[index]];
   }
   return copy;
@@ -145,6 +183,7 @@ function money(value) {
 }
 
 function playerName(index) {
+  if (lanActive()) return index === humanSeat() ? 'Vous' : seatLabel(index) || `Joueur ${index + 1}`;
   return index === 0 ? 'Vous' : `Bot ${index}`;
 }
 
@@ -189,19 +228,32 @@ function showModal({ title, text, color = '#d97706', actions = [{ label: 'Contin
     modal.style.setProperty('--modal-color', color);
     modal.innerHTML = `<article><h2>${title}</h2><p>${text}</p>${content}<div class="modal-actions">${actions.map((action, index) => `<button data-modal-action="${index}">${action.label}</button>`).join('')}</div></article>`;
     const finish = value => {
+      if (pendingLanModal?.finish === finish) pendingLanModal = null;
       modal.remove();
       resolve(value);
     };
     modal.querySelectorAll('[data-modal-action]').forEach((button, index) => {
-      button.addEventListener('click', () => finish(actions[index].value));
+      if (lanActive()) {
+        button.disabled = game.turn !== humanSeat();
+        button.addEventListener('click', () => sendBoardAction({ type: 'board-modal', value: actions[index].value }));
+      } else button.addEventListener('click', () => finish(actions[index].value));
     });
     modalHost.append(modal);
-    if (game.turn !== 0) setTimeout(() => finish(defaultValue), 700 + Math.random() * 350);
+    if (lanActive()) {
+      const queuedIndex = queuedLanModalChoices.findIndex(choice => choice.seat === game.turn && actions.some(action => action.value === choice.value));
+      if (queuedIndex >= 0) {
+        const queued = queuedLanModalChoices.splice(queuedIndex, 1)[0];
+        setTimeout(() => finish(queued.value));
+      } else {
+        pendingLanModal = { seat: game.turn, values: actions.map(action => action.value), finish };
+        if (hostControlsBot(game.turn)) setTimeout(() => sendBoardAction({ type: 'board-modal', value: defaultValue }), 700 + Math.random() * 350);
+      }
+    } else if (game.turn !== 0) setTimeout(() => finish(defaultValue), 700 + Math.random() * 350);
   });
 }
 
-async function spinOneDie() {
-  const value = 1 + Math.floor(Math.random() * 6);
+async function spinOneDie(forcedValue = null) {
+  const value = Number.isInteger(forcedValue) ? forcedValue : 1 + Math.floor(gameRandom() * 6);
   wheelRotation += 720 + (6 - value) * 60 + Math.floor(Math.random() * 2) * 360;
   wheelElement.style.setProperty('--rotation', `${wheelRotation}deg`);
   const startedAt = performance.now();
@@ -214,9 +266,9 @@ async function spinOneDie() {
   return value;
 }
 
-async function spinDice(count) {
+async function spinDice(count, forcedValues = null) {
   const values = [];
-  for (let index = 0; index < count; index += 1) values.push(await spinOneDie());
+  for (let index = 0; index < count; index += 1) values.push(await spinOneDie(forcedValues?.[index]));
   diceElement.textContent = count === 1 ? String(values[0]) : `${values[0]} + ${values[1]} = ${values[0] + values[1]}`;
   return values;
 }
@@ -347,9 +399,9 @@ async function resolveEstateSpace() {
       game.pending = { type: 'estateBuy', space, index: player.pos };
       statusElement.textContent = `${estateNames[player.pos]} est disponible pour ${money(space.cost)}.`;
       render();
-      if (playerIndex !== 0) {
+      if (automatedSeat(playerIndex)) {
         await delay(450);
-        await decideEstatePurchase(player.cash >= space.cost * 1.7 || Math.random() < .7);
+        await decideEstatePurchase(player.cash >= space.cost * 1.7 || gameRandom() < .7);
       }
       return;
     }
@@ -400,21 +452,29 @@ function awardEstateAsset(playerIndex, pending, price, reason = 'achat') {
 
 async function auctionEstate(pending, declinedBy) {
   const bidders = game.people
-    .map((player, index) => ({ index, maximum: Math.max(0, Math.min(player.cash, Math.round(pending.space.cost * (.55 + Math.random() * .7)))) }))
-    .filter(bidder => !game.people[bidder.index].out && bidder.maximum >= 10 && !(declinedBy === 0 && bidder.index === 0));
+    .map((player, index) => ({ index, maximum: Math.max(0, Math.min(player.cash, Math.round(pending.space.cost * (.55 + gameRandom() * .7)))) }))
+    .filter(bidder => !game.people[bidder.index].out && bidder.maximum >= 10 && (lanActive() || !(declinedBy === humanSeat() && bidder.index === humanSeat())));
   if (!bidders.length) return false;
+  if (lanActive()) {
+    const bids = bidders.sort((left, right) => right.maximum - left.maximum);
+    const winner = bids[0];
+    awardEstateAsset(winner.index, pending, winner.maximum, 'enchère');
+    await showModal({ title: 'Enchère terminée', text: `${playerName(winner.index)} obtient ${estateNames[pending.index]} pour ${money(winner.maximum)}.`, color: '#b45309' });
+    return true;
+  }
   let humanBid = 0;
-  const bestBot = Math.max(0, ...bidders.filter(bidder => bidder.index !== 0).map(bidder => bidder.maximum));
-  if (declinedBy !== 0 && bidders.some(bidder => bidder.index === 0)) {
-    const minimum = Math.min(game.people[0].cash, Math.max(10, Math.ceil((bestBot + 10) / 10) * 10));
+  const activeHuman = humanSeat();
+  const bestBot = Math.max(0, ...bidders.filter(bidder => bidder.index !== activeHuman).map(bidder => bidder.maximum));
+  if (declinedBy !== activeHuman && bidders.some(bidder => bidder.index === activeHuman)) {
+    const minimum = Math.min(game.people[activeHuman].cash, Math.max(10, Math.ceil((bestBot + 10) / 10) * 10));
     const choice = await showModal({
       title: 'Enchère', text: `${estateNames[pending.index]} peut être adjugée à partir de ${money(minimum)}.`, color: '#b45309',
       actions: [{ label: `Enchérir ${money(minimum)}`, value: 'bid' }, { label: 'Passer', value: 'pass' }]
     });
     if (choice === 'bid') humanBid = minimum;
   }
-  const bids = bidders.filter(bidder => bidder.index !== 0).map(bidder => ({ index: bidder.index, amount: bidder.maximum }));
-  if (humanBid) bids.push({ index: 0, amount: humanBid });
+  const bids = bidders.filter(bidder => bidder.index !== activeHuman).map(bidder => ({ index: bidder.index, amount: bidder.maximum }));
+  if (humanBid) bids.push({ index: activeHuman, amount: humanBid });
   bids.sort((left, right) => right.amount - left.amount);
   if (!bids.length) return false;
   const winner = bids[0];
@@ -438,18 +498,18 @@ async function decideEstatePurchase(accepted) {
   endTurn();
 }
 
-function buildEstate(index) {
-  const player = game.people[0];
+function buildEstate(index, playerIndex = humanSeat()) {
+  const player = game.people[playerIndex];
   const choices = player.assets.filter(asset => asset.type === 'property' && hasEstateSet(player, asset.group) && asset.houses < 4 && player.cash >= asset.houseCost);
   const asset = Number.isInteger(index) ? choices.find(choice => choice.index === index) : choices.sort((left, right) => left.houses - right.houses)[0];
-  if (!asset || game.turn !== 0 || game.busy || game.pending) return;
-  changeCash(0, -asset.houseCost, `construction sur ${estateNames[asset.index]}`);
+  if (!asset || game.turn !== playerIndex || game.busy || game.pending) return;
+  changeCash(playerIndex, -asset.houseCost, `construction sur ${estateNames[asset.index]}`);
   asset.houses += 1;
   game.boardFlash = { index: asset.index, type: 'built' };
   render();
 }
 
-async function rollEstate() {
+async function rollEstate(forcedValues = null) {
   const playerIndex = game.turn;
   const player = currentPlayer();
   if (player.jail > 0) {
@@ -465,7 +525,7 @@ async function rollEstate() {
       return;
     }
   }
-  const values = await spinDice(2);
+  const values = await spinDice(2, forcedValues);
   const steps = values[0] + values[1];
   game.lastDice = steps;
   player.doubles = values[0] === values[1] ? player.doubles + 1 : 0;
@@ -556,7 +616,7 @@ async function resolveWorldSpace() {
     game.pending = { type: 'worldBuy', label, offers: choices };
     statusElement.textContent = `${label} : choisissez les titres à acquérir, puis terminez vos achats.`;
     render();
-    if (game.turn !== 0) await botWorldPurchases();
+    if (automatedSeat(game.turn)) await botWorldPurchases();
     return;
   }
   if (resources.includes(label)) {
@@ -588,11 +648,11 @@ async function resolveWorldSpace() {
   } else if (label.startsWith('Choix') && player.laps > 0 && game.titles.length) {
     game.pending = { type: 'worldBuy', label, offers: worldOffers('', player) };
     render();
-    if (game.turn !== 0) await botWorldPurchases();
+    if (automatedSeat(game.turn)) await botWorldPurchases();
     return;
   } else if (label === 'Enchères' && player.laps > 0 && game.titles.length) {
     const asset = game.titles[0];
-    const price = Math.max(100000, Math.round(asset.cost * (.55 + Math.random() * .45)));
+    const price = Math.max(100000, Math.round(asset.cost * (.55 + gameRandom() * .45)));
     await showModal({ title: 'Enchères', text: `${asset.resource} ${asset.share}% (${asset.country}) est adjugé ${money(price)}.`, color: asset.color });
     if (player.cash >= price) {
       changeCash(game.turn, -price, 'enchère');
@@ -626,7 +686,7 @@ async function botWorldPurchases() {
       .map((asset, index) => ({ asset, index, score: worldShare(player, asset.resource) * 3 + asset.share * 2 - asset.cost / 500000 }))
       .filter(entry => entry.asset.cost <= player.cash * .6)
       .sort((left, right) => right.score - left.score);
-    if (!ranked.length || (purchases > 0 && Math.random() < .35)) break;
+    if (!ranked.length || (purchases > 0 && gameRandom() < .35)) break;
     buyWorldAsset(ranked[0].index);
     purchases += 1;
     await delay(250);
@@ -649,7 +709,7 @@ function executeWorldTrade(fromIndex, toIndex, offered, requested, offeredCash, 
   const offeredValue = worldAssetScore(to, offered) + offeredCash;
   const requestedValue = worldAssetScore(to, requested) + requestedCash;
   const strategicGain = worldShare(to, offered.resource) > worldShare(to, requested.resource);
-  if (toIndex !== 0 && offeredValue < requestedValue * (strategicGain ? .78 : .95)) return false;
+  if (offeredValue < requestedValue * (strategicGain ? .78 : .95)) return false;
   from.assets.splice(offeredIndex, 1, requested);
   to.assets.splice(requestedIndex, 1, offered);
   changeCash(fromIndex, requestedCash - offeredCash);
@@ -660,9 +720,10 @@ function executeWorldTrade(fromIndex, toIndex, offered, requested, offeredCash, 
 }
 
 async function openWorldTrade() {
-  if (game.kind !== 'world' || !game.tradingUnlocked || game.turn !== 0 || game.pending || game.busy) return;
-  const human = game.people[0];
-  const opponents = game.people.map((player, index) => ({ player, index })).filter(entry => entry.index > 0 && entry.player.assets.length);
+  const activeHuman = humanSeat();
+  if (game.kind !== 'world' || !game.tradingUnlocked || game.turn !== activeHuman || game.pending || game.busy) return;
+  const human = game.people[activeHuman];
+  const opponents = game.people.map((player, index) => ({ player, index })).filter(entry => entry.index !== activeHuman && entry.player.assets.length);
   if (!human.assets.length || !opponents.length) {
     statusElement.textContent = 'Un échange exige au moins un titre de chaque côté.';
     return;
@@ -683,21 +744,20 @@ async function openWorldTrade() {
   modal.querySelector('#confirmTrade').addEventListener('click', () => {
     const opponentIndex = Number(opponentSelect.value);
     const opponent = game.people[opponentIndex];
-    const accepted = executeWorldTrade(
-      0, opponentIndex,
-      human.assets[Number(modal.querySelector('#tradeOwn').value)],
-      opponent.assets[Number(wantedSelect.value)],
-      Math.max(0, Number(modal.querySelector('#tradeOfferCash').value) || 0),
-      Math.max(0, Number(modal.querySelector('#tradeWantCash').value) || 0)
-    );
+    const offeredIndex = Number(modal.querySelector('#tradeOwn').value);
+    const requestedIndex = Number(wantedSelect.value);
+    const offeredCash = Math.max(0, Number(modal.querySelector('#tradeOfferCash').value) || 0);
+    const requestedCash = Math.max(0, Number(modal.querySelector('#tradeWantCash').value) || 0);
+    const accepted = lanActive() ? true : executeWorldTrade(activeHuman, opponentIndex, human.assets[offeredIndex], opponent.assets[requestedIndex], offeredCash, requestedCash);
+    if (lanActive()) sendBoardAction({ type: 'board-world-trade', from: activeHuman, to: opponentIndex, offered: offeredIndex, requested: requestedIndex, offeredCash, requestedCash });
     modal.remove();
     statusElement.textContent = accepted ? 'Échange accepté.' : 'Échange refusé.';
   });
 }
 
 function maybeBotWorldTrade() {
-  if (!game.tradingUnlocked || Math.random() > .28) return;
-  const candidates = game.people.map((player, index) => ({ player, index })).filter(entry => entry.index > 0 && entry.player.assets.length);
+  if (!game.tradingUnlocked || gameRandom() > .28) return;
+  const candidates = game.people.map((player, index) => ({ player, index })).filter(entry => (!lanActive() || seatIsBot(entry.index)) && entry.player.assets.length);
   if (candidates.length < 2) return;
   const [first, second] = shuffle(candidates).slice(0, 2);
   const offered = first.player.assets.find(asset => worldShare(second.player, asset.resource) > worldShare(first.player, asset.resource));
@@ -705,7 +765,7 @@ function maybeBotWorldTrade() {
   if (offered && requested) executeWorldTrade(first.index, second.index, offered, requested, 0, 0);
 }
 
-async function rollWorld() {
+async function rollWorld(forcedValues = null) {
   const player = currentPlayer();
   if (player.skip > 0) {
     player.skip -= 1;
@@ -713,7 +773,7 @@ async function rollWorld() {
     endTurn();
     return;
   }
-  const values = await spinDice(2);
+  const values = await spinDice(2, forcedValues);
   const steps = values[0] + values[1];
   game.lastDice = steps;
   if (values[0] === values[1]) changeCash(game.turn, -values[0] * 1000000, 'double à la roue');
@@ -784,7 +844,7 @@ async function sellPaydayAsset() {
 }
 
 async function paydayDiceContest() {
-  const results = game.people.map(() => 1 + Math.floor(Math.random() * 6));
+  const results = game.people.map(() => 1 + Math.floor(gameRandom() * 6));
   const best = Math.max(...results);
   const winner = results.indexOf(best);
   await showModal({ title: 'Concours de roue', text: `${game.people.map((player, index) => `${playerName(index)} : ${results[index]}`).join(' · ')}. ${playerName(winner)} gagne ${money(2000)}.`, color: '#7e22ce' });
@@ -853,8 +913,8 @@ async function resolvePaydaySpace() {
   endTurn();
 }
 
-async function rollPayday() {
-  const [value] = await spinDice(1);
+async function rollPayday(forcedValues = null) {
+  const [value] = await spinDice(1, forcedValues);
   const player = currentPlayer();
   const steps = Math.min(value, 30 - player.pos);
   await movePlayer(game.turn, steps, paydayTrack.length);
@@ -872,7 +932,7 @@ function finishGame() {
   game.busy = false;
   const ranking = game.people.map((player, index) => ({ index, value: playerValue(player) })).sort((left, right) => right.value - left.value);
   statusElement.textContent = `${playerName(ranking[0].index)} remporte la partie avec ${money(ranking[0].value)}.`;
-  window.GameRecords?.finish({ score: ranking[0].value, scoreLabel: money(ranking[0].value), won: ranking[0].index === 0 });
+  window.GameRecords?.finish({ score: ranking[0].value, scoreLabel: money(ranking[0].value), won: ranking[0].index === humanSeat(), winnerSeat: ranking[0].index });
   render();
 }
 
@@ -907,24 +967,25 @@ function endTurn() {
     finishGame();
     return;
   }
-  statusElement.textContent = game.turn === 0 ? 'À vous de jouer.' : `${playerName(game.turn)} joue.`;
+  statusElement.textContent = game.turn === humanSeat() ? 'À vous de jouer.' : `${playerName(game.turn)} joue.`;
   render();
   scheduleBot();
 }
 
 function scheduleBot() {
   clearTimeout(botTimer);
-  if (game.over || game.turn === 0 || game.busy || game.pending) return;
-  botTimer = setTimeout(performRoll, 620 + Math.random() * 520);
+  if (game.over || game.turn === humanSeat() || game.busy || game.pending) return;
+  if (lanActive() && !hostControlsBot(game.turn)) return;
+  botTimer = setTimeout(() => lanActive() ? sendBoardAction({ type: 'board-roll' }) : performRoll(), 620 + Math.random() * 520);
 }
 
-async function performRoll() {
+async function performRoll(forcedValues = null) {
   if (game.over || game.busy || game.pending) return;
   game.busy = true;
   renderControls();
-  if (game.kind === 'estate') await rollEstate();
-  else if (game.kind === 'world') await rollWorld();
-  else await rollPayday();
+  if (game.kind === 'estate') await rollEstate(forcedValues);
+  else if (game.kind === 'world') await rollWorld(forcedValues);
+  else await rollPayday(forcedValues);
 }
 
 function perimeterPosition(index, size) {
@@ -1076,30 +1137,32 @@ function renderWorldAssetStacks(player) {
 }
 
 function renderAssets() {
-  const player = game.people[0];
+  const activeHuman = humanSeat();
+  const player = game.people[activeHuman];
   assetsTitleElement.textContent = 'Vos actifs et cartes conservées';
   const cards = game.kind === 'world' ? [] : player.assets.map(asset => {
     const buildable = game.kind === 'estate' && asset.type === 'property' && hasEstateSet(player, asset.group) && asset.houses < 4 && player.cash >= asset.houseCost;
-    return `<article class="card ${asset.kind === 'world' ? 'resource' : ''}" style="--resource:${assetColor(asset)}"><strong>${assetLabel(asset)}</strong>${asset.kind === 'estate' ? `<p>Achat ${money(asset.cost)} · loyer ${money(estateRent(asset, 0))}</p>` : ''}${buildable ? `<button data-build="${asset.index}">Construire · ${money(asset.houseCost)}</button>` : ''}</article>`;
+    return `<article class="card ${asset.kind === 'world' ? 'resource' : ''}" style="--resource:${assetColor(asset)}"><strong>${assetLabel(asset)}</strong>${asset.kind === 'estate' ? `<p>Achat ${money(asset.cost)} · loyer ${money(estateRent(asset, activeHuman))}</p>` : ''}${buildable ? `<button data-build="${asset.index}">Construire · ${money(asset.houseCost)}</button>` : ''}</article>`;
   });
   assetsElement.innerHTML = `${game.kind === 'world' ? renderWorldAssetStacks(player) : cards.join('')}${player.stored.map(card => `<article class="card special-card"><strong>${card.label}</strong><p>Carte conservée jusqu’à son utilisation.</p></article>`).join('')}` || '<span class="muted">Aucun actif pour le moment.</span>';
-  assetsElement.querySelectorAll('[data-build]').forEach(button => button.addEventListener('click', () => buildEstate(Number(button.dataset.build))));
+  assetsElement.querySelectorAll('[data-build]').forEach(button => button.addEventListener('click', () => lanActive() ? sendBoardAction({ type: 'board-build', index: Number(button.dataset.build) }) : buildEstate(Number(button.dataset.build))));
 }
 
 function renderOffers() {
   offersElement.innerHTML = '';
   if (game.pending?.type === 'worldBuy') {
-    offersElement.innerHTML = game.pending.offers.map((asset, index) => `<article class="card resource" style="--resource:${asset.color}"><strong>${asset.resource} · ${asset.share}%</strong><p>${asset.country}<br>${money(asset.cost)}</p>${game.turn === 0 ? `<button data-world-buy="${index}">Acheter</button>` : ''}</article>`).join('');
-    offersElement.querySelectorAll('[data-world-buy]').forEach(button => button.addEventListener('click', () => buyWorldAsset(Number(button.dataset.worldBuy))));
+    offersElement.innerHTML = game.pending.offers.map((asset, index) => `<article class="card resource" style="--resource:${asset.color}"><strong>${asset.resource} · ${asset.share}%</strong><p>${asset.country}<br>${money(asset.cost)}</p>${game.turn === humanSeat() ? `<button data-world-buy="${index}">Acheter</button>` : ''}</article>`).join('');
+    offersElement.querySelectorAll('[data-world-buy]').forEach(button => button.addEventListener('click', () => lanActive() ? sendBoardAction({ type: 'board-world-buy', index: Number(button.dataset.worldBuy) }) : buyWorldAsset(Number(button.dataset.worldBuy))));
   }
 }
 
 function renderControls() {
-  const humanTurn = game.turn === 0 && !game.over;
+  const activeHuman = humanSeat();
+  const humanTurn = game.turn === activeHuman && !game.over;
   rollButton.disabled = !humanTurn || game.busy || Boolean(game.pending);
   buyButton.hidden = !(humanTurn && game.pending?.type === 'estateBuy');
   skipButton.hidden = !(humanTurn && ['estateBuy', 'worldBuy'].includes(game.pending?.type));
-  buildButton.hidden = !(humanTurn && game.kind === 'estate' && !game.pending && game.people[0].assets.some(asset => asset.type === 'property' && hasEstateSet(game.people[0], asset.group) && asset.houses < 4 && game.people[0].cash >= asset.houseCost));
+  buildButton.hidden = !(humanTurn && game.kind === 'estate' && !game.pending && game.people[activeHuman].assets.some(asset => asset.type === 'property' && hasEstateSet(game.people[activeHuman], asset.group) && asset.houses < 4 && game.people[activeHuman].cash >= asset.houseCost));
   tradeButton.hidden = !(humanTurn && game.kind === 'world' && game.tradingUnlocked && !game.pending);
 }
 
@@ -1131,6 +1194,7 @@ function updateSkinOptions(preferredSkin) {
 
 function newGame() {
   clearTimeout(botTimer);
+  resetRandom();
   modalHost.innerHTML = '';
   wheelElement.dataset.value = '—';
   diceElement.textContent = '—';
@@ -1141,16 +1205,57 @@ function newGame() {
   render();
 }
 
-rollButton.addEventListener('click', performRoll);
-buyButton.addEventListener('click', () => decideEstatePurchase(true));
+function requestRoll() {
+  if (!lanActive()) { performRoll(); return; }
+  if (lanRollPending || game.turn !== humanSeat()) return;
+  lanRollPending = true;
+  sendBoardAction({ type: 'board-roll' }).finally(() => { window.setTimeout(() => { lanRollPending = false; }, 1200); });
+}
+
+function receiveBoardAction(action) {
+  if (!action || !Number.isInteger(action.controlledSeat)) return;
+  if (action.type === 'board-modal') {
+    if (pendingLanModal?.seat === action.controlledSeat && pendingLanModal.values.some(value => value === action.value)) pendingLanModal.finish(action.value);
+    else queuedLanModalChoices.push({ seat: action.controlledSeat, value: action.value });
+    return;
+  }
+  lanActionQueue = lanActionQueue.then(async () => {
+    if (action.controlledSeat !== game.turn || game.over) return;
+    if (action.type === 'board-roll') {
+      lanRollPending = false;
+      if (!Array.isArray(action.dice) || action.dice.some(value => !Number.isInteger(value) || value < 1 || value > 6)) return;
+      await performRoll(action.dice);
+    } else if (action.type === 'board-estate-buy') await decideEstatePurchase(action.accepted);
+    else if (action.type === 'board-build') buildEstate(action.index, action.controlledSeat);
+    else if (action.type === 'board-world-buy') buyWorldAsset(action.index);
+    else if (action.type === 'board-world-end' && game.pending?.type === 'worldBuy') { game.pending = null; endTurn(); }
+    else if (action.type === 'board-world-trade') {
+      const from = game.people[action.from];
+      const to = game.people[action.to];
+      if (from && to) executeWorldTrade(action.from, action.to, from.assets[action.offered], to.assets[action.requested], action.offeredCash, action.requestedCash);
+    }
+  }).catch(error => { statusElement.textContent = `Action LAN impossible : ${error.message}`; });
+}
+
+function registerBoardLanAdapter() {
+  if (!window.LanMultiplayer || registerBoardLanAdapter.done) return;
+  registerBoardLanAdapter.done = true;
+  window.LanMultiplayer.registerAdapter({ receiveOwn: true, receive: receiveBoardAction });
+}
+
+rollButton.addEventListener('click', requestRoll);
+buyButton.addEventListener('click', () => lanActive() ? sendBoardAction({ type: 'board-estate-buy', accepted: true }) : decideEstatePurchase(true));
 skipButton.addEventListener('click', () => {
-  if (game.pending?.type === 'estateBuy') decideEstatePurchase(false);
+  if (game.pending?.type === 'estateBuy') {
+    if (lanActive()) sendBoardAction({ type: 'board-estate-buy', accepted: false });
+    else decideEstatePurchase(false);
+  }
   else if (game.pending?.type === 'worldBuy') {
-    game.pending = null;
-    endTurn();
+    if (lanActive()) sendBoardAction({ type: 'board-world-end' });
+    else { game.pending = null; endTurn(); }
   }
 });
-buildButton.addEventListener('click', () => buildEstate());
+buildButton.addEventListener('click', () => lanActive() ? sendBoardAction({ type: 'board-build', index: game.people[humanSeat()].assets.find(asset => asset.type === 'property' && hasEstateSet(game.people[humanSeat()], asset.group) && asset.houses < 4)?.index ?? -1 }) : buildEstate());
 tradeButton.addEventListener('click', openWorldTrade);
 document.getElementById('newGame').addEventListener('click', newGame);
 variantSelect.addEventListener('change', () => {
@@ -1191,3 +1296,6 @@ const requestedVariant = initialParameters.get('variant');
 if (skinCatalog[requestedVariant]) variantSelect.value = requestedVariant;
 updateSkinOptions(initialParameters.get('skin'));
 newGame();
+registerBoardLanAdapter();
+window.addEventListener('lan:available', registerBoardLanAdapter);
+window.addEventListener('lan:room', () => { render(); scheduleBot(); });

@@ -16,10 +16,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Vérifier le serveur Python
         run: python -m py_compile server/lan_server.py
       - name: Lancer les tests statiques et LAN
         run: python -m unittest discover -s tests -p 'test_*.py'
+      - name: Vérifier la syntaxe JavaScript
+        run: python tools/check_javascript.py
       - name: Lancer les tests dans Chrome headless
         run: python tools/run_browser_smoke.py
       - name: Construire le paquet universel

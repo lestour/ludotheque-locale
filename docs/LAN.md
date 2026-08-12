@@ -68,11 +68,34 @@ Wi-Fi sans conserver indéfiniment une partie abandonnée.
 - Dernière Couleur : paquet, tours, pénalités et bots sont arbitrés par le
   serveur. Chaque navigateur ne reçoit que sa propre main et le nombre de
   cartes des adversaires. La graine secrète du paquet n’est jamais transmise.
+- Sixième Carte : les mains et choix simultanés restent privés sur le serveur.
+  Les cartes ne sont révélées qu’au moment de leur résolution croissante ; le
+  choix d’une rangée et les scores sont également arbitrés côté serveur.
+- Roi Pirate : les mains et enchères restent secrètes jusqu’à leur révélation ;
+  plis, bonus, créatures marines, scores et bots sont calculés par le serveur.
+- Course 1000 : pioche, mains, attaques, parades, bottes, coups fourrés et
+  progression sont validés côté serveur. Seul le nombre de cartes adverses est
+  communiqué aux navigateurs.
+- Chatastrophe : incidents, protections et ordre de pioche restent privés. Une
+  Prémonition n’est envoyée qu’au joueur qui l’a jouée et les bots reprennent
+  automatiquement un siège déconnecté.
+- Grille Zéro : les cartes face cachée ne transmettent ni valeur ni identifiant.
+  Le mode classique, les retraits de lignes/colonnes, les étoiles, le marché
+  d’actions et les scores sont arbitrés par le serveur. Une inspection ou un
+  choix de trois cartes n’est envoyé qu’au joueur concerné ; les adversaires ne
+  reçoivent que le nombre d’actions conservées.
+- Rami Cartes et Rami Tuiles : mains et chevalets restent privés. Le serveur
+  vérifie les groupes, suites, jokers, minimums d’ouverture, annulations et la
+  conservation de chaque carte ou tuile avant d’accepter un tour.
+- Empire Immobilier, Marchés du Monde et Fin de Mois : le serveur produit les
+  résultats de roue et ordonne achats, enchères, cartes, échanges et décisions.
+  Les navigateurs utilisent la même graine pour rejouer les paquets dans un
+  ordre déterministe ; seul l’hôte peut faire agir un siège bot.
 
-Le protocole d’adaptateur est disponible pour les autres jeux. Les autres jeux
-de cartes comportant une main privée nécessitent encore un moteur serveur propre
-à leurs règles avant d’être déclarés jouables en LAN ; le serveur ne diffuse
-jamais une main privée par simple copie du DOM.
+Le protocole d’adaptateur reste disponible pour les futurs jeux. Un jeu à
+information privée n’est déclaré jouable en LAN qu’après ajout d’un moteur
+serveur propre à ses règles ; le serveur ne diffuse jamais une main privée par
+simple copie du DOM.
 
 ## Sécurité
 

@@ -9,7 +9,12 @@ const drawBtn = document.getElementById('draw');
 const playersEl = document.getElementById('players');
 let game;
 let timer;
+let autosave;
 let sortMode = 'value';
+let lanTileState = null;
+let lanTileSeatOrder = [];
+let lanTileNames = [];
+let lanTilePending = false;
 const colors = ['red', 'blue', 'black', 'orange'];
 
 selectionEl.insertAdjacentHTML('beforebegin', '<button id="endTurn">Valider le tour</button><button id="undoTurn">Annuler le tour</button><button id="sortRack">Trier par couleur</button>');
@@ -329,7 +334,7 @@ function finishStalemate() {
   render();
 }
 
-function start() { clearTimeout(timer); const count = Number(playersEl.value); game = { pool: makePool(), table: [], turn: 0, selected: [], changed: false, openingPoints: 0, turnSnapshot: null, passes: 0, over: false, log: [], people: Array.from({ length: count }, () => ({ rack: [], opened: false, score: 0 })) }; game.people.forEach((person, index) => { for (let tile = 0; tile < 14; tile += 1) draw(index); }); game.turnSnapshot = cloneState(); statusEl.textContent = 'Sélectionnez des tuiles dans l’ordre voulu. L’ouverture peut cumuler plusieurs groupes pour atteindre 30 points.'; render(); }
+function start() { clearTimeout(timer); const count = Number(playersEl.value); game = { pool: makePool(), table: [], turn: 0, selected: [], changed: false, openingPoints: 0, turnSnapshot: null, passes: 0, over: false, log: [], people: Array.from({ length: count }, () => ({ rack: [], opened: false, score: 0 })) }; game.people.forEach((person, index) => { for (let tile = 0; tile < 14; tile += 1) draw(index); }); game.turnSnapshot = cloneState(); statusEl.textContent = 'Sélectionnez des tuiles dans l’ordre voulu. L’ouverture peut cumuler plusieurs groupes pour atteindre 30 points.'; render(); autosave?.save(); }
 
 function botMove() {
   if (game.turn === 0 || game.over) return;
@@ -406,4 +411,51 @@ document.getElementById('newGame').onclick = start;
 playersEl.onchange = start;
 if (!window.GameEffects) { const script = document.createElement('script'); script.src = '../../shared/effects.js?v=1'; document.head.appendChild(script); }
 localStorage.setItem('game-hub:last-game', 'rami-tuiles');
-start();
+autosave = window.GameRuntime?.createAutosave('partie', { capture: () => game, validate: value => Array.isArray(value?.pool) && Array.isArray(value?.people) && Array.isArray(value?.table), restore: value => { game = value; render(); if (game.turn && !game.over) timer = setTimeout(botMove, 500); } });
+if (!autosave?.restore()) start();
+
+const localTilePlaySelected = playSelected;
+const localTileEndTurn = endTurn;
+const localTileUndoTurn = undoTurn;
+const localTileDrawOrPass = drawOrPass;
+const localTileName = name;
+function sendTileAction(action) {
+  if (!window.LanMultiplayer?.active || lanTilePending) return;
+  lanTilePending = true;
+  window.LanMultiplayer.sendPrivateAction(action).catch(error => { statusEl.textContent = `Action refusée : ${error.message}`; }).finally(() => { lanTilePending = false; });
+}
+function applyLanTileState(room) {
+  const snapshot = room?.gameState;
+  if (!snapshot || snapshot.yourSeat === null || snapshot.yourSeat === undefined) { if (room?.phase === 'lobby') lanTileState = null; return; }
+  lanTileState = snapshot;
+  lanTilePending = false;
+  lanTileSeatOrder = [snapshot.yourSeat, ...snapshot.rackCounts.map((_, index) => index).filter(index => index !== snapshot.yourSeat)];
+  lanTileNames = lanTileSeatOrder.map((seat, index) => room.seats?.[seat]?.label || (index ? 'Adversaire' : 'Vous'));
+  game = {
+    pool: Array.from({ length: snapshot.poolCount }, () => null), table: snapshot.table.map(group => group.map(tile => ({ ...tile }))),
+    turn: lanTileSeatOrder.indexOf(snapshot.turn), selected: [], changed: snapshot.changed, openingPoints: snapshot.openingPoints,
+    turnSnapshot: {}, passes: 0, over: snapshot.over, log: [snapshot.message],
+    people: lanTileSeatOrder.map((seat, index) => ({ rack: index === 0 ? snapshot.rack.map(tile => ({ ...tile })) : Array.from({ length: snapshot.rackCounts[seat] }, (_, hidden) => ({ id: -(hidden + 1), color: 'black', value: 0 })), opened: snapshot.opened[seat], score: 0 })),
+  };
+  if (snapshot.over) statusEl.textContent = snapshot.winner === snapshot.yourSeat ? 'Vous terminez votre chevalet et gagnez !' : `${room.seats?.[snapshot.winner]?.label || 'Un adversaire'} gagne la partie.`;
+  else if (snapshot.turn === snapshot.yourSeat) statusEl.textContent = snapshot.changed ? 'Vous pouvez continuer à réorganiser ou valider le tour.' : 'Posez des groupes valides ou piochez.';
+  else statusEl.textContent = snapshot.message;
+  render();
+}
+name = function lanAwareTileName(index) { return lanTileState ? (lanTileNames[index] || `Joueur ${index + 1}`) : localTileName(index); };
+document.getElementById('play').onclick = () => {
+  if (!lanTileState) { localTilePlaySelected(); return; }
+  const before = JSON.stringify(game.table.map(group => group.map(tile => tile.id)));
+  localTilePlaySelected();
+  const groups = game.table.map(group => group.map(tile => tile.id));
+  if (JSON.stringify(groups) !== before) sendTileAction({ type: 'rearrange', groups });
+};
+endTurnButton.onclick = () => {
+  if (!lanTileState) { localTileEndTurn(); return; }
+  if (!game.changed) { statusEl.textContent = 'Posez au moins une tuile avant de valider.'; return; }
+  sendTileAction({ type: 'end' });
+};
+undoTurnButton.onclick = () => { if (!lanTileState) localTileUndoTurn(); else sendTileAction({ type: 'undo' }); };
+drawBtn.onclick = () => { if (!lanTileState) localTileDrawOrPass(); else sendTileAction({ type: 'draw' }); };
+window.addEventListener('lan:room', event => applyLanTileState(event.detail?.room));
+window.addEventListener('lan:left', () => { lanTileState = null; lanTileSeatOrder = []; lanTileNames = []; start(); });

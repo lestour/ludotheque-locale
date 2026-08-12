@@ -15,6 +15,11 @@ const coupFourre = document.getElementById('coupFourre');
 let game;
 let timer;
 let sortByKind = true;
+let autosave;
+let lanCourseState = null;
+let lanCourseSeatOrder = [];
+let lanCourseNames = [];
+let lanCoursePending = false;
 document.querySelector('h2').insertAdjacentHTML('beforeend', ' <button id="sortHand">Trier par type</button>');
 const sortHandButton = document.getElementById('sortHand');
 drawButton.insertAdjacentHTML('afterend', ' <button id="discardMode">Défausser une carte</button>');
@@ -195,7 +200,7 @@ function render() {
   const top = game.discard[game.discard.length - 1]; discard.textContent = top ? top.name : 'Défausse';
   document.getElementById('log').innerHTML = game.log.map(entry => `<li>${entry}</li>`).join('');
 }
-function newGame() { clearTimeout(timer); game = { deck: deck(), discard: [], turn: 0, forcedTurn: null, extraTurn: null, refillBeforeTurn: null, pending: null, awaitingDraw: true, discardMode: false, over: false, log: [], people: Array.from({ length: Number(playersSelect.value) }, () => ({ hand: [], distance: 0, battle: 'stop', limit: false, safeties: [], twoHundreds: 0, coupBonus: 0 })) }; game.people.forEach((_, index) => { for (let count = 0; count < 6; count += 1) draw(index); }); status.textContent = `Course de ${raceTarget()} km : piochez, puis jouez une carte. Au départ, il faut un Feu vert ou la Botte Véhicule prioritaire.`; render(); }
+function newGame() { clearTimeout(timer); game = { deck: deck(), discard: [], turn: 0, forcedTurn: null, extraTurn: null, refillBeforeTurn: null, pending: null, awaitingDraw: true, discardMode: false, over: false, log: [], people: Array.from({ length: Number(playersSelect.value) }, () => ({ hand: [], distance: 0, battle: 'stop', limit: false, safeties: [], twoHundreds: 0, coupBonus: 0 })) }; game.people.forEach((_, index) => { for (let count = 0; count < 6; count += 1) draw(index); }); status.textContent = `Course de ${raceTarget()} km : piochez, puis jouez une carte. Au départ, il faut un Feu vert ou la Botte Véhicule prioritaire.`; render(); autosave?.save(); }
 
 window.Course1000TestAPI = Object.freeze({
   diagnostics: () => {
@@ -220,4 +225,63 @@ targetDistance.onchange = newGame;
 exactDistance.onchange = newGame;
 sortHandButton.onclick = () => { sortByKind = !sortByKind; render(); };
 if (!window.GameEffects) { const script = document.createElement('script'); script.src = '../../../shared/effects.js?v=1'; document.head.appendChild(script); }
-localStorage.setItem('game-hub:last-game', 'course-1000'); newGame();
+localStorage.setItem('game-hub:last-game', 'course-1000');
+autosave = window.GameRuntime?.createAutosave('partie', { capture: () => game, validate: value => Array.isArray(value?.deck) && Array.isArray(value?.people), restore: value => { game = value; render(); if (game.turn && !game.over) timer = setTimeout(bot, 500); } });
+if (!autosave?.restore()) newGame();
+
+const localCoursePlay = play;
+const localCourseDiscard = discardCard;
+const localCourseName = name;
+const localCourseDraw = drawButton.onclick;
+function courseLocalSeat(serverSeat) { return lanCourseSeatOrder.indexOf(serverSeat); }
+function sendCourseAction(action) {
+  if (!window.LanMultiplayer?.active || lanCoursePending) return;
+  lanCoursePending = true;
+  window.LanMultiplayer.sendPrivateAction(action).catch(error => { status.textContent = `Coup refusé : ${error.message}`; }).finally(() => { lanCoursePending = false; });
+}
+function applyLanCourseState(room) {
+  const snapshot = room?.gameState;
+  if (!snapshot || snapshot.yourSeat === null || snapshot.yourSeat === undefined) { if (room?.phase === 'lobby') lanCourseState = null; return; }
+  lanCourseState = snapshot;
+  lanCoursePending = false;
+  lanCourseSeatOrder = [snapshot.yourSeat, ...snapshot.handCounts.map((_, index) => index).filter(index => index !== snapshot.yourSeat)];
+  lanCourseNames = lanCourseSeatOrder.map((seat, index) => room.seats?.[seat]?.label || (index ? 'Adversaire' : 'Vous'));
+  game = {
+    deck: Array.from({ length: snapshot.deckCount }, () => null), discard: snapshot.discardTop ? [snapshot.discardTop] : [],
+    turn: courseLocalSeat(snapshot.turn), forcedTurn: null, extraTurn: null, refillBeforeTurn: null, pending: null,
+    awaitingDraw: snapshot.awaitingDraw, discardMode: false, over: snapshot.over, log: [snapshot.message],
+    people: lanCourseSeatOrder.map((seat, index) => ({ ...snapshot.people[seat], hand: index === 0 ? snapshot.hand.map(card => ({ ...card })) : Array.from({ length: snapshot.handCounts[seat] }, () => ({ kind: 'hidden', name: 'Carte cachée', value: 0 })) })),
+  };
+  targetDistance.value = String(snapshot.target);
+  exactDistance.checked = snapshot.exactDistance;
+  if (snapshot.over) {
+    const winners = snapshot.winners.map(seat => room.seats?.[seat]?.label || `Joueur ${seat + 1}`);
+    status.textContent = snapshot.winners.includes(snapshot.yourSeat) ? `Vous gagnez la course à ${snapshot.target} km !` : `${winners.join(' et ')} remporte${winners.length > 1 ? 'nt' : ''} la course.`;
+  } else if (snapshot.turn === snapshot.yourSeat) status.textContent = snapshot.awaitingDraw ? 'À vous : piochez une carte.' : 'À vous : jouez ou défaussez une carte.';
+  else status.textContent = snapshot.message || `Au tour de ${room.seats?.[snapshot.turn]?.label || 'un adversaire'}.`;
+  render();
+}
+name = function lanAwareCourseName(index) { return lanCourseState ? (lanCourseNames[index] || `Joueur ${index + 1}`) : localCourseName(index); };
+play = function lanAwareCoursePlay(index, targetIndex = null) {
+  if (!lanCourseState) return localCoursePlay(index, targetIndex);
+  if (lanCourseState.turn !== lanCourseState.yourSeat || lanCoursePending || lanCourseState.awaitingDraw) return;
+  if (game.discardMode) return discardCard(index);
+  const played = game.people[0].hand[index];
+  if (!played) return;
+  if (played.kind === 'attack' && targetIndex === null) {
+    if (!validTargets(0, played).length) { status.textContent = playabilityReason(0, played); render(); return; }
+    game.pending = index; status.textContent = 'Choisissez un adversaire valide.'; render(); return;
+  }
+  sendCourseAction({ type: 'play', cardId: played.id, target: targetIndex === null ? null : lanCourseSeatOrder[targetIndex] });
+};
+discardCard = function lanAwareCourseDiscard(index) {
+  if (!lanCourseState) return localCourseDiscard(index);
+  const played = game.people[0].hand[index];
+  if (played && !lanCourseState.awaitingDraw) sendCourseAction({ type: 'discard', cardId: played.id });
+};
+drawButton.onclick = () => {
+  if (!lanCourseState) return localCourseDraw();
+  if (lanCourseState.turn === lanCourseState.yourSeat && lanCourseState.awaitingDraw) sendCourseAction({ type: 'draw' });
+};
+window.addEventListener('lan:room', event => applyLanCourseState(event.detail?.room));
+window.addEventListener('lan:left', () => { lanCourseState = null; lanCourseSeatOrder = []; lanCourseNames = []; newGame(); });

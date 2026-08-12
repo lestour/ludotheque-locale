@@ -19,7 +19,7 @@ class StaticProjectTests(unittest.TestCase):
 
     def test_local_page_scripts_exist(self):
         pattern = re.compile(r'<script[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
-        for page in [ROOT / "index.html", ROOT / "tests/index.html", *self.game_pages()]:
+        for page in [ROOT / "index.html", ROOT / "replay.html", ROOT / "tests/index.html", *self.game_pages()]:
             content = page.read_text(encoding="utf-8")
             for source in pattern.findall(content):
                 if source.startswith(("http://", "https://", "//")):
@@ -58,11 +58,23 @@ class StaticProjectTests(unittest.TestCase):
         self.assertNotIn("ludotheque:lan", re.search(r"portableStoragePrefixes\s*=\s*\[([^]]+)", hub).group(1))
         self.assertIn("createAutosave", runtime)
         self.assertIn("profileKey", runtime)
+        self.assertIn("listAutosaves", runtime)
+        self.assertIn("manageSaves", hub)
+
+    def test_replay_reader_is_packaged_and_accepts_lan_exports(self):
+        replay_page = (ROOT / "replay.html").read_text(encoding="utf-8")
+        replay_script = (ROOT / "replay.js").read_text(encoding="utf-8")
+        lan = (ROOT / "shared/lan-multiplayer.js").read_text(encoding="utf-8")
+        self.assertIn("replay.js", replay_page)
+        self.assertIn("ludotheque-lan-replay", replay_script)
+        self.assertIn("version: 2", lan)
 
     def test_ci_and_universal_packager_exist(self):
         self.assertTrue((ROOT / ".github/workflows/validate.yml").is_file())
         self.assertTrue((ROOT / "tools/run_browser_smoke.py").is_file())
         self.assertTrue((ROOT / "tools/create_lan_certificate.py").is_file())
+        self.assertTrue((ROOT / "tools/check_javascript.py").is_file())
+        self.assertTrue((ROOT / "tools/run_safari_smoke.py").is_file())
         packager = (ROOT / "tools/package_release.py").read_text(encoding="utf-8")
         self.assertIn("Ludotheque-locale.zip", packager)
         self.assertIn("MS-Basic.sf3", packager)
@@ -86,6 +98,14 @@ class StaticProjectTests(unittest.TestCase):
             "games/cards/classic/bataille-corse.html",
             "games/cards/modern/totem-reflexe.html",
             "games/cards/modern/symbole-unique.html",
+            "games/cards/modern/sixieme-carte.html",
+            "games/cards/modern/roi-pirate.html",
+            "games/cards/modern/course-1000.html",
+            "games/cards/modern/chatastrophe.html",
+            "games/cards/modern/grille-zero.html",
+            "games/cards/classic/rami-cartes.html",
+            "games/board/rami-tuiles.html",
+            "games/board/board-games.html",
             "games/board/chess.html",
             "games/board/go.html",
         ]:

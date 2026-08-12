@@ -47,7 +47,13 @@ const ACTION_COUNTS = {
 };
 
 let game;
+let autosave;
 let botTimer;
+let lanZeroState = null;
+let lanZeroSeatOrder = [];
+let lanZeroNames = [];
+let lanZeroPending = false;
+let lanZeroDiscardReveal = false;
 
 function shuffle(values) {
   for (let index = values.length - 1; index > 0; index -= 1) {
@@ -725,6 +731,7 @@ function newGame() {
     log: [],
   };
   startRound();
+  autosave?.save();
 }
 
 window.GrilleZeroTestAPI = Object.freeze({
@@ -750,4 +757,106 @@ rowsOption.addEventListener('change', render);
 initialRevealsOption.addEventListener('change', newGame);
 doubleFinishOption.addEventListener('change', render);
 localStorage.setItem('game-hub:last-game', 'grille-zero');
-newGame();
+autosave = window.GameRuntime?.createAutosave('partie', { capture: () => game, validate: value => Array.isArray(value?.people) && Array.isArray(value?.deck) && Array.isArray(value?.discard), restore: value => { game = value; render(); scheduleBot(); } });
+if (!autosave?.restore()) newGame();
+
+const localZeroDraw = draw;
+const localZeroUseDiscard = useDiscard;
+const localZeroDiscardReveal = discardAndReveal;
+const localZeroHandleCell = handleCellClick;
+const localZeroName = name;
+const localZeroAcquireAction = acquireAction;
+const localZeroPlayHumanAction = playHumanAction;
+const localZeroChooseDrawThree = chooseDrawThree;
+const localZeroCompleteAction = completeAction;
+deckButton.removeEventListener('click', draw);
+discardButton.removeEventListener('click', useDiscard);
+discardDrawButton.removeEventListener('click', discardAndReveal);
+function sendZeroAction(action) {
+  if (!window.LanMultiplayer?.active || lanZeroPending) return;
+  lanZeroPending = true;
+  window.LanMultiplayer.sendPrivateAction(action).catch(error => { status.textContent = `Action refusée : ${error.message}`; }).finally(() => { lanZeroPending = false; });
+}
+function applyLanZeroState(room) {
+  const snapshot = room?.gameState;
+  if (!snapshot || snapshot.yourSeat === null || snapshot.yourSeat === undefined) { if (room?.phase === 'lobby') lanZeroState = null; return; }
+  lanZeroState = snapshot;
+  lanZeroPending = false;
+  lanZeroDiscardReveal = false;
+  lanZeroSeatOrder = [snapshot.yourSeat, ...snapshot.people.map((_, index) => index).filter(index => index !== snapshot.yourSeat)];
+  lanZeroNames = lanZeroSeatOrder.map((seat, index) => room.seats?.[seat]?.label || (index ? 'Adversaire' : 'Vous'));
+  bonusRulesOption.checked = Boolean(snapshot.bonusSupported && snapshot.bonus);
+  const normalize = card => card.kind ? { ...card } : { kind: 'number', value: 0, up: false, removed: Boolean(card.removed) };
+  const people = lanZeroSeatOrder.map(seat => ({
+    score: snapshot.people[seat].score,
+    board: snapshot.people[seat].board.map(normalize),
+    actions: seat === snapshot.yourSeat ? (snapshot.people[seat].actions || []).map(action => ({ ...action })) : Array.from({ length: snapshot.people[seat].actionCount || 0 }, () => ({ id: 'defense', readyAfter: Infinity })),
+    roundBonus: snapshot.people[seat].roundBonus || 0,
+  }));
+  let peek = null;
+  if (snapshot.peek) {
+    const localPlayer = lanZeroSeatOrder.indexOf(snapshot.peek.player);
+    snapshot.peek.indexes.forEach((index, offset) => { people[localPlayer].board[index] = normalize(snapshot.peek.cards[offset]); });
+    peek = { playerIndex: localPlayer, indexes: snapshot.peek.indexes };
+  }
+  const pendingAction = snapshot.pendingAction || null;
+  let selection = null;
+  if (pendingAction?.type === 'selfSwap') selection = { type: 'selfSwap', picks: [...(pendingAction.picks || [])] };
+  else if (pendingAction?.type === 'inspect') selection = { type: 'inspect', picks: [] };
+  else if (pendingAction?.type === 'opponentSwap') selection = { type: 'opponentSwap', picks: (pendingAction.picks || []).map(pick => ({ playerIndex: lanZeroSeatOrder.indexOf(pick.player), cardIndex: pick.index })) };
+  else if (pendingAction?.type === 'revealOwn') selection = { type: 'revealOwn', picks: [] };
+  game = {
+    people,
+    round: snapshot.round, phase: snapshot.phase, setupCount: snapshot.setupCount, initialReveals: snapshot.initialReveals,
+    turn: lanZeroSeatOrder.indexOf(snapshot.turn), turnSerial: snapshot.turnSerial, deck: Array.from({ length: snapshot.deckCount }, () => null),
+    discard: snapshot.discardTop ? [snapshot.discardTop] : [], actionDeck: Array.from({ length: snapshot.actionDeckCount || 0 }, () => 'selfSwap'), actionMarket: snapshot.actionMarket || [], actionDiscard: [],
+    pending: snapshot.pending ? { card: snapshot.pending, fromDiscard: snapshot.pendingFromDiscard } : null,
+    selection, actionChoice: pendingAction?.type === 'drawThree' ? pendingAction.choices : null, peek, extraTurns: 0, finisher: null, over: snapshot.over, log: [snapshot.message],
+  };
+  if (snapshot.over) status.textContent = snapshot.winner === snapshot.yourSeat ? 'Vous gagnez la partie LAN !' : `${room.seats?.[snapshot.winner]?.label || 'Un adversaire'} gagne la partie.`;
+  else if (snapshot.phase === 'setup') status.textContent = `Révélez ${snapshot.initialReveals - snapshot.setupCount} carte(s) initiale(s).`;
+  else if (pendingAction?.type === 'inspectContinue') status.textContent = 'Ligne inspectée. Cliquez sur Continuer.';
+  else if (pendingAction?.type === 'drawThree') status.textContent = 'Choisissez une des trois cartes, ou aucune.';
+  else if (pendingAction?.type === 'selfSwap') status.textContent = 'Sélectionnez deux cartes de votre grille.';
+  else if (pendingAction?.type === 'inspect') status.textContent = 'Cliquez sur une carte pour inspecter sa ligne.';
+  else if (pendingAction?.type === 'opponentSwap') status.textContent = pendingAction.picks?.length ? 'Choisissez une carte adverse.' : 'Choisissez une de vos cartes.';
+  else if (pendingAction?.type === 'revealOwn') status.textContent = 'Choisissez une carte cachée à révéler.';
+  else if (snapshot.turn === snapshot.yourSeat) status.textContent = snapshot.pending ? 'Placez la carte dans votre grille, ou défaussez-la si elle vient de la pioche.' : 'À vous : prenez la pioche, la défausse ou une action.';
+  else status.textContent = snapshot.message;
+  render();
+}
+name = function lanAwareZeroName(index) { return lanZeroState ? (lanZeroNames[index] || `Joueur ${index + 1}`) : localZeroName(index); };
+draw = function lanAwareZeroDraw() { if (!lanZeroState) return localZeroDraw(); if (lanZeroState.turn === lanZeroState.yourSeat && !lanZeroState.pending) sendZeroAction({ type: 'take', source: 'deck' }); };
+useDiscard = function lanAwareZeroDiscard() { if (!lanZeroState) return localZeroUseDiscard(); if (lanZeroState.turn === lanZeroState.yourSeat && !lanZeroState.pending) sendZeroAction({ type: 'take', source: 'discard' }); };
+discardAndReveal = function lanAwareZeroDiscardReveal() { if (!lanZeroState) return localZeroDiscardReveal(); if (!lanZeroState.pending || lanZeroState.pendingFromDiscard) return; lanZeroDiscardReveal = true; game.selection = { type: 'revealOwn', picks: [] }; status.textContent = 'Choisissez une carte cachée à révéler.'; render(); };
+acquireAction = function lanAwareZeroAcquire(playerIndex, marketIndex = null, free = false) {
+  if (!lanZeroState) return localZeroAcquireAction(playerIndex, marketIndex, free);
+  if (playerIndex === 0 && !free) sendZeroAction({ type: 'acquire-action', marketIndex });
+  return true;
+};
+playHumanAction = function lanAwareZeroPlayAction(actionIndex) {
+  if (!lanZeroState) return localZeroPlayHumanAction(actionIndex);
+  sendZeroAction({ type: 'use-action', actionIndex });
+};
+chooseDrawThree = function lanAwareZeroChoose(choiceIndex) {
+  if (!lanZeroState) return localZeroChooseDrawThree(choiceIndex);
+  sendZeroAction({ type: 'choose-three', choice: choiceIndex });
+};
+completeAction = function lanAwareZeroContinue() {
+  if (!lanZeroState) return localZeroCompleteAction();
+  sendZeroAction({ type: 'continue-action' });
+};
+handleCellClick = function lanAwareZeroCell(playerIndex, cardIndex) {
+  if (!lanZeroState) return localZeroHandleCell(playerIndex, cardIndex);
+  if (lanZeroPending) return;
+  if (lanZeroState.phase === 'setup') { sendZeroAction({ type: 'setup', index: cardIndex }); return; }
+  if (lanZeroDiscardReveal) { sendZeroAction({ type: 'discard-reveal', index: cardIndex }); return; }
+  if (lanZeroState.pendingAction) { sendZeroAction({ type: 'action-cell', player: lanZeroSeatOrder[playerIndex], index: cardIndex }); return; }
+  if (playerIndex !== 0) return;
+  if (lanZeroState.pending) sendZeroAction({ type: 'replace', index: cardIndex });
+};
+deckButton.addEventListener('click', () => draw());
+discardButton.addEventListener('click', () => useDiscard());
+discardDrawButton.addEventListener('click', () => discardAndReveal());
+window.addEventListener('lan:room', event => applyLanZeroState(event.detail?.room));
+window.addEventListener('lan:left', () => { lanZeroState = null; lanZeroSeatOrder = []; lanZeroNames = []; newGame(); });

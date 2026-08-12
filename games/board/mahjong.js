@@ -39,6 +39,7 @@ const layoutNames = {
 };
 
 let game;
+let autosave;
 
 function shuffle(values) {
   const result = values.slice();
@@ -351,6 +352,7 @@ function newGame() {
     ? `${actual} vérifiée : ${game.tileCount} tuiles, ${game.tileCount / 2} paires, difficulté ${difficultySelect.selectedOptions[0].textContent.toLowerCase()} et retrait complet garanti.`
     : `${requested} n’a pas pu être validée cette fois : le plateau de secours « ${actual} » garantit un retrait complet.`;
   render();
+  autosave?.save();
 }
 
 function choose(id) {
@@ -602,4 +604,9 @@ if (!window.GameEffects) {
   document.head.appendChild(script);
 }
 localStorage.setItem('game-hub:last-game', 'mahjong');
-newGame();
+autosave = window.GameRuntime?.createAutosave('partie', {
+  capture: () => ({ ...game, tiles: [...game.tiles.entries()], removed: [...game.removed] }),
+  validate: value => Array.isArray(value?.positions) && Array.isArray(value?.tiles) && Array.isArray(value?.removed),
+  restore: value => { game = { ...value, tiles: new Map(value.tiles), removed: new Set(value.removed), trace: null }; render(); },
+});
+if (!autosave?.restore()) newGame();

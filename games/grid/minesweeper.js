@@ -35,6 +35,7 @@ function cancelTouchHold(pointerId = null) {
 const settings = { easy: { width: 9, height: 9, mines: 10 }, medium: { width: 16, height: 16, mines: 40 }, hard: { width: 30, height: 16, mines: 99 }, expert: { width: 40, height: 22, mines: 180 }, giant: { width: 50, height: 30, mines: 400 }, colossal: { width: 60, height: 36, mines: 600 }, titan: { width: 80, height: 48, mines: 900 } };
 let game = null;
 let lanFinished = false;
+let autosave = null;
 
 function finishGame(result) {
   if (window.GameRecords) window.GameRecords.finish(result);
@@ -486,6 +487,7 @@ function createGame() {
   const config = settings[difficulty.value];
   game = { ...config, requestedMines: config.mines, started: false, over: false, lost: false, simulating: false, generating: false, logicalStart: false, generationMessage: '', lastDeduction: '', solverMistakes: new Set(), cells: Array.from({ length: config.width * config.height }, () => ({ mine: false, count: 0, revealed: false, flagged: false, autoFlagged: false })) };
   render();
+  autosave?.save();
 }
 
 window.MinesweeperTestAPI = Object.freeze({
@@ -536,7 +538,13 @@ solveStepButton.addEventListener('click', () => {
 });
 solveAllButton.addEventListener('click', solveLogically);
 localStorage.setItem('game-hub:last-game', 'minesweeper');
-createGame();
+autosave = window.GameRuntime?.createAutosave('partie', {
+  enabled: () => Boolean(game && !game.simulating && !game.generating),
+  capture: () => ({ ...game, solverMistakes: [...game.solverMistakes], boardZoom }),
+  validate: value => Number.isInteger(value?.width) && Number.isInteger(value?.height) && Array.isArray(value?.cells),
+  restore: value => { boardZoom = Math.max(1, Math.min(3, Number(value.boardZoom) || 1)); game = { ...value, solverMistakes: new Set(value.solverMistakes || []), simulating: false, generating: false }; render(); },
+});
+if (!autosave?.restore()) createGame();
 window.addEventListener('lan:start', () => {
   lanFinished = false;
   if (!game.started && !game.generating) reveal(indexOf(Math.floor(game.height / 2), Math.floor(game.width / 2)));

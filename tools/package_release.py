@@ -13,11 +13,14 @@ EXCLUDED_ROOTS = {".git", ".github", ".runtime", "dist", "build"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
 REQUIRED = {
     "index.html",
+    "replay.html",
+    "replay.js",
     "manifest.webmanifest",
     "sw.js",
     "server/lan_server.py",
     "shared/game-runtime.js",
     "shared/lan-multiplayer.js",
+    "tools/check_javascript.py",
     "games/rhythm/assets/MS-Basic.sf3",
     "vendor/spessasynth_core/dist/index.js",
     "vendor/spessasynth_lib/dist/index.js",

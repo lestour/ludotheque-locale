@@ -18,7 +18,15 @@
     'games/rhythm/rhythm.html',
     'games/rhythm/karaoke.html',
     'games/cards/classic/bataille.html',
-    'games/cards/modern/derniere-couleur.html'
+    'games/cards/modern/derniere-couleur.html',
+    'games/cards/modern/sixieme-carte.html',
+    'games/cards/modern/roi-pirate.html',
+    'games/cards/modern/course-1000.html',
+    'games/cards/modern/chatastrophe.html',
+    'games/cards/modern/grille-zero.html',
+    'games/cards/classic/rami-cartes.html',
+    'games/board/rami-tuiles.html',
+    'games/board/board-games.html'
   ]);
   const synchronizationAvailable = synchronizedGames.has(game);
   const twoPlayerGames = new Set(['games/board/chess.html', 'games/board/go.html']);
@@ -379,9 +387,10 @@
   function exportReplay() {
     if (!room) return;
     const payload = {
-      format: 'ludotheque-lan-replay', version: 1, exportedAt: new Date().toISOString(),
+      format: 'ludotheque-lan-replay', version: 2, exportedAt: new Date().toISOString(),
       game: room.game, options: room.options, seed: room.seed, seats: (room.seats || []).map(seat => ({ index: seat.index, label: seat.label, kind: seat.kind })),
-      events: replayEvents, results: rankedResults().map(entry => ({ name: entry.name, label: entry.label, won: Boolean(entry.result.won) }))
+      events: replayEvents, results: rankedResults().map(entry => ({ name: entry.name, label: entry.label, won: Boolean(entry.result.won) })),
+      duration: replayEvents.length > 1 ? Math.max(0, replayEvents.at(-1).at - replayEvents[0].at) : 0
     };
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
@@ -394,7 +403,7 @@
     if (!room?.seed || startScheduledFor === room.startAt) return;
     const url = new URL(location.href);
     const currentSeed = url.searchParams.get('seed');
-    const preservePage = game === 'games/rhythm/rhythm.html' || game === 'games/rhythm/karaoke.html' || game === 'games/cards/modern/derniere-couleur.html' || (game === 'games/grid/nonogram.html' && document.querySelector('#imageInput')?.files?.length);
+    const preservePage = game === 'games/rhythm/rhythm.html' || game === 'games/rhythm/karaoke.html' || game === 'games/cards/modern/derniere-couleur.html' || game === 'games/cards/modern/sixieme-carte.html' || game === 'games/cards/modern/roi-pirate.html' || game === 'games/cards/modern/course-1000.html' || game === 'games/cards/modern/chatastrophe.html' || game === 'games/cards/modern/grille-zero.html' || game === 'games/cards/classic/rami-cartes.html' || game === 'games/board/rami-tuiles.html' || (game === 'games/grid/nonogram.html' && document.querySelector('#imageInput')?.files?.length);
     if (!preservePage && currentSeed !== room.seed) {
       url.searchParams.set('seed', room.seed);
       url.searchParams.set('lan', room.code);

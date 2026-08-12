@@ -1,5 +1,6 @@
 const routes = [
   '../index.html',
+  '../replay.html',
   '../games/grid/sudoku.html', '../games/grid/nonogram.html', '../games/grid/minesweeper.html',
   '../games/cards/classic/bataille.html', '../games/cards/classic/bataille-corse.html', '../games/cards/classic/klondike.html', '../games/cards/classic/rami-cartes.html',
   '../games/cards/modern/symbole-unique.html', '../games/cards/modern/totem-reflexe.html', '../games/cards/modern/derniere-couleur.html', '../games/cards/modern/grille-zero.html', '../games/cards/modern/sixieme-carte.html', '../games/cards/modern/course-1000.html', '../games/cards/modern/roi-pirate.html', '../games/cards/modern/chatastrophe.html',
@@ -32,7 +33,7 @@ async function test(name, action) {
 function assert(condition, message) { if (!condition) throw new Error(message); }
 
 async function testRuntime() {
-  assert(GameRuntime.version >= 2, 'Une ancienne version du runtime partagé est chargée.');
+  assert(GameRuntime.version >= 12, 'Une ancienne version du runtime partagé est chargée.');
   const first = GameRuntime.createRandom('même-graine');
   const second = GameRuntime.createRandom('même-graine');
   assert(Array.from({ length: 8 }, first).join(',') === Array.from({ length: 8 }, second).join(','), 'Le hasard reproductible diverge.');
@@ -41,7 +42,8 @@ async function testRuntime() {
   assert(history.undo().value === 2 && history.redo().value === 3, 'Historique annuler/rétablir incorrect.');
   const shuffled = GameRuntime.shuffle([1,2,3,4], GameRuntime.createRandom('tri'));
   assert(shuffled.length === 4 && new Set(shuffled).size === 4, 'Le mélange perd des éléments.');
-  return 'Graine, mélange et historique validés.';
+  assert(typeof GameRuntime.listAutosaves === 'function' && typeof GameRuntime.removeAutosave === 'function', 'Le gestionnaire de sauvegardes commun est absent.');
+  return 'Graine, mélange, historique et index de sauvegardes validés.';
 }
 
 async function testMusicParser() {
@@ -355,7 +357,7 @@ async function runStressCampaign() {
     '../games/board/mahjong.html',
     '../games/cards/classic/klondike.html'
   ];
-  const seeds = ['campagne-a', 'campagne-b', 'campagne-c', 'campagne-d'];
+  const seeds = Array.from({ length: 40 }, (_, index) => `campagne-${String(index + 1).padStart(2, '0')}`);
   for (const route of campaigns) {
     for (const seed of seeds) {
       const label = `${route.replace('../', '')} · ${seed}`;
