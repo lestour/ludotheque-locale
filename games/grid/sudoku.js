@@ -2261,7 +2261,8 @@ function generate() {
 
 function randomVariantCombination() {
   const structural = shuffled(['diagonal', 'knight', 'king', 'nonconsecutive', 'hyper', 'disjoint', 'palindrome']);
-  const decorative = shuffled(VARIANT_KEYS.filter(variant => !structural.includes(variant)));
+  const expensive = shuffled(['killer', 'thermometer', 'arrow', 'whisper', 'renban', 'sandwich', 'entropic', 'modular', 'quadruple']);
+  const decorative = shuffled(VARIANT_KEYS.filter(variant => !structural.includes(variant) && !expensive.includes(variant)));
   const ranges = {
     facile: [2, 4],
     moyen: [3, 5],
@@ -2270,8 +2271,10 @@ function randomVariantCombination() {
   };
   const [minimum, maximum] = ranges[difficulty.value] || ranges.moyen;
   const wanted = minimum + Math.floor(Math.random() * (maximum - minimum + 1));
-  const structuralCount = Math.min(structural.length, Math.random() < 0.7 ? 1 : 2, wanted);
-  return new Set([...structural.slice(0, structuralCount), ...decorative.slice(0, wanted - structuralCount)]);
+  const expensiveLimit = difficulty.value === 'expert' ? 3 : difficulty.value === 'difficile' ? 2 : 1;
+  const combination = [structural[0], ...expensive.slice(0, Math.min(expensiveLimit, wanted - 1))];
+  combination.push(...decorative.slice(0, wanted - combination.length));
+  return new Set(combination);
 }
 
 function generateRandomVariants() {
@@ -2281,7 +2284,8 @@ function generateRandomVariants() {
   window.setTimeout(() => {
     const startedAt = performance.now();
     let lastError = null;
-    for (let attempt = 1; attempt <= 12; attempt += 1) {
+    const maximumAttempts = 18;
+    for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
       const combination = randomVariantCombination();
       try {
         SUPPORT_CACHE.clear();
@@ -2296,7 +2300,7 @@ function generateRandomVariants() {
         lastError = error;
       }
     }
-    if (lastError) generationStatus.textContent = `Aucune combinaison validée après 12 essais : ${lastError.message}`;
+    if (lastError) generationStatus.textContent = `Aucune combinaison validée après ${maximumAttempts} essais : ${lastError.message}`;
     generateButton.disabled = false;
     randomVariantsButton.disabled = false;
   }, 0);
