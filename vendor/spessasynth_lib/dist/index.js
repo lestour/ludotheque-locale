@@ -1,6 +1,6 @@
 // Locally modified: the package import uses a relative vendored path so the
 // application can run offline without a module registry.
-import { BasicMIDI, BasicSoundBank, DEFAULT_CHANNEL_MIDI_PARAMETERS, DEFAULT_CHANNEL_SYSTEM_PARAMETERS, DEFAULT_GLOBAL_MIDI_PARAMETERS, DEFAULT_GLOBAL_SYSTEM_PARAMETERS, KeyModifier, MIDIControllers, MIDIMessageTypes, MIDITrack, MIDIUtils, SoundBankLoader, SpessaLog, SpessaSynthCoreUtils, SpessaSynthProcessor, SpessaSynthSequencer, audioToWav } from "../../spessasynth_core/dist/index.js?v=local-2";
+import { BasicMIDI, BasicSoundBank, DEFAULT_CHANNEL_MIDI_PARAMETERS, DEFAULT_CHANNEL_SYSTEM_PARAMETERS, DEFAULT_GLOBAL_MIDI_PARAMETERS, DEFAULT_GLOBAL_SYSTEM_PARAMETERS, KeyModifier, MIDIControllers, MIDIMessageTypes, MIDITrack, MIDIUtils, SoundBankLoader, SpessaLog, SpessaSynthCoreUtils, SpessaSynthProcessor, SpessaSynthSequencer, audioToWav } from "../../spessasynth_core/dist/index.js?v=local-3";
 //#region src/synthesizer/basic/synth_config.ts
 const DEFAULT_SYNTH_CONFIG = {
 	eventsEnabled: true,

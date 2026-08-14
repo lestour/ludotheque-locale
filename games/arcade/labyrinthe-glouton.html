@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Labyrinthe Glouton</title>
+  <style>
+    :root{color-scheme:light dark;font-family:Inter,Arial,sans-serif;background:#edf5ff;color:#14213d}*{box-sizing:border-box}body{margin:0}main{max-width:1180px;margin:auto;padding:18px}.panel{padding:16px;border:1px solid #bfcee5;border-radius:18px;background:#fff;box-shadow:0 18px 45px #20345818}.bar{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.bar h1{margin:0 auto 0 0}.bar a,.bar button,.bar select,.touch button{padding:9px 12px;border:1px solid #8fa5c5;border-radius:10px;background:#fff;color:inherit;font:inherit;text-decoration:none;cursor:pointer}.bar button.primary{background:#0f766e;color:#fff;border-color:#0f766e}.layout{display:grid;grid-template-columns:minmax(0,760px) 290px;gap:18px;margin-top:14px}.screen{position:relative;background:#030712;border:6px solid #1e293b;border-radius:16px;overflow:hidden;box-shadow:inset 0 0 40px #000}canvas{display:block;width:100%;height:auto;touch-action:none}.hud{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}.hud span,.card{padding:9px;border-radius:11px;background:#e7f0ff;text-align:center}.hud small{display:block;color:#587096}.hud strong{font-size:1.15rem}.status{min-height:24px;margin:8px 0}.rules{line-height:1.5;padding-left:20px}.legend{display:grid;grid-template-columns:1fr 1fr;gap:7px}.legend span{display:flex;align-items:center;gap:7px}.dot{width:15px;height:15px;border-radius:50%}.touch{display:grid;grid-template-columns:repeat(3,72px);grid-template-areas:". up ." "left down right";justify-content:center;gap:7px;margin-top:12px}.touch button{min-height:48px;font-size:1.25rem}.touch [data-dir="up"]{grid-area:up}.touch [data-dir="left"]{grid-area:left}.touch [data-dir="down"]{grid-area:down}.touch [data-dir="right"]{grid-area:right}.overlay{position:absolute;inset:0;display:grid;place-items:center;background:#020617cc;color:#fff;text-align:center;padding:22px}.overlay[hidden]{display:none}.overlay div{max-width:390px;padding:20px;border:1px solid #67e8f9;border-radius:17px;background:#0f172ae8}.overlay button{padding:10px 18px;border:0;border-radius:10px;background:#14b8a6;color:#fff;font-weight:800}.side h2{margin-top:10px}.progress{height:9px;border-radius:9px;background:#cbd5e1;overflow:hidden}.progress i{display:block;height:100%;background:linear-gradient(90deg,#14b8a6,#facc15);width:0}.small{font-size:.9rem;color:#60708b}@media(max-width:820px){main{padding:8px}.layout{grid-template-columns:1fr}.side{order:-1}.hud{grid-template-columns:repeat(2,1fr)}}@media(prefers-color-scheme:dark){:root{background:#07111f;color:#edf5ff}.panel{background:#111c2f;border-color:#334966}.bar a,.bar button,.bar select,.touch button{background:#1d2b40;border-color:#57708f}.hud span,.card{background:#1b2b43}.hud small,.small{color:#a9bdd8}}
+  </style>
+</head>
+<body><main><section class="panel">
+  <div class="bar"><h1>Labyrinthe Glouton</h1><a href="../../index.html">Hub</a>
+    <label>Difficulté <select id="difficulty" data-help="Règle la vitesse et l'anticipation des esprits."><option value="easy">Facile</option><option value="normal" selected>Normale</option><option value="hard">Difficile</option><option value="extreme">Extrême</option></select></label>
+    <label>Format <select id="size" data-help="Les grands labyrinthes contiennent davantage de fruits et de détours."><option value="small">Compact</option><option value="medium" selected>Standard</option><option value="large">Grand</option></select></label>
+    <label>Mode <select id="mode" data-help="Classique utilise trois vies, Chrono limite le temps et Zéro faute ne donne qu'une vie."><option value="classic" selected>Classique</option><option value="timed">Chrono</option><option value="survival">Zéro faute</option></select></label>
+    <button id="start" class="primary">Nouvelle partie</button><button id="pause">Pause</button>
+  </div>
+  <div class="layout"><section>
+    <div class="hud"><span><small>Score</small><strong id="score">0</strong></span><span><small>Niveau</small><strong id="level">1</strong></span><span><small>Vies</small><strong id="lives">3</strong></span><span><small>Temps</small><strong id="time">—</strong></span></div>
+    <p id="status" class="status" aria-live="polite">Utilisez les flèches ou ZQSD pour vous déplacer.</p>
+    <div class="screen"><canvas id="screen" width="720" height="720" tabindex="0" aria-label="Labyrinthe de poursuite"></canvas><div id="overlay" class="overlay" hidden><div><h2 id="overlayTitle"></h2><p id="overlayText"></p><button id="replay">Rejouer</button></div></div></div>
+    <div class="touch" aria-label="Commandes tactiles"><button data-dir="up">▲</button><button data-dir="left">◀</button><button data-dir="down">▼</button><button data-dir="right">▶</button></div>
+  </section><aside class="side">
+    <div class="card"><strong id="pellets">0</strong> lumières restantes<div class="progress"><i id="progress"></i></div></div>
+    <h2>Esprits</h2><div class="legend"><span><i class="dot" style="background:#ef4444"></i>Chasseur</span><span><i class="dot" style="background:#ec4899"></i>Embusqueur</span><span><i class="dot" style="background:#22d3ee"></i>Patrouilleur</span><span><i class="dot" style="background:#f59e0b"></i>Prudent</span></div>
+    <h2>Règles</h2><ul class="rules"><li>Ramassez toutes les lumières pour ouvrir le niveau suivant.</li><li>Les quatre grandes sources rendent temporairement les esprits vulnérables.</li><li>Les fruits rares accordent un bonus croissant s'ils sont récupérés rapidement.</li><li>Chaque esprit poursuit selon une stratégie différente ; utilisez les embranchements.</li></ul>
+    <p class="small">Jeu original de chasse en labyrinthe, entièrement généré et exécuté localement.</p>
+  </aside></div>
+</section></main>
+<script src="../../shared/game-runtime.js?v=12"></script><script src="labyrinthe-glouton.js?v=1"></script><script src="../../shared/records.js?v=7"></script><script src="../../shared/options-help.js?v=4" data-options-help="true"></script>
+</body></html>

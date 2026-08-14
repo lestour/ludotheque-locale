@@ -2,7 +2,11 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#173c8e">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/hub-icon.svg" type="image/svg+xml">
   <title>Ludothèque locale</title>
   <style>
     :root { color-scheme: light dark; font-family: Arial, sans-serif; background: #f3f6fb; color: #122033; }
@@ -14,6 +18,8 @@
     .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }
     .toolbar h2 { margin: 0 auto 0 0; }
     button { border: 1px solid #b8c4d9; border-radius: 999px; background: #fff; color: #20304a; padding: 8px 14px; cursor: pointer; font: inherit; }
+    .catalog-control { min-height: 38px; padding: 7px 11px; border: 1px solid #b8c4d9; border-radius: 10px; background: #fff; color: #20304a; font: inherit; }
+    .hub-search { width: min(250px, 100%); }
     button:hover, button.selected { background: #233f95; border-color: #233f95; color: #fff; }
     .catalog { display: grid; grid-template-columns: repeat(auto-fit, minmax(245px, 1fr)); gap: 18px; }
     .game { --accent: #2447a8; position: relative; display: flex; flex-direction: column; min-height: 220px; padding: 20px; border: 1px solid #d9e1ee; border-radius: 18px; background: #fff; box-shadow: 0 8px 22px rgba(23, 45, 88, .08); overflow: visible; }
@@ -22,6 +28,7 @@
     .game.category-board { --accent:#047857; background:linear-gradient(145deg,#fff 0 56%,#c9f7dc 100%); border:3px solid #059669; box-shadow:0 9px 24px #05966930; }
     .game.category-grid { --accent:#1d4ed8; background:linear-gradient(145deg,#fff 0 56%,#dbeafe 100%); border:3px solid #2563eb; box-shadow:0 9px 24px #2563eb30; }
     .game.category-rhythm { --accent:#7e22ce; background:linear-gradient(145deg,#fff 0 56%,#eadcff 100%); border:3px solid #9333ea; box-shadow:0 9px 24px #9333ea30; }
+    .game.category-arcade { --accent:#c2410c; background:linear-gradient(145deg,#fff 0 56%,#ffedd5 100%); border:3px solid #ea580c; box-shadow:0 9px 24px #ea580c30; }
     .game h3 { margin: 12px 0 8px; font-size: 22px; }
     .game p { margin: 0 0 18px; color: #53647d; line-height: 1.45; }
     .game footer { display: flex; align-items: center; gap: 10px; margin-top: auto; }
@@ -40,29 +47,68 @@
     .variant-menu { position: absolute; z-index: 20; top: calc(100% + 5px); left: 0; right: 0; max-height: 280px; overflow-y: auto; padding: 10px; border: 1px solid #aebbd0; border-radius: 12px; background: #fff; box-shadow: 0 14px 32px rgba(15, 23, 42, .24); }
     .variant-menu label { display: flex; align-items: center; gap: 7px; padding: 6px 5px; color: #53647d; font-size: 13px; cursor: pointer; }
     .variant-menu label:hover { border-radius: 7px; background: #edf3ff; }
+    .profile-picker { display: grid; gap: 5px; margin-bottom: 15px; }
+    .multiplayer-badge { width:fit-content; margin:-7px 0 14px; padding:5px 8px; border:1px solid color-mix(in srgb,var(--accent) 40%,#cbd5e1); border-radius:999px; background:color-mix(in srgb,var(--accent) 10%,white); color:color-mix(in srgb,var(--accent) 80%,#17243a); font-size:12px; font-weight:800; }
+    .data-dialog { width: min(760px, calc(100vw - 24px)); max-height: min(760px, calc(100dvh - 24px)); padding: 0; border: 1px solid #94a3b8; border-radius: 16px; background: #fff; color: #17243a; box-shadow: 0 24px 80px #0008; }
+    .data-dialog::backdrop { background: #07111fcc; backdrop-filter: blur(3px); }
+    .data-dialog > header { display: flex; align-items: center; gap: 12px; padding: 16px 18px; background: #e8efff; color: #17243a; }
+    .data-dialog > header h2 { margin: 0 auto 0 0; }
+    .data-dialog > header button { padding: 5px 10px; }
+    .data-dialog-content { padding: 18px; overflow: auto; max-height: calc(100dvh - 120px); }
+    .save-list { display: grid; gap: 10px; padding: 0; list-style: none; }
+    .save-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 12px; align-items: center; padding: 12px; border: 1px solid #cbd5e1; border-radius: 11px; }
+    .save-item small { color: #64748b; }
+    .save-actions { display: flex; gap: 7px; grid-row: 1 / 3; grid-column: 2; }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(110px, 1fr)); gap: 10px; margin-bottom: 18px; }
+    .stats-card { padding: 13px; border-radius: 11px; background: #e8efff; text-align: center; }.stats-card strong { display: block; font-size: 24px; }
+    .stats-table { width: 100%; border-collapse: collapse; }.stats-table th,.stats-table td { padding: 9px; border-bottom: 1px solid #cbd5e1; text-align: left; }.stats-table th:not(:first-child),.stats-table td:not(:first-child) { text-align: right; }
     .planned .tag { background: #edf0f5; color: #667085; }
     .open { display: inline-block; border-radius: 10px; padding: 9px 12px; background: #1f4aa8; color: #fff; text-decoration: none; font-weight: 700; }
     .open:hover { background: #173c8e; }
     .muted { color: #64748b; font-size: 14px; }
+    .server-error { padding: 10px 12px; border: 1px solid #dc2626; border-radius: 10px; color: #991b1b; background: #fee2e2; font-weight: 700; }
+    .lan-hub { margin-bottom: 22px; padding: 18px; border: 2px solid #0f766e; border-radius: 16px; background: #ccfbf1; color: #134e4a; box-shadow: 0 8px 22px #0f766e22; }
+    .lan-hub h2 { margin: 0 0 8px; }.lan-hub ol { margin: 10px 0; line-height: 1.6; }.lan-hub code { display: inline-block; padding: 6px 9px; border-radius: 7px; background: #fff; color: #134e4a; user-select: all; }
     .empty { padding: 30px; border: 1px dashed #aebbd0; border-radius: 14px; color: #64748b; text-align: center; }
     @media (prefers-color-scheme: dark) {
       :root { background: #101827; color: #e6edf8; }
       header { background: linear-gradient(135deg, #111f4c, #351451); }
       header p { color: #d9e2ff; }
-      button { background: #1b283d; border-color: #465977; color: #e6edf8; }
+      button,.catalog-control { background: #1b283d; border-color: #465977; color: #e6edf8; }
       .game { background: #172235; border-color: #34445e; box-shadow: 0 8px 22px rgba(0,0,0,.28); }
       .game.category-cards { background:linear-gradient(145deg,#172235,#571c31); border-color:#fb7185; }
       .game.category-board { background:linear-gradient(145deg,#172235,#14532d); border-color:#4ade80; }
       .game.category-grid { background:linear-gradient(145deg,#172235,#1e3a8a); border-color:#60a5fa; }
       .game.category-rhythm { background:linear-gradient(145deg,#172235,#581c87); border-color:#c084fc; }
+      .game.category-arcade { background:linear-gradient(145deg,#172235,#7c2d12); border-color:#fb923c; }
       .game-icon { background: color-mix(in srgb, var(--accent) 28%, #172235); }
+      .multiplayer-badge { background:color-mix(in srgb,var(--accent) 22%,#172235); color:#f8fafc; }
       .card-stack::before, .card-stack::after { background: #263447; }
       .variant-menu { background: #1b283d; border-color: #536681; }
       .variant-menu label { color: #d5deeb; }
       .variant-menu label:hover { background: #293a52; }
+      .data-dialog { background: #172235; color: #e6edf8; border-color: #536681; }.data-dialog > header { background: #263447; color: #e6edf8; }.save-item { border-color: #465977; }.save-item small { color: #afbdd2; }
+      .stats-card { background:#263447 }.stats-table th,.stats-table td { border-color:#465977 }
       .game p, .muted, .empty { color: #afbdd2; }
+      .server-error { color: #fecaca; background: #7f1d1d; border-color: #f87171; }
+      .lan-hub { background: #123b3a; color: #ccfbf1; border-color: #2dd4bf; }.lan-hub code { background: #0f2929; color: #ccfbf1; }
       .planned .tag { background: #29364a; color: #c0cadd; }
       .empty { border-color: #536681; }
+    }
+    @media (max-width: 640px) {
+      header { padding: max(28px, env(safe-area-inset-top)) 16px 28px; }
+      header p { font-size: 16px; }
+      main { width: 100%; padding: 18px 10px max(38px, env(safe-area-inset-bottom)); box-sizing: border-box; }
+      .toolbar { gap: 8px; }
+      .toolbar h2 { width: 100%; }
+      button, .open { min-height: 42px; box-sizing: border-box; }
+      .catalog { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+      .game { min-height: 0; padding: 15px; border-radius: 15px; }
+      .game footer { flex-wrap: wrap; }
+      .variant-menu { position: fixed; z-index: 1000; inset: auto 10px max(10px, env(safe-area-inset-bottom)) 10px; max-height: min(68vh, 540px); }
+      .variant-menu label { min-height: 38px; font-size: 15px; }
+      .lan-hub { padding: 13px; overflow: hidden; }
+      .lan-hub code { display: block; max-width: 100%; overflow-wrap: anywhere; box-sizing: border-box; }
     }
   </style>
 </head>
@@ -79,11 +125,28 @@
       <button data-filter="cards">Cartes</button>
       <button data-filter="board">Plateau</button>
       <button data-filter="rhythm">Rythme</button>
+      <button data-filter="arcade">Arcade</button>
+      <input id="gameSearch" class="catalog-control hub-search" type="search" placeholder="Rechercher un jeu…" aria-label="Rechercher dans le catalogue">
+      <label>Trier <select id="gameSort" class="catalog-control"><option value="catalog">Ordre recommandé</option><option value="title">Nom · A à Z</option><option value="titleDesc">Nom · Z à A</option><option value="category">Catégorie puis nom</option><option value="status">Jouables en premier</option><option value="recent">Ouverts récemment</option><option value="popular">Les plus ouverts</option></select></label>
+      <label>Profil <select id="activeProfile"></select></label>
+      <button id="addProfile" type="button">Nouveau profil</button>
+      <button id="deleteProfile" type="button">Supprimer le profil</button>
+      <button id="manageSaves" type="button">Parties sauvegardées</button>
+      <button id="showStatistics" type="button">Statistiques</button>
+      <button id="exportData" type="button">Exporter mes données</button>
+      <button id="importData" type="button">Importer</button>
+      <a class="open" href="replay.html">Lire un replay</a>
+      <input id="importDataFile" type="file" accept="application/json,.json" hidden>
     </section>
-    <div id="recentGame" class="muted" style="margin-bottom:18px"></div>
+    <div id="recentGame" class="muted"></div>
+    <p id="catalogSummary" class="muted" aria-live="polite" style="margin:8px 0 18px"></p>
     <section id="gameCatalog" class="catalog" aria-live="polite"></section>
-    <p class="muted" style="margin-top:28px">Projet indépendant, non affilié aux éditeurs des jeux ayant inspiré certains mécanismes. <a href="LEGAL.md">Informations juridiques</a> · <a href="THIRD_PARTY_NOTICES.md">Composants tiers</a> · <a href="LICENSE">Licence du code</a></p>
+    <p class="muted" style="margin-top:28px">Projet indépendant, non affilié aux éditeurs des jeux ayant inspiré certains mécanismes. <a href="tests/index.html">Diagnostic</a> · <a href="LEGAL.md">Informations juridiques</a> · <a href="THIRD_PARTY_NOTICES.md">Composants tiers</a> · <a href="LICENSE">Licence du code</a></p>
   </main>
-  <script src="hub.js?v=22"></script>
+  <dialog id="saveDialog" class="data-dialog"><header><h2>Parties sauvegardées</h2><button type="button" data-close-save aria-label="Fermer">×</button></header><div class="data-dialog-content"><p id="saveSummary" class="muted"></p><ul id="saveList" class="save-list"></ul></div></dialog>
+  <dialog id="statisticsDialog" class="data-dialog"><header><h2>Statistiques du profil</h2><button type="button" data-close-statistics aria-label="Fermer">×</button></header><div id="statisticsContent" class="data-dialog-content"></div></dialog>
+  <script src="shared/game-runtime.js?v=12"></script>
+  <script src="hub.js?v=37"></script>
+  <script src="shared/options-help.js?v=3" data-options-help="true"></script>
 </body>
 </html>

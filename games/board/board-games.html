@@ -1,3 +1,195 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jeux de plateau</title><style>
-:root{color-scheme:light dark;font-family:Arial,sans-serif;background:#edf2f8;color:#17243a}body{margin:0;min-height:100vh}main{max-width:1440px;margin:auto;padding:22px}.panel{background:#fff;border:1px solid #d7e0ed;border-radius:18px;padding:18px;box-shadow:0 10px 32px #0f172a15}.toolbar,.actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:12px}h1{margin:0 auto 0 0}button,a,select{font:inherit;color:inherit;background:#fff;border:1px solid #9baac0;border-radius:9px;padding:8px 11px;cursor:pointer;text-decoration:none}button:hover,a:hover{background:#2447a8;color:#fff}button:disabled{opacity:.48;cursor:not-allowed}.muted,#log{color:#5b6b83;line-height:1.5}.game-layout{display:grid;grid-template-columns:minmax(0,1fr) 292px;gap:18px}.board-wrap{min-width:0;overflow:auto;padding:5px}.square-board{width:min(800px,92vw);aspect-ratio:1;margin:auto;display:grid;grid-template:repeat(11,1fr)/repeat(11,1fr);background:#e5dfcb;border:5px solid #33261e;box-shadow:0 9px 22px #0003}.space{position:relative;min-width:0;overflow:hidden;border:1px solid #806a5d;background:#f9f1dd;font-size:clamp(7px,1vw,11px);font-weight:700;display:flex;align-items:center;justify-content:center;text-align:center;padding:2px}.space .band{position:absolute;inset:0 0 auto;height:19%;background:var(--band,#d0d5dd)}.space .name{position:relative;margin-top:9%;word-break:break-word}.space.corner{font-size:clamp(10px,1.7vw,16px);background:#e3e0cf}.space.chance{background:#f6d6e9}.space.chest{background:#cae7f2}.space.tax{background:#ffe0d7}.token{position:relative;z-index:2;width:15px;height:15px;border:2px solid #fff;border-radius:50%;background:var(--token);box-shadow:0 1px 3px #0008;color:#fff;font-size:8px;display:inline-grid;place-items:center;margin:1px}.center-art{grid-area:2/2/11/11;display:grid;place-items:center;overflow:hidden;background:linear-gradient(135deg,#f4df9c,#e9b674);border:2px solid #734c2f;text-align:center}.center-art h2{font-size:clamp(24px,5vw,65px);margin:0;letter-spacing:-2px}.center-art p{max-width:55%;margin:5px;font-size:clamp(10px,1.4vw,16px)}.world-art{background:radial-gradient(ellipse at 27% 43%,#76b86b 0 13%,transparent 14%),radial-gradient(ellipse at 45% 30%,#e5c253 0 13%,transparent 14%),radial-gradient(ellipse at 60% 55%,#d78b59 0 15%,transparent 16%),radial-gradient(ellipse at 76% 44%,#8ec1d5 0 11%,transparent 12%),linear-gradient(#86c9dd,#4f9fbe);color:#fff;text-shadow:0 2px 3px #17334c}.calendar-board{max-width:980px;margin:auto;padding:14px;border:5px solid #274c77;border-radius:18px;background:#eaf3fc}.calendar-title{text-align:center;font-size:clamp(22px,4vw,42px);font-weight:900;color:#1f4f81;margin-bottom:8px}.weekdays,.calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}.weekday{text-align:center;font-weight:800;color:#52708c}.day{min-height:79px;border:1px solid #8ba4bc;border-radius:8px;padding:5px;background:#fff;position:relative;font-size:12px;font-weight:700}.day .daynum{font-size:17px;color:#264b6d}.day.mail{background:#ffe9a8}.day.deal{background:#d8f2d1}.day.lottery{background:#eddbf7}.day.bill{background:#ffd9d4}.day.payday{background:#a9e6c4}.day .tokens{position:absolute;right:2px;bottom:2px}.side{border:1px solid #d5e0ec;border-radius:13px;padding:13px;background:#f7fafc;align-self:start}.players{display:grid;gap:7px}.player{padding:8px;border-radius:8px;border:1px solid #d5e0ec;background:#fff}.player.active{outline:3px solid #f0b429}.player small{display:block;margin-top:3px}.cards{display:flex;gap:8px;flex-wrap:wrap}.card{min-width:120px;max-width:170px;min-height:80px;padding:9px;border:2px solid #36516f;border-radius:10px;background:#fff;text-align:left}.card.resource{border-top:12px solid var(--resource);font-size:12px}.card.selected{outline:4px solid #a855f7}.dice{font-size:32px;font-weight:900;color:#1e4f8b}.notice{padding:10px;border-radius:9px;background:#e8f0ff;color:#173c8e;font-weight:700}.modal{position:fixed;inset:0;z-index:9;background:#0008;display:grid;place-items:center;padding:20px}.modal>section{max-width:520px;background:#fff;color:#17243a;border-radius:15px;padding:20px;box-shadow:0 18px 45px #0007}.modal h2{margin-top:0}@media(max-width:880px){.game-layout{grid-template-columns:1fr}.side{order:-1}.day{min-height:55px}}@media(prefers-color-scheme:dark){:root{background:#101827;color:#e8eef8}.panel,.side,.player,.day,.card{background:#172235;border-color:#3b4d69}.muted,#log,.player small{color:#b6c4d6}.calendar-board{background:#20364c;border-color:#6fa1cc}.weekday,.calendar-title{color:#c7e3ff}.space{background:#28384a;border-color:#657890}.space.corner{background:#3a4b5e}.center-art{border-color:#d2a678}.modal>section{background:#172235;color:#e8eef8}button,a,select{background:#263447;color:#f1f5fb}}
-</style></head><body><main><section class="panel"><div class="toolbar"><h1 id="title"></h1><a href="../../index.html">Hub</a><button id="newGame">Nouvelle partie</button><label class="muted">Jeu <select id="variant"><option value="estate">Empire Immobilier</option><option value="world">Marchés du Monde</option><option value="payday">Fin de Mois</option></select></label><label class="muted">Skin <select id="boardSkin"><option value="france">France · villes</option><option value="usa">États-Unis</option><option value="uk">Royaume-Uni</option><option value="galaxy">Galaxie</option><option value="fantasy">Royaumes fantastiques</option><option value="academy">Académie magique</option></select></label><label class="muted">Joueurs <select id="playerCount"><option>2</option><option selected>3</option><option>4</option></select></label></div><div id="rules" class="muted"></div><div id="status" class="notice"></div><div class="game-layout"><section><div id="board" class="board-wrap"></div><div class="actions"><button id="roll">Lancer les dés</button><button id="buy" hidden>Acheter</button><button id="skip" hidden>Passer</button><button id="build" hidden>Construire</button><span id="dice" class="dice">—</span></div><div id="offers" class="cards"></div><ul id="log"></ul></section><aside class="side"><h2>Joueurs</h2><div id="players" class="players"></div><h2 id="assetsTitle">Actifs</h2><div id="assets" class="cards"></div></aside></div></section></main><script src="board-games.js?v=5"></script></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Jeux de plateau originaux</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Arial, sans-serif; background: #edf2f8; color: #17243a; }
+    body { margin: 0; min-height: 100vh; }
+    main { max-width: 1480px; margin: auto; padding: 22px; }
+    .panel { background: #fff; border: 1px solid #d7e0ed; border-radius: 18px; padding: 18px; box-shadow: 0 10px 32px #0f172a15; }
+    .toolbar, .actions, .cards, .asset-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 12px; }
+    h1 { margin: 0 auto 0 0; }
+    button, a, select, input { box-sizing: border-box; font: inherit; color: inherit; background: #fff; border: 1px solid #9baac0; border-radius: 9px; padding: 8px 11px; cursor: pointer; text-decoration: none; }
+    button:hover, a:hover { background: #2447a8; color: #fff; }
+    button:disabled { opacity: .48; cursor: not-allowed; }
+    .muted, #log { color: #5b6b83; line-height: 1.5; }
+    .notice { min-height: 24px; padding: 10px; border-radius: 9px; background: #e8f0ff; color: #173c8e; font-weight: 700; }
+    .game-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 18px; }
+    .board-wrap { min-width: 0; overflow: auto; padding: 8px; }
+    .side { border: 1px solid #d5e0ec; border-radius: 13px; padding: 13px; background: #f7fafc; align-self: start; max-height: calc(100vh - 44px); overflow: auto; }
+    .players { display: grid; gap: 8px; }
+    .player { position: relative; padding: 9px; border-radius: 9px; border: 1px solid #d5e0ec; background: #fff; overflow: hidden; }
+    .player.active { outline: 3px solid #f0b429; }
+    .player small { display: block; margin-top: 3px; }
+    .player-assets { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 7px; }
+    .mini-asset { padding: 3px 5px; border-radius: 6px; background: #e8eef7; color: #25364f; font-size: 10px; border-left: 5px solid var(--asset-color, #64748b); }
+    .money-change { position: absolute; z-index: 8; right: 8px; top: 8px; font-size: 19px; font-weight: 900; animation: moneyFloat 1.2s ease-out forwards; }
+    .money-change.gain { color: #15803d; }
+    .money-change.loss { color: #dc2626; }
+    @keyframes moneyFloat { 0% { opacity: 0; transform: translateY(15px) scale(.7); } 25% { opacity: 1; transform: translateY(0) scale(1.1); } 100% { opacity: 0; transform: translateY(-32px); } }
+    .token { position: relative; z-index: 5; width: 16px; height: 16px; border: 2px solid #fff; border-radius: 50%; background: var(--token); box-shadow: 0 1px 3px #0008; color: #fff; font-size: 8px; display: inline-grid; place-items: center; margin: 1px; }
+    .square-board { width: min(1020px, 96vw); aspect-ratio: 1; margin: auto; display: grid; grid-template: repeat(11, 1fr) / repeat(11, 1fr); background: #e5dfcb; border: 5px solid #33261e; box-shadow: 0 9px 22px #0003; }
+    .space { position: relative; min-width: 0; overflow: hidden; border: 1px solid #806a5d; background: #f9f1dd; color: #17243a; font-size: clamp(7px, 1vw, 11px); font-weight: 700; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 2px; }
+    .space.corner { font-size: clamp(10px, 1.7vw, 16px); background: #e3e0cf; }
+    .space.chance { background: #f6d6e9; }
+    .space.chest, .space.community { background: #cae7f2; }
+    .space.tax { background: #ffe0d7; }
+    .space .name { position: relative; z-index: 2; margin: 0 8%; overflow-wrap: anywhere; }
+    .band { position: absolute; z-index: 1; background: var(--band, #d0d5dd); }
+    .estate-space.west .band { inset: 0 0 0 auto; width: 18%; }
+    .estate-space.north .band { inset: auto 0 0; height: 18%; }
+    .estate-space.east .band { inset: 0 auto 0 0; width: 18%; }
+    .estate-space.south .band { inset: 0 0 auto; height: 18%; }
+    .owner-mark { position: absolute; z-index: 6; min-width: 19px; height: 19px; display: grid; place-items: center; border-radius: 50%; background: var(--owner); color: #fff; border: 2px solid #fff; font-size: 10px; font-weight: 900; font-style: normal; box-shadow: 0 1px 4px #0008; }
+    .estate-space .owner-mark { right: 3px; bottom: 3px; }
+    .owner-houses { position: absolute; z-index: 4; left: 3px; bottom: 2px; font-size: clamp(8px, 1vw, 13px); }
+    .space.just-bought { animation: boughtPulse .9s ease-out; }
+    .space.just-built { animation: buildPulse .9s ease-out; }
+    @keyframes boughtPulse { 35% { box-shadow: inset 0 0 0 8px #22c55e; transform: scale(1.04); } }
+    @keyframes buildPulse { 35% { box-shadow: inset 0 0 0 8px #f59e0b; transform: scale(1.04); } }
+    .center-art { grid-area: 2 / 2 / 11 / 11; display: grid; place-items: center; overflow: hidden; background: linear-gradient(135deg, #f4df9c, #e9b674); border: 2px solid #734c2f; text-align: center; }
+    .center-art h2 { font-size: clamp(24px, 5vw, 65px); margin: 0; letter-spacing: -2px; }
+    .center-art p { max-width: 68%; margin: 5px; font-size: clamp(10px, 1.4vw, 16px); }
+    .estate-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin: 8px auto; max-width: 86%; font-size: clamp(6px, .75vw, 10px); text-align: left; }
+    .estate-legend div { display: flex; align-items: center; gap: 5px; min-width: 0; }
+    .estate-legend i { width: 18px; height: 9px; flex: 0 0 auto; border: 1px solid #17243a; background: var(--group-color); }
+    .estate-legend span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .world-board, .payday-board { position: relative; width: min(860px, 94vw); aspect-ratio: 1; margin: auto; border: 6px solid #173b5d; box-shadow: 0 10px 28px #0004; background: #e6c87f; }
+    .world-ring, .payday-ring { position: absolute; display: grid; gap: 1px; }
+    .world-ring { grid-template: repeat(var(--ring), 1fr) / repeat(var(--ring), 1fr); }
+    .world-ring.outer { inset: 0; }
+    .world-ring.inner { inset: 11%; }
+    .world-space { border-color: #473a2c; background: #f5e3ba; }
+    .world-space.europe { background: #b8dcf3; }
+    .world-space.africa { background: #f7d17d; }
+    .world-space.asia { background: #f1a29c; }
+    .world-space.oceania { background: #c7b4e6; }
+    .world-space.america { background: #9bd3ae; }
+    .world-space.resource { background: #d8bf91; }
+    .world-space.special { background: #f8f2df; }
+    .world-ownership { display: flex; gap: 1px; position: absolute; z-index: 4; bottom: 2px; right: 2px; }
+    .world-share { width: 13px; height: 13px; border-radius: 50%; display: grid; place-items: center; background: var(--owner); color: #fff; border: 1px solid #fff; font-size: 7px; }
+    .world-map { position: absolute; inset: 27%; overflow: hidden; border: 4px solid #e9dc9d; border-radius: 50%; background: radial-gradient(circle at 50% 0, #e8f7ff 0 10%, #74b8dc 11% 100%); color: #fff; text-align: center; text-shadow: 0 2px 3px #163a56; }
+    .world-map::before { content: ''; position: absolute; inset: 11%; border-radius: 49% 43% 55% 36%; background: radial-gradient(ellipse at 20% 30%, #7aae63 0 16%, transparent 17%), radial-gradient(ellipse at 48% 27%, #d5bc56 0 18%, transparent 19%), radial-gradient(ellipse at 64% 53%, #d47e55 0 20%, transparent 21%), radial-gradient(ellipse at 36% 68%, #6ca66c 0 16%, transparent 17%); }
+    .world-map h2 { position: relative; margin: 38% 0 0; font-size: clamp(18px, 4vw, 43px); }
+    .world-map p { position: relative; font-size: clamp(8px, 1.3vw, 14px); }
+    .world-map.galaxy { background: radial-gradient(circle at 50% 45%, #462a77, #111827 68%, #020617); }
+    .world-map.fantasy { background: radial-gradient(ellipse, #d8b762, #657c41 58%, #294936); }
+    .world-map.academy { background: radial-gradient(circle, #e6d08a, #4c275d 62%, #1d1635); }
+    .world-map.pirates { background: radial-gradient(circle at 55% 45%, #f5d38a 0 9%, #2685a1 10% 48%, #173e58 72%); }
+    .payday-board { border-color: #1e4f81; background: linear-gradient(135deg, #53a7dc, #bde7f7); }
+    .payday-ring { grid-template: repeat(var(--rows), 1fr) / repeat(var(--columns), 1fr); }
+    .payday-ring.outer { inset: 4%; }
+    .payday-ring.inner { inset: 23%; }
+    .payday-space { position: relative; min-width: 0; overflow: hidden; border: 1px solid #1d4f72; background: #f9f6dd; color: #1c3951; font-size: clamp(7px, .9vw, 11px); font-weight: 800; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+    .payday-space b { position: absolute; left: 3px; top: 2px; }
+    .payday-space.mail { background: #ffe69c; }
+    .payday-space.deal, .payday-space.sale { background: #9ee4bb; }
+    .payday-space.lottery, .payday-space.dice { background: #e3b7ec; }
+    .payday-space.election, .payday-space.clock { background: #ffb4ad; }
+    .payday-space.payday { background: #9ad8e9; }
+    .payday-center { position: absolute; inset: 38%; z-index: 2; display: grid; place-items: center; text-align: center; border: 4px solid #e2ba4e; border-radius: 50%; background: radial-gradient(circle, #fff8bd 0 26%, #f3b85c 27% 100%); color: #1f4f81; }
+    .payday-center h2 { margin: 8px 0 0; font-size: clamp(18px, 4vw, 40px); }
+    .payday-arrow { position: absolute; z-index: 5; font-size: clamp(22px, 4vw, 44px); color: #e24d53; text-shadow: 0 2px #fff; font-weight: 900; }
+    .payday-arrow.in { left: 17%; bottom: 23%; }
+    .payday-arrow.out { right: 17%; top: 23%; }
+    .card { min-width: 120px; max-width: 190px; min-height: 80px; padding: 9px; border: 2px solid #36516f; border-radius: 10px; background: #fff; color: #17243a; text-align: left; }
+    .card.resource { border-top: 12px solid var(--resource); font-size: 12px; }
+    .card.special-card { border-color: #7c3aed; background: #f3e8ff; }
+    .card .owner-line { display: flex; align-items: center; gap: 5px; margin-top: 5px; }
+    .wheel-zone { display: flex; align-items: center; gap: 12px; min-height: 92px; }
+    .wheel { --rotation: 0deg; position: relative; width: 78px; height: 78px; border: 4px solid #9a5b11; border-radius: 50%; background: conic-gradient(#facc15 0 16.66%, #60a5fa 0 33.33%, #f87171 0 50%, #86efac 0 66.66%, #c4b5fd 0 83.33%, #fb923c 0); transform: rotate(var(--rotation)); transition: transform 1.05s cubic-bezier(.12,.75,.18,1); box-shadow: 0 4px 9px #0004; }
+    .wheel::after { content: attr(data-value); position: absolute; inset: 19px; display: grid; place-items: center; border-radius: 50%; background: #fff; color: #17243a; font-size: 26px; font-weight: 900; transform: rotate(calc(-1 * var(--rotation))); transition: transform 1.05s cubic-bezier(.12,.75,.18,1); }
+    .wheel-pointer { width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent; border-top: 17px solid #b91c1c; margin-left: 30px; margin-bottom: -5px; }
+    .dice-result { font-size: 26px; font-weight: 900; color: #1e4f8b; min-width: 100px; }
+    .board-modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgba(8, 20, 43, .18); backdrop-filter: blur(.5px); }
+    .board-modal > article { width: min(470px, calc(100vw - 50px)); padding: 26px; border: 4px solid var(--modal-color, #d97706); border-radius: 18px; background: #fff; color: #17243a; text-align: center; box-shadow: 0 18px 48px #0008; }
+    .board-modal h2 { margin-top: 0; }
+    .board-modal .modal-actions { display: flex; justify-content: center; gap: 9px; flex-wrap: wrap; margin-top: 16px; }
+    .trade-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; text-align: left; }
+    .trade-grid label { display: grid; gap: 4px; }
+    .board-option[hidden] { display: none !important; }
+    .asset-zone { margin-top: 18px; padding: 14px; border: 1px solid #d5e0ec; border-radius: 13px; background: #f7fafc; }
+    #assets { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; align-items: start; }
+    .resource-stack { position: relative; min-height: 128px; padding: 8px 8px 8px 42px; border-radius: 11px; background: #e8eef7; overflow: visible; }
+    .resource-stack h3 { margin: 0 0 7px; font-size: 14px; }
+    .resource-stack h3 i { display: inline-block; width: 11px; height: 11px; margin-right: 6px; border-radius: 50%; background: var(--resource); }
+    .resource-stack-cards { position: relative; min-height: 86px; }
+    .resource-title-card { position: absolute; top: 0; width: 126px; min-height: 76px; box-sizing: border-box; padding: 8px 7px 7px 34px; border: 2px solid #36516f; border-top: 10px solid var(--resource); border-radius: 9px; background: #fff; color: #17243a; box-shadow: 2px 3px 5px #0004; font-size: 11px; }
+    .resource-title-card .share-tab { position: absolute; left: -31px; top: 13px; width: 38px; height: 38px; display: grid; place-items: center; border: 2px solid #36516f; border-right: 0; border-radius: 7px 0 0 7px; background: var(--resource); color: #fff; font-weight: 900; }
+    details.rules-panel { margin: 10px 0 14px; padding: 9px 12px; border: 1px solid #c3d1e1; border-radius: 10px; background: #f7fafc; }
+    details.rules-panel summary { cursor: pointer; font-weight: 900; }
+    @media (max-width: 900px) { .game-layout { grid-template-columns: 1fr; } .side { order: -1; max-height: none; } }
+    @media (prefers-color-scheme: dark) {
+      :root { background: #101827; color: #e8eef8; }
+      .panel, .side, .player, .asset-zone, details.rules-panel { background: #172235; border-color: #3b4d69; }
+      .muted, #log, .player small { color: #b6c4d6; }
+      .notice { background: #20385d; color: #d8e8ff; }
+      button, a, select, input { background: #263447; color: #f1f5fb; border-color: #60718a; }
+      .space, .space.corner, .world-space, .payday-space { color: #17243a; }
+      .center-art { color: #17243a; border-color: #d2a678; }
+      .mini-asset { background: #dbe4f1; color: #17243a; }
+      .card { background: #eef4fd; color: #17243a; border-color: #71839c; }
+      .card.special-card { background: #eadcff; }
+      .wheel::after { background: #eef4fd; }
+      .dice-result { color: #bfdbfe; }
+      .board-modal > article { background: #eef4fd; color: #17243a; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="panel">
+      <div class="toolbar">
+        <h1 id="title">Jeux de plateau</h1>
+        <a href="../../index.html">Hub</a>
+        <button id="newGame">Nouvelle partie</button>
+        <label class="muted">Jeu
+          <select id="variant"><option value="estate">Empire Immobilier</option><option value="world">Marchés du Monde</option><option value="payday">Fin de Mois</option></select>
+        </label>
+        <label class="muted">Thème
+          <select id="boardSkin"><option value="france">France · villes</option></select>
+        </label>
+        <label class="muted">Joueurs
+          <select id="playerCount"><option>2</option><option selected>3</option><option>4</option></select>
+        </label>
+        <label class="board-option" data-for="estate"><input id="estateAuctions" type="checkbox" checked> enchères des propriétés refusées</label>
+        <label class="board-option" data-for="estate"><input id="estateParkingPot" type="checkbox"> cagnotte du parc gratuit</label>
+        <label class="board-option" data-for="world">Titres par pays <select id="worldCountryMode"><option value="multiple" selected>jusqu’à 6 productions</option><option value="single">une seule ressource</option></select></label>
+        <label class="board-option" data-for="world">Royalties dès <select id="worldRoyaltyThreshold"><option value="20">20 %</option><option value="30" selected>30 %</option><option value="40">40 %</option></select></label>
+        <label class="board-option" data-for="world"><input id="worldEarlyTrades" type="checkbox"> associations et échanges anticipés</label>
+        <label class="board-option" data-for="payday">Mois <select id="paydayMonths"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="6">6</option></select></label>
+      </div>
+      <details class="rules-panel" open><summary>Règles du jeu</summary><p id="rules" class="muted"></p></details>
+      <div id="status" class="notice"></div>
+      <div class="game-layout">
+        <section>
+          <div id="board" class="board-wrap"></div>
+          <div class="actions wheel-zone">
+            <button id="roll">Tourner la roue</button>
+            <div><div class="wheel-pointer"></div><div id="wheel" class="wheel" data-value="—"></div></div>
+            <span id="dice" class="dice-result">—</span>
+            <button id="buy" hidden>Acheter</button>
+            <button id="skip" hidden>Passer</button>
+            <button id="build" hidden>Construire</button>
+            <button id="trade" hidden>Proposer un échange</button>
+          </div>
+          <div id="offers" class="cards"></div>
+          <section class="asset-zone"><h2 id="assetsTitle">Vos actifs</h2><div id="assets"></div></section>
+          <ul id="log"></ul>
+        </section>
+        <aside class="side">
+          <h2>Joueurs et possessions</h2>
+          <div id="players" class="players"></div>
+        </aside>
+      </div>
+    </section>
+  </main>
+  <div id="modalHost"></div>
+  <script src="../../shared/game-runtime.js?v=3"></script>
+  <script type="module" src="board-games.js?v=8"></script>
+  <script src="../../shared/options-help.js?v=3" data-options-help="true"></script>
+</body>
+</html>

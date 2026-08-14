@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Assaut Stellaire</title>
+  <style>
+    :root{color-scheme:light dark;font-family:Arial,sans-serif;background:#eaf1fb;color:#17243a}*{box-sizing:border-box}body{margin:0;min-height:100vh}main{max-width:1320px;margin:auto;padding:18px}.panel{padding:16px;border:1px solid #c4d2e7;border-radius:17px;background:#fff;box-shadow:0 10px 32px #163b6d18}.toolbar,.actions,.mobile-controls,.hud-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.toolbar h1{margin:0 auto 0 0}button,a,select,input{font:inherit;color:inherit}button,a,select{padding:8px 11px;border:1px solid #849bbb;border-radius:9px;background:#fff;text-decoration:none;cursor:pointer}button:hover,a:hover,.primary{border-color:#2563eb;background:#2563eb;color:#fff}.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;margin-top:14px}.game-column{min-width:0}.screen{position:relative;overflow:hidden;border:3px solid #334155;border-radius:15px;background:#020617;box-shadow:inset 0 0 30px #020617}.screen canvas{display:block;width:100%;height:auto;aspect-ratio:3/2;touch-action:none}.overlay{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:20px;background:#020617c9;color:#fff;text-align:center;backdrop-filter:blur(3px)}.overlay[hidden]{display:none}.upgrade-card{width:min(720px,100%);padding:22px;border:1px solid #64748b;border-radius:17px;background:#111d35;box-shadow:0 18px 60px #000}.upgrade-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}.upgrade-choice{min-height:132px;display:grid;align-content:center;gap:7px;padding:13px;border:2px solid #526987;border-radius:13px;background:#1e2f4d;color:#fff}.upgrade-choice strong{font-size:18px}.upgrade-choice span{color:#c8d7eb;font-size:13px;line-height:1.4}.hud{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0}.hud-item{padding:8px 10px;border-radius:10px;background:#e8f0fb}.hud-item strong{display:block;font-size:19px}.meter{height:10px;overflow:hidden;border-radius:99px;background:#cbd5e1}.meter i{display:block;height:100%;transition:width .18s}.health i{background:#ef4444}.shield i{background:#38bdf8}.experience i{background:#a855f7}.mobile-controls{justify-content:center;margin-top:11px}.mobile-controls button{min-width:72px;min-height:48px;font-weight:900}.mobile-controls button.active{background:#f59e0b;color:#17243a}.side{align-self:start}.side h2{margin:15px 0 7px}.side h2:first-child{margin-top:0}.status{min-height:25px;font-weight:800}.stat-list,.rules,.arsenal{display:grid;gap:7px;padding:0;list-style:none}.stat-list li,.arsenal li{display:flex;justify-content:space-between;gap:10px;padding:7px 9px;border-radius:8px;background:#edf4ff}.rules{padding-left:19px;line-height:1.48}.rules li{padding-left:2px}.event-log{min-height:68px;padding:9px;border-radius:9px;background:#e0edff;color:#294363;font-size:13px;line-height:1.45}.legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;font-size:12px}.legend span{padding:6px;border-radius:7px;background:#eef4fb}.key{display:inline-grid;min-width:24px;place-items:center;padding:2px 5px;border:1px solid #8294ae;border-radius:5px;background:#fff;font-weight:900}@media(max-width:900px){main{padding:8px}.layout{grid-template-columns:1fr}.side{order:-1}.side .rules,.side .legend{display:none}.hud{grid-template-columns:repeat(2,minmax(0,1fr))}.toolbar h1{width:100%}.screen canvas{min-height:300px}.upgrade-list{grid-template-columns:1fr}.upgrade-choice{min-height:82px}}@media(max-width:520px){.panel{padding:10px}.toolbar{gap:6px}.toolbar h1{font-size:24px}.hud-item{padding:6px 8px}.mobile-controls button{min-width:60px}.screen{border-radius:10px}}@media(prefers-color-scheme:dark){:root{background:#0c1422;color:#edf4ff}.panel{background:#152236;border-color:#415675}button,a,select{background:#26364d;border-color:#60718a;color:#edf4ff}.hud-item,.stat-list li,.arsenal li,.legend span{background:#22344e}.event-log{background:#203653;color:#d7e5f7}.key{background:#2a3b53;color:#fff;border-color:#71839d}}
+  </style>
+  <style>.special i{background:linear-gradient(90deg,#f59e0b,#fef08a)}</style>
+</head>
+<body>
+  <main><section class="panel">
+    <div class="toolbar">
+      <h1>Assaut Stellaire</h1>
+      <a href="../../index.html">Hub</a>
+      <label>Difficulté <select id="difficulty"><option value="easy">Facile</option><option value="normal" selected>Normal</option><option value="hard">Difficile</option><option value="extreme">Extrême</option></select></label>
+      <label>Mode <select id="gameMode"><option value="campaign">Campagne · 15 vagues</option><option value="endless">Infini</option><option value="bossRush">Boss successifs</option></select></label>
+      <label>Vaisseau <select id="shipClass"><option value="balanced">Polyvalent</option><option value="interceptor">Intercepteur</option><option value="fortress">Forteresse</option><option value="artillery">Artillerie</option></select></label>
+      <label>Tir <select id="fireMode"><option value="manual">Manuel</option><option value="auto" selected>Automatique</option></select></label>
+      <label><input id="soundEnabled" type="checkbox" checked> Sons</label>
+      <button id="start" class="primary">Démarrer</button>
+      <button id="pause">Pause</button>
+    </div>
+    <div class="layout">
+      <section class="game-column">
+        <div class="hud">
+          <div class="hud-item"><small>Score</small><strong id="score">0</strong></div>
+          <div class="hud-item"><small>Vague</small><strong id="wave">0</strong></div>
+          <div class="hud-item"><small>Niveau</small><strong id="level">1</strong></div>
+          <div class="hud-item"><small>Combo</small><strong id="combo">×1,00</strong></div>
+          <div class="hud-item"><small>Coque</small><div class="meter health"><i id="healthMeter"></i></div></div>
+          <div class="hud-item"><small>Bouclier</small><div class="meter shield"><i id="shieldMeter"></i></div></div>
+          <div class="hud-item" style="grid-column:span 2"><small>Expérience</small><div class="meter experience"><i id="experienceMeter"></i></div></div>
+          <div class="hud-item" style="grid-column:span 2"><small>Surcharge tactique</small><div class="meter special"><i id="specialMeter"></i></div></div>
+        </div>
+        <p id="status" class="status">Choisissez les options puis démarrez.</p>
+        <div class="screen">
+          <canvas id="screen" width="960" height="640" aria-label="Zone de combat spatial"></canvas>
+          <div id="upgradeOverlay" class="overlay" hidden><div class="upgrade-card"><h2>Niveau supérieur</h2><p>Choisissez une amélioration. Le combat est en pause.</p><div id="upgradeChoices" class="upgrade-list"></div></div></div>
+          <div id="messageOverlay" class="overlay" hidden><div class="upgrade-card"><h2 id="messageTitle"></h2><p id="messageText"></p><button id="messageAction" class="primary">Rejouer</button></div></div>
+        </div>
+        <div class="mobile-controls" aria-label="Commandes tactiles">
+          <button data-control="left">◀</button><button data-control="up">▲</button><button data-control="down">▼</button><button data-control="right">▶</button>
+          <button data-control="fire">TIR</button><button data-control="dash">DASH</button><button data-control="special">SPÉCIAL</button>
+        </div>
+      </section>
+      <aside class="side panel">
+        <h2>État du vaisseau</h2>
+        <ul class="stat-list"><li><span>Classe</span><strong id="classStat">Polyvalent</strong></li><li><span>Dégâts</span><strong id="damageStat">1</strong></li><li><span>Cadence</span><strong id="rateStat">1</strong></li><li><span>Tirs</span><strong id="shotStat">1</strong></li><li><span>Vitesse</span><strong id="speedStat">1</strong></li><li><span>Dash</span><strong id="dashStat">Prêt</strong></li><li><span>Spécial</span><strong id="specialStat">0 %</strong></li></ul>
+        <h2>Arsenal ennemi</h2>
+        <div class="legend"><span>🔻 Tir direct</span><span>💣 Bombe</span><span>🫧 Bulle erratique</span><span>┃ Laser</span><span>🚀 Missile guidé</span><span>✣ Tir diagonal</span></div>
+        <h2>Événement</h2><div id="eventLog" class="event-log">Les vagues utilisent des formations et mouvements différents.</div>
+        <h2>Commandes</h2><p><span class="key">ZQSD</span> / flèches : déplacement<br><span class="key">Espace</span> : tirer<br><span class="key">⇧</span> : dash<br><span class="key">E</span> : surcharge tactique<br><span class="key">P</span> : pause</p>
+        <h2>Règles</h2><ul class="rules"><li>Éliminez chaque vague avant que les ennemis n’atteignent le bas.</li><li>Les bonus tombés améliorent temporairement ou durablement le vaisseau.</li><li>Chaque niveau offre un choix de trois améliorations permanentes.</li><li>Les boss apparaissent toutes les cinq vagues et combinent plusieurs attaques.</li><li>Le score dépend de la difficulté, de la vague et du combo sans dégâts.</li></ul>
+      </aside>
+    </div>
+  </section></main>
+  <script src="../../shared/game-runtime.js?v=12"></script>
+  <script src="stellar-assault.js?v=1"></script>
+  <script src="../../shared/records.js?v=7"></script>
+  <script src="../../shared/options-help.js?v=4" data-options-help="true"></script>
+</body>
+</html>

@@ -1,3 +1,119 @@
 <!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mahjong Solitaire</title><style>
-:root{color-scheme:light dark;font-family:Arial,sans-serif;background:#edf4ef;color:#173020}body{margin:0;min-height:100vh}main{max-width:1280px;margin:auto;padding:24px}.panel{background:#fff;border:1px solid #c9dfce;border-radius:18px;padding:18px;box-shadow:0 10px 28px #0002}.toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:13px}h1{margin:0 auto 0 0}button,a{font:inherit;color:inherit;background:#fff;border:1px solid #8eaa95;border-radius:9px;padding:8px 11px;cursor:pointer;text-decoration:none}button:hover,a:hover{background:#177245;color:#fff}.muted{color:#567462;line-height:1.5}.stage-wrap{overflow:auto;padding:18px 8px;min-height:540px;background:radial-gradient(ellipse,#7fb789,#396e53);border:5px solid #69452f;border-radius:18px;box-shadow:inset 0 0 0 4px #e5c47b}.stage{position:relative;width:760px;height:500px;margin:auto}.tile{position:absolute;width:57px;height:73px;box-sizing:border-box;border:2px solid #72502d;border-radius:8px;background:linear-gradient(135deg,#fffdf4,#eee4c7);box-shadow:3px 4px 0 #6b4a2d,0 5px 8px #0004;color:#182b20;font-weight:900;font-size:19px;display:grid;place-items:center;cursor:pointer;transition:transform .16s,filter .16s}.tile:before{content:'麻';position:absolute;top:3px;left:5px;font-size:10px;color:#9e7746}.tile.free{outline:3px solid #f9df72;filter:brightness(1.06)}.tile.selected{outline:5px solid #9d4edd;transform:translateY(-8px) scale(1.05);z-index:30!important}.tile.locked{filter:brightness(.72) saturate(.75);cursor:not-allowed}.tile.man{color:#b91c1c}.tile.pin{color:#1d4ed8}.tile.hint{animation:pulse .8s ease-in-out infinite alternate}@keyframes pulse{to{outline-color:#f97316;transform:translateY(-5px)}}.stats{display:flex;gap:13px;flex-wrap:wrap;margin:13px 0}.stats strong{font-size:21px;color:#a55a12}.legend{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.legend span{padding:4px 8px;border-radius:99px;background:#e7f3e9;color:#245a35;font-size:12px}@media(prefers-color-scheme:dark){:root{background:#102419;color:#eaf9ee}.panel{background:#173524;border-color:#3b6b4b}.muted{color:#b5d7bf}button,a{background:#243f2e;color:#effcf3;border-color:#5b8b6a}.stage-wrap{background:radial-gradient(ellipse,#315d41,#133020)}.tile{background:linear-gradient(135deg,#f9efd3,#cdbd96);color:#172235}}</style></head><body><main><section class="panel"><div class="toolbar"><h1>Mahjong Solitaire</h1><a href="../../index.html">Hub</a><button id="newGame">Nouvelle partie</button><button id="hint">Indice</button><button id="undo">Annuler</button></div><p id="status" class="muted"></p><div class="legend"><span>Une tuile est libre sans tuile au-dessus et avec au moins un côté ouvert.</span><span>Associez deux tuiles identiques.</span></div><div class="stats"><span>Paires retirées <strong id="pairs">0</strong></span><span>Tuiles libres <strong id="free">0</strong></span></div><div class="stage-wrap"><div id="stage" class="stage" aria-label="Plateau de Mahjong"></div></div></section></main><script src="mahjong.js?v=3"></script></body></html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mahjong Solitaire</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Arial, sans-serif; background: #edf4ef; color: #173020; }
+    body { margin: 0; min-height: 100vh; }
+    main { max-width: 1320px; margin: auto; padding: 24px; }
+    .panel { background: #fff; border: 1px solid #c9dfce; border-radius: 18px; padding: 18px; box-shadow: 0 10px 28px #0002; }
+    .toolbar, .trace-controls { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 13px; }
+    h1 { margin: 0 auto 0 0; }
+    button, a, select { font: inherit; color: inherit; background: #fff; border: 1px solid #8eaa95; border-radius: 9px; padding: 8px 11px; cursor: pointer; text-decoration: none; }
+    button:hover, a:hover { background: #177245; color: #fff; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .muted { color: #567462; line-height: 1.5; }
+    .stage-wrap { overflow: auto; padding: 18px 8px; min-height: 560px; background: radial-gradient(ellipse, #7fb789, #396e53); border: 5px solid #69452f; border-radius: 18px; box-shadow: inset 0 0 0 4px #e5c47b; }
+    .stage { position: relative; min-width: 760px; min-height: 520px; margin: auto; transition: width .2s, height .2s; }
+    .tile { position: absolute; width: 57px; height: 73px; box-sizing: border-box; border: 2px solid #72502d; border-radius: 8px; background: linear-gradient(135deg, #fffdf4, #eee4c7); box-shadow: 3px 4px 0 #6b4a2d, 0 5px 8px #0004; color: #182b20; font-weight: 900; font-size: 19px; display: grid; place-items: center; cursor: pointer; transition: transform .16s, filter .16s; }
+    .tile::before { content: '麻'; position: absolute; top: 3px; left: 5px; font-size: 10px; color: #9e7746; }
+    .tile.free { outline: 3px solid #f9df72; filter: brightness(1.06); }
+    .tile.selected { outline: 5px solid #9d4edd; transform: translateY(-8px) scale(1.05); z-index: 300 !important; }
+    .tile.locked { filter: brightness(.72) saturate(.75); cursor: not-allowed; }
+    .tile.man { color: #b91c1c; }
+    .tile.pin { color: #1d4ed8; }
+    .tile.sou { color: #15803d; }
+    .tile.honor { color: #7c3aed; }
+    .tile.dragon { color: #dc2626; }
+    .tile.flower { color: #db2777; font-size: 25px; }
+    .tile.hint { animation: pulse .8s ease-in-out infinite alternate; }
+    .tile.trace-next { outline: 5px solid #f97316; filter: brightness(1.12); animation: tracePulse .65s ease-in-out infinite alternate; }
+    @keyframes pulse { to { outline-color: #f97316; transform: translateY(-5px); } }
+    @keyframes tracePulse { to { transform: translateY(-7px) scale(1.04); } }
+    .stats { display: flex; gap: 13px; flex-wrap: wrap; margin: 13px 0; }
+    .stats strong { font-size: 21px; color: #a55a12; }
+    .legend { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+    .legend span { padding: 4px 8px; border-radius: 99px; background: #e7f3e9; color: #245a35; font-size: 12px; }
+    .trace-controls { padding: 10px; border: 1px solid #a7c7af; border-radius: 11px; background: #f3faf4; }
+    #traceComment { flex: 1 1 300px; }
+    @media (prefers-color-scheme: dark) {
+      :root { background: #102419; color: #eaf9ee; }
+      .panel { background: #173524; border-color: #3b6b4b; }
+      .muted { color: #b5d7bf; }
+      button, a, select { background: #243f2e; color: #effcf3; border-color: #5b8b6a; }
+      .stage-wrap { background: radial-gradient(ellipse, #315d41, #133020); }
+      .tile { background: linear-gradient(135deg, #f9efd3, #cdbd96); color: #172235; }
+      .trace-controls { background: #203f2a; border-color: #4d7b5a; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="panel">
+      <div class="toolbar">
+        <h1>Mahjong Solitaire</h1>
+        <a href="../../index.html">Hub</a>
+        <button id="newGame">Nouvelle partie</button>
+        <label class="muted">Disposition
+          <select id="layout">
+            <option value="random" selected>Aléatoire</option>
+            <option value="turtle">Tortue</option>
+            <option value="pyramid">Pyramide</option>
+            <option value="fortress">Forteresse</option>
+            <option value="bridge">Pont</option>
+            <option value="diamond">Diamant</option>
+            <option value="cross">Croix</option>
+            <option value="pagoda">Pagode</option>
+            <option value="arena">Arène</option>
+            <option value="wave">Vague</option>
+            <option value="spiral">Spirale</option>
+          </select>
+        </label>
+        <label class="muted">Taille
+          <select id="tileCount">
+            <option value="72" selected>Compacte · 72</option>
+            <option value="144">Classique · 144</option>
+            <option value="216">Grande · 216</option>
+            <option value="288">Monumentale · 288</option>
+          </select>
+        </label>
+        <label class="muted">Difficulté
+          <select id="difficulty">
+            <option value="easy">Facile</option>
+            <option value="normal" selected>Normale</option>
+            <option value="hard">Difficile</option>
+            <option value="extreme">Extrême</option>
+          </select>
+        </label>
+        <button id="hint">Indice</button>
+        <button id="solve">Résoudre une paire</button>
+        <button id="undo">Annuler</button>
+      </div>
+      <p id="status" class="muted"></p>
+      <div class="legend">
+        <span>Une tuile est libre sans tuile au-dessus et avec au moins un côté ouvert.</span>
+        <span>Associez deux tuiles identiques.</span>
+        <span>Chaque génération possède au moins un ordre complet de retrait.</span>
+      </div>
+      <details open><summary><strong>Règles du jeu</strong></summary><p id="rules" class="muted">Retirez deux tuiles identiques lorsqu’elles sont libres : aucune tuile ne les couvre et leur côté gauche ou droit est ouvert. La génération conserve toujours au moins un ordre complet de retrait. En mode résolution, utilisez ← et → pour parcourir les paires.</p></details>
+      <div class="stats">
+        <span>Paires retirées <strong id="pairs">0</strong></span>
+        <span>Tuiles libres <strong id="free">0</strong></span>
+        <span>Disposition <strong id="layoutName">—</strong></span>
+      </div>
+      <div class="trace-controls">
+        <button id="traceToggle">Résolution pas à pas</button>
+        <button id="tracePrev" hidden>← Étape précédente</button>
+        <button id="traceNext" hidden>Étape suivante →</button>
+        <span id="traceComment" class="muted">La trace ne modifie pas votre partie.</span>
+      </div>
+      <div class="stage-wrap"><div id="stage" class="stage" aria-label="Plateau de Mahjong"></div></div>
+    </section>
+  </main>
+  <script src="../../shared/game-runtime.js?v=8"></script>
+  <script src="../../shared/options-help.js?v=3"></script>
+  <script src="mahjong.js?v=9"></script>
+</body>
+</html>

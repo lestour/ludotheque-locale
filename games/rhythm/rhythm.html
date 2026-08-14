@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Rhythm Lab</title>
   <style>
     :root { color-scheme: light dark; font-family: Arial, sans-serif; background: #eaf1fb; color: #17243a; }
@@ -35,6 +35,8 @@
     .visual-control input { width: 100px; accent-color: #315fa7; }
     .stats strong { color: #b45309; font-size: 22px; }
     .records { display: flex; gap: 14px; flex-wrap: wrap; margin: -4px 0 12px; }
+    .practice-history { min-height: 20px; margin: -5px 0 12px; font-size: 12px; }
+    .practice-history b { color: #b45309; }
     .stage-wrap { margin-top: 118px; padding-top: 6px; }
     .stage { position: relative; display: grid; height: 620px; grid-template-columns: repeat(var(--lanes), 1fr); gap: 3px; border: 3px solid #58749c; border-radius: 15px; background: #dceaff; }
     .lane { position: relative; border-left: 1px solid #9db4d1; background: #eef6ff; }
@@ -65,6 +67,10 @@
     .score-note .fingering.lower { top: 55px; }
     .score-note .duration-dot { position: absolute; left: 26px; top: 1px; font-size: 16px; transform: rotate(17deg); }
     .score-note .chord-count { position: absolute; top: -15px; right: -16px; color: #334155; font-size: 10px; transform: rotate(18deg); }
+    .score-note .tuplet-number { position: absolute; bottom: 43px; left: 50%; min-width: 18px; color: #334155; font: 900 10px/1 Arial,sans-serif; text-align: center; transform: translateX(-50%) rotate(17deg); }
+    .score-note.grace { width: 16px; height: 12px; transform: rotate(-24deg) scale(.82); }
+    .score-note.grace::after { left: 12px; height: 32px; }
+    .score-note.grace::before { position: absolute; z-index: 4; left: 6px; top: -14px; width: 2px; height: 39px; background: #17243a; content: ''; transform: rotate(52deg); }
     .score-note .articulation { position: absolute; bottom: -20px; left: 5px; color: #17243a; font-size: 17px; font-weight: 900; transform: rotate(18deg); }
     .score-note .notation-symbols { position: absolute; top: 45px; left: -28px; width: 80px; overflow: hidden; color: #475569; font-size: 8px; font-style: normal; text-align: center; text-overflow: ellipsis; white-space: nowrap; transform: rotate(17deg); }
     .beam-segment { position: absolute; z-index: 3; height: 5px; border-radius: 2px; background: #17243a; transform-origin: left center; }
@@ -75,14 +81,20 @@
     .whole-rest { transform: translateY(-1px); }
     .half-rest { transform: translateY(-5px); }
     .score-rest b { position: absolute; left: 50%; bottom: 38px; min-width: 22px; padding: 2px 5px; border-radius: 10px; color: #fff; background: #315fa7; font: 800 11px/1 Arial,sans-serif; text-align: center; transform: translateX(-50%); }
+    .rest-annotation { position: absolute; left: 50%; top: -20px; color: currentColor; font: normal 18px/1 serif; white-space: nowrap; transform: translateX(-50%); }
     .measure-line { position: absolute; z-index: 1; top: calc(91px + var(--staff-shift, 0px)); width: 2px; height: 91px; background: #64748b; opacity: .72; }
     .measure-line small { position: absolute; top: -17px; left: 4px; color: #64748b; font: 700 9px/1 Arial,sans-serif; }
-    .duration-track { position: relative; min-width: 0; height: 52px; margin-top: 94px; border-top: 1px solid #94a3b8; background: #f8fafc; }
+    .duration-track { position: relative; min-width: 0; height: 72px; margin-top: 94px; border-top: 1px solid #94a3b8; background: #f8fafc; }
     .duration-mark { position: absolute; top: 12px; height: 12px; min-width: 5px; border-radius: 8px; background: var(--note); box-shadow: inset 0 0 0 1px #17243a55; transform: translateX(-2px); }
     .duration-mark.tap { width: 8px !important; height: 8px; border-radius: 50%; }
-    .duration-mark::after { position: absolute; top: 16px; left: 0; color: #52657f; content: attr(data-label); font-size: 9px; white-space: nowrap; }
+    .duration-mark::after { position: absolute; top: 16px; left: 0; width: 100%; max-width: 100%; color: #52657f; content: attr(data-label); font-size: 9px; line-height: 1.12; overflow-wrap: anywhere; text-align: center; white-space: normal; }
+    .duration-mark.tap::after { display: none; }
     .duration-label { position: absolute; left: 0; top: -18px; color: #52657f; font-size: 11px; font-weight: 700; }
     .hit-line { position: absolute; z-index: 4; top: -18px; bottom: -18px; width: 4px; border-radius: 3px; background: #e11d48; box-shadow: 0 0 12px #e11d48; }
+    .microphone-pitch-line { position: absolute; z-index: 4; right: 0; height: 3px; border-radius: 2px; background: #16a34a; box-shadow: 0 0 8px #22c55e; pointer-events: none; }
+    .microphone-pitch-line b { position: absolute; right: 4px; bottom: 5px; padding: 2px 5px; border-radius: 5px; color: #fff; background: #15803d; font: 800 10px/1 Arial,sans-serif; white-space: nowrap; }
+    .tuner-display { display: inline-flex; min-width: 180px; align-items: center; justify-content: center; padding: 7px 10px; border: 1px solid #94a3b8; border-radius: 8px; background: #f8fafc; font-variant-numeric: tabular-nums; }
+    .tuner-display[hidden] { display: none; }
     .key-signature { position: absolute; z-index: 3; top: var(--staff-shift, 0px); left: 84px; width: 72px; height: 220px; color: #17243a; }
     .key-signature i { position: absolute; top: calc(77px + var(--staff-pos) * 11px); left: calc(var(--index, 0) * 10px); font: normal 32px/1 serif; }
     .key-signature i:nth-child(1){--index:0}.key-signature i:nth-child(2){--index:1}.key-signature i:nth-child(3){--index:2}.key-signature i:nth-child(4){--index:3}.key-signature i:nth-child(5){--index:4}.key-signature i:nth-child(6){--index:5}.key-signature i:nth-child(7){--index:6}
@@ -126,6 +138,31 @@
     .mapping-group button { padding: 6px 9px; }
     .mapping-group button.listening { color: #fff; background: #e11d48; animation: mapping-pulse .7s infinite alternate; }
     @keyframes mapping-pulse { to { transform: scale(1.06); } }
+    .mobile-input-dock { display: none; }
+    .mobile-orientation-hint { display: none; }
+    @media (pointer: coarse), (max-width: 900px) {
+      body { padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
+      .mobile-input-dock { position: fixed; z-index: 1000; right: 0; bottom: 0; left: 0; display: grid; gap: 6px; padding: 7px max(8px,env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left)); border-top: 2px solid #58749c; background: #f8fbfff2; box-shadow: 0 -8px 24px #0f172a38; backdrop-filter: blur(10px); }
+      .mobile-dock-head { display: flex; gap: 6px; align-items: center; }
+      .mobile-dock-head strong { margin-right: auto; font-size: 13px; }
+      .mobile-dock-actions { display: flex; gap: 5px; }
+      .mobile-dock-actions button { min-height: 38px; padding: 6px 9px; font-size: 12px; }
+      .mobile-input-row { display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; touch-action: pan-x; }
+      .mobile-input-button { flex: 0 0 54px; min-width: 54px; min-height: 54px; padding: 5px; border-width: 2px; font-size: 17px; font-weight: 900; touch-action: none; user-select: none; -webkit-user-select: none; }
+      .mobile-input-button.wide { flex-basis: min(220px,58vw); }
+      .mobile-input-button.active { color: #fff; border-color: #1d4ed8; background: #2563eb; box-shadow: inset 0 -5px 0 #1e40af,0 0 0 3px #60a5fa66; transform: translateY(2px); }
+      .mobile-input-message { align-self: center; padding: 8px; color: #52657f; font-size: 12px; }
+      body.rhythm-focus main { max-width: none; padding: 4px; }
+      body.rhythm-focus .panel { padding: 4px; border-radius: 8px; }
+      body.rhythm-focus .panel > .toolbar, body.rhythm-focus .panel > .muted, body.rhythm-focus .panel > .input-mapping, body.rhythm-focus .panel > .option-groups, body.rhythm-focus #trackList, body.rhythm-focus .stats, body.rhythm-focus .records, body.rhythm-focus .practice-history, body.rhythm-focus .instrument-guide { display: none !important; }
+      body.rhythm-focus .stage-wrap, body.rhythm-focus .stage-wrap.slide-at-left { display: block; margin: 0; padding: 0; }
+      body.rhythm-focus .stage-wrap .hint { display: none; }
+      body.rhythm-focus .stage { width: 100%; height: calc(100dvh - 122px); min-height: 300px; padding: 8px 12px; border-radius: 8px; }
+      body.rhythm-focus .score-stage .staff-meta { margin-bottom: 4px; font-size: 11px; }
+    }
+    @media (pointer: coarse) and (orientation: portrait) {
+      .mobile-orientation-hint { display: block; padding: 3px 7px; border-radius: 6px; color: #713f12; background: #fef3c7; font-size: 11px; font-weight: 800; text-align: center; }
+    }
     @media (max-width: 700px) { main { padding: 10px; } .stage { height: 520px; } .stage-wrap { margin-top: 80px; } .hint { margin: -74px 0 56px; } }
     @media (prefers-color-scheme: dark) {
       :root { background: #101827; color: #e8eef8; }
@@ -143,11 +180,11 @@
       .staff-meta, .clef, .key-signature, .time-signature { color: #dbeafe; }
       .staff-lines { border-color: #526987; background: linear-gradient(to bottom,transparent 91px,#dbeafe 92px 94px,transparent 95px 113px,#dbeafe 114px 116px,transparent 117px 135px,#dbeafe 136px 138px,transparent 139px 157px,#dbeafe 158px 160px,transparent 161px 179px,#dbeafe 180px 182px,transparent 183px); background-position: 0 var(--staff-shift, 0); background-repeat: no-repeat; }
       .score-note { border-color: #e5edf8; color: #e5edf8; }
-      .score-note::after, .score-note.flag-1::before, .score-note.flag-2::before, .score-note.flag-3::before, .beam-segment { background-color: #e5edf8; border-color: #e5edf8; }
+      .score-note::after, .score-note.grace::before, .score-note.flag-1::before, .score-note.flag-2::before, .score-note.flag-3::before, .beam-segment { background-color: #e5edf8; border-color: #e5edf8; }
       .score-note.flag-2::before { box-shadow: 3px 7px 0 -1px #e5edf8; }
       .score-note.flag-3::before { box-shadow: 3px 7px 0 -1px #e5edf8,6px 14px 0 -1px #e5edf8; }
       .score-note.open { background: #172235; }
-      .score-note em, .score-note .chord-count, .score-note .articulation, .score-note .notation-symbols { color: #e5edf8; }
+      .score-note em, .score-note .chord-count, .score-note .tuplet-number, .score-note .articulation, .score-note .notation-symbols { color: #e5edf8; }
       .score-note small { color: #f8fafc; background: #172235e8; }
       .tie-segment { border-color: #e5edf8; }
       .tie-incoming { border-color: #e5edf8; }
@@ -155,6 +192,7 @@
       .measure-line { background: #94a3b8; }
       .measure-line small { color: #b6c6df; }
       .duration-track { border-color: #526987; background: #18263b; }
+      .tuner-display { border-color: #60718a; color: #e8eef8; background: #263447; }
       .score-change { border-color: #7186a4; color: #eef4ff; background: #263447; }
       .score-change.incoming-signature, .score-change.incoming-clef { background: #172235eb; }
       .score-change.incoming-signature.key-signature { background: transparent; }
@@ -166,6 +204,9 @@
       .input-mapping { border-color: #526987; background: #1d2d44; }
       .option-group { border-color: #526987; background: #1d2d44; }
       .option-group summary { color: #e5edf8; }
+      .mobile-input-dock { border-color: #60718a; background: #172235f2; }
+      .mobile-input-message { color: #b6c6df; }
+      .mobile-orientation-hint { color: #fde68a; background: #713f12; }
     }
   </style>
 </head>
@@ -176,10 +217,12 @@
     <div id="trackList" class="tracks"></div><div class="stats"><span>Score <strong id="score">0</strong></span><span>Précision <strong id="accuracy">—</strong></span><span id="status" class="muted">Démo chargée.</span></div><div id="records" class="records muted"></div>
     <div class="stage-wrap"><div class="hint">Zone d’anticipation</div><div id="stage" class="stage"></div></div>
   </section></main>
-  <script type="importmap">{"imports":{"spessasynth_core":"../../vendor/spessasynth_core/dist/index.js?v=local-2","stb-vorbis":"../../vendor/stb-vorbis/dist/index.js?v=local-2"}}</script>
-  <script type="module" src="soundfont-engine.js?v=5"></script>
-  <script src="brass-fingering.js?v=1"></script>
+  <script type="importmap">{"imports":{"spessasynth_core":"../../vendor/spessasynth_core/dist/index.js?v=local-3","stb-vorbis":"../../vendor/stb-vorbis/dist/index.js?v=local-3"}}</script>
+  <script src="../../shared/game-runtime.js?v=10"></script>
+  <script type="module" src="soundfont-engine.js?v=7"></script>
+  <script src="brass-fingering.js?v=2"></script>
   <script src="trombone-position.js?v=1"></script>
-  <script src="rhythm.js?v=79"></script>
+    <script src="rhythm.js?v=97"></script>
+  <script src="../../shared/options-help.js?v=3" data-options-help="true"></script>
 </body>
 </html>

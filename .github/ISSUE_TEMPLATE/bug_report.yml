@@ -1,0 +1,28 @@
+name: Signaler un problème
+description: Signaler un défaut d’affichage, de règle, de solveur, de son ou de multijoueur
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Catégorie
+      options:
+        - Règle ou solveur
+        - Affichage
+        - Commande
+        - Son
+        - Multijoueur
+        - Autre
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Décrivez les étapes et le résultat obtenu.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environnement
+      description: Collez ici le rapport préparé par le bouton Signaler.

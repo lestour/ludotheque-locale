@@ -1,6 +1,6 @@
 // Locally modified: the package import uses a relative vendored path so the
 // application can run offline without a module registry.
-import { StbVorbis } from "../../stb-vorbis/dist/index.js?v=local-2";
+import { StbVorbis } from "../../stb-vorbis/dist/index.js?v=local-3";
 //#region src/utils/byte_functions/big_endian.ts
 /**
 * Reads number as Big endian.

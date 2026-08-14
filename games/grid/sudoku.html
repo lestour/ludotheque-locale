@@ -53,6 +53,8 @@
         <button id="manualUndo">Annuler</button>
         <button id="manualRedo">Rétablir</button>
         <button id="hintButton">Indice</button>
+        <label class="muted">Indices <select id="hintLimit"><option value="0">Illimités</option><option value="3" selected>3 maximum</option><option value="1">1 maximum</option></select></label>
+        <button id="abandonGame">Abandonner</button>
         <label class="muted"><input id="autoCandidates" type="checkbox" checked> Afficher les possibilités calculées</label>
         <label class="muted"><input id="showErrors" type="checkbox"> Afficher les erreurs en rouge</label>
         <label class="muted"><input id="constraintCombinations" type="checkbox"> Vérifier les combinaisons de contraintes</label>
@@ -92,6 +94,9 @@
           <button id="typeWhisper">+ German Whispers</button>
           <button id="typeRenban">+ Renban</button>
           <button id="typeSandwich">+ Sandwich</button>
+          <button id="typeEntropic">+ Lignes entropiques</button>
+          <button id="typeModular">+ Lignes modulaires</button>
+          <button id="typeQuadruple">+ Quadruples</button>
         </div>
         <div id="variantChoice" class="muted" style="margin-bottom:12px">Sudoku classique.</div>
         <div class="toolbar">
@@ -103,12 +108,15 @@
             <option value="expert">Expert</option>
           </select>
           <button id="generate">Générer une grille</button>
+          <button id="randomVariants">Variantes compatibles aléatoires</button>
         </div>
         <div id="generationStatus" class="muted">Tout fonctionne localement dans ce navigateur.</div>
       </section>
     </aside>
   </div>
-  <script src="sudoku.js?v=11"></script>
-  <script src="../../shared/records.js?v=1"></script>
+  <script src="../../shared/game-runtime.js?v=8"></script>
+  <script src="sudoku.js?v=15"></script>
+  <script src="../../shared/records.js?v=7"></script>
+  <script src="../../shared/options-help.js?v=3" data-options-help="true"></script>
 </body>
 </html>

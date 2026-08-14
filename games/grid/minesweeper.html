@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Démineur</title>
   <style>
     :root { color-scheme: light dark; font-family: Arial, sans-serif; background: #f3f6fb; color: #152238; }
@@ -16,7 +16,7 @@
     .muted { color: #61718a; font-size: 14px; }
     #status { min-height: 22px; font-weight: 700; }
     #board { display: grid; width: max-content; max-width: 100%; overflow: hidden; padding: 3px; border: 2px solid #203048; background: #7f8ea4; gap: 1px; user-select: none; }
-    .cell { width: var(--cell-size, 30px); height: var(--cell-size, 30px); border: 0; border-radius: 0; padding: 0; background: #dbe4ee; color: #17243a; font-weight: 700; font-size: clamp(9px, 2vw, 16px); }
+    .cell { width: var(--cell-size, 30px); min-width: var(--cell-size, 30px); height: var(--cell-size, 30px); min-height: var(--cell-size, 30px); aspect-ratio: 1; box-sizing: border-box; border: 0; border-radius: 0; padding: 0; background: #dbe4ee; color: #17243a; font-weight: 700; font-size: clamp(9px, 2vw, 16px); }
     .cell:hover:not(.revealed) { background: #b9c8da; }
     .cell.revealed { background: #f8fafc; cursor: default; }
     .cell.flagged { background: #f5c2c7; }
@@ -51,10 +51,12 @@
   <main><section class="panel">
     <div class="toolbar"><h1>Démineur</h1><a href="../../index.html">Hub de jeux</a></div>
     <div class="toolbar"><label for="difficulty">Difficulté</label><select id="difficulty"><option value="easy">Facile · 9×9 · 10 mines</option><option value="medium" selected>Moyen · 16×16 · 40 mines</option><option value="hard">Difficile · 30×16 · 99 mines</option><option value="expert">Expert · 40×22 · 180 mines</option><option value="giant">Géant · 50×30 · 400 mines</option><option value="colossal">Colossal · 60×36 · 600 mines</option><option value="titan">Titan · 80×48 · 900 mines</option></select><label class="muted"><input id="noGuess" type="checkbox" checked> Sans supposition</label><label class="muted"><input id="adaptDensity" type="checkbox"> Densité adaptée</label><button id="newGame">Nouvelle partie</button><button id="solveStep" disabled>Déduction suivante</button><button id="solveAll" disabled>Résoudre logiquement</button></div>
-    <div class="muted">Clic gauche : révéler. Clic droit : poser ou retirer un drapeau. Le premier clic est toujours sûr.</div>
+    <div class="muted">Clic gauche ou toucher bref : révéler. Clic droit ou maintien tactile : poser ou retirer un drapeau. Le premier clic est toujours sûr.</div>
     <div id="status" class="muted"></div><div id="board" aria-label="Grille du Démineur"></div>
   </section></main>
-  <script src="minesweeper.js?v=6"></script>
-  <script src="../../shared/records.js?v=1"></script>
+  <script src="../../shared/game-runtime.js?v=8"></script>
+  <script src="minesweeper.js?v=9"></script>
+  <script src="../../shared/records.js?v=3"></script>
+  <script src="../../shared/options-help.js?v=3" data-options-help="true"></script>
 </body>
 </html>

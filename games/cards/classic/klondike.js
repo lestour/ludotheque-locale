@@ -8,6 +8,8 @@ const drawCount = document.getElementById('drawCount');
 const dealDifficulty = document.getElementById('dealDifficulty');
 const redealLimit = document.getElementById('redealLimit');
 const acePosition = document.getElementById('acePosition');
+const emptyTableauRule = document.getElementById('emptyTableauRule');
+const solitaireScoring = document.getElementById('solitaireScoring');
 const undoButton = document.getElementById('undo');
 const redoButton = document.getElementById('redo');
 const hintButton = document.getElementById('hint');
@@ -26,6 +28,8 @@ const stockCount = document.getElementById('stockCount');
 const wasteCount = document.getElementById('wasteCount');
 const hiddenCount = document.getElementById('hiddenCount');
 const rulesSummary = document.getElementById('rulesSummary');
+const stockLayerOffsetX = .22;
+const stockLayerOffsetY = .55;
 
 const launchOptions = new URLSearchParams(window.location.search);
 const requestedDrawCount = launchOptions.get('draw');
@@ -34,6 +38,7 @@ if (requestedDrawCount === '1' || requestedDrawCount === '3') drawCount.value = 
 if (['easy', 'normal', 'hard', 'expert'].includes(requestedDifficulty)) dealDifficulty.value = requestedDifficulty;
 
 let game;
+let klondikeAutosave = null;
 let gameHistory = [];
 let historyIndex = -1;
 let pointerDrag = null;
@@ -41,6 +46,7 @@ let solverTrace = [];
 let solverTraceMessages = [];
 let traceIndex = 0;
 let isViewingTrace = false;
+let finishReported = false;
 
 function cardMarkup(card, selected = false, hidden = false, hinted = false) {
   if (hidden) return '<button class="card back" aria-label="Carte cachée">?</button>';
@@ -68,6 +74,10 @@ function firstTableauValue() {
   return game.acePosition === 'end' ? 13 : 14;
 }
 
+function emptyTableauAllows(state, card) {
+  return state.emptyTableauRule === 'any' || stateTableauValue(state, card) === stateFirstTableauValue(state);
+}
+
 function cloneGameState(source = game) {
   return {
     ...source,
@@ -76,7 +86,8 @@ function cloneGameState(source = game) {
     tableau: source.tableau.map(pile => pile.map(card => ({ ...card }))),
     foundations: source.foundations.map(pile => pile.map(card => ({ ...card }))),
     selected: null,
-    hint: null
+    hint: null,
+    animation: null
   };
 }
 
@@ -205,7 +216,7 @@ function moveToTableau(column) {
   const cards = selectedCards();
   const target = game.tableau[column].at(-1);
   const first = cards[0];
-  const allowed = validTableauStack(cards) && (target ? target.faceUp && tableauValue(target) === tableauValue(first) + 1 && !sameColor(target, first) : tableauValue(first) === firstTableauValue());
+  const allowed = validTableauStack(cards) && (target ? target.faceUp && tableauValue(target) === tableauValue(first) + 1 && !sameColor(target, first) : game.emptyTableauRule === 'any' || tableauValue(first) === firstTableauValue());
   if (!allowed) return false;
   removeSelectedCards(cards);
   game.tableau[column].push(...cards);
@@ -286,18 +297,26 @@ function drawStock() {
 }
 
 function animateStockDraw(cards, onFinish) {
-  const start = stockSlot.getBoundingClientRect();
+  const stockBox = stockSlot.getBoundingClientRect();
+  const renderedTop = stockSlot.querySelector('.card')?.getBoundingClientRect() || stockBox;
   const end = wasteSlot.getBoundingClientRect();
+  const previousCount = game.stock.length + cards.length;
+  const renderedTopLayer = Math.max(0, previousCount - 1);
+  const baseLeft = renderedTop.left - renderedTopLayer * stockLayerOffsetX;
+  const baseTop = renderedTop.top - renderedTopLayer * stockLayerOffsetY;
   cards.forEach((drawnCard, index) => {
+    const sourceLayer = Math.max(0, previousCount - 1 - index);
+    const startLeft = baseLeft + sourceLayer * stockLayerOffsetX;
+    const startTop = baseTop + sourceLayer * stockLayerOffsetY;
     const card = document.createElement('div');
     card.className = 'stock-draw-animation';
-    card.style.left = `${start.left}px`;
-    card.style.top = `${start.top}px`;
+    card.style.left = `${startLeft}px`;
+    card.style.top = `${startTop}px`;
     const axis = index % 2 ? 'flip-vertical' : 'flip-horizontal';
     card.innerHTML = `<div class="flip-inner ${axis}"><div class="flip-face flip-back">?</div><div class="flip-face flip-front ${drawnCard.suit.color}"><span>${drawnCard.label}</span><strong>${drawnCard.suit.symbol}</strong></div></div>`;
     document.body.appendChild(card);
     window.setTimeout(() => {
-      card.style.transform = `translate(${end.left - start.left + index * 20}px, ${end.top - start.top}px) rotate(${index * 3}deg)`;
+      card.style.transform = `translate(${end.left - startLeft + index * 20}px, ${end.top - startTop}px) rotate(${index * 3}deg)`;
       card.classList.add('move');
     }, index * 70);
     window.setTimeout(() => card.querySelector('.flip-inner')?.classList.add('revealed'), 220 + index * 70);
@@ -421,7 +440,7 @@ function stateTableauTargets(state, cards, sourceColumn = null) {
     const top = pile.at(-1);
     const allowed = top
       ? top.faceUp && stateTableauValue(state, top) === stateTableauValue(state, first) + 1 && !sameColor(top, first)
-      : stateTableauValue(state, first) === stateFirstTableauValue(state);
+      : emptyTableauAllows(state, first);
     return allowed ? [target] : [];
   });
 }
@@ -716,8 +735,14 @@ function enableDrag(cardButton, source, column = null, index = null) {
 
 function render() {
   stockSlot.classList.toggle('has-cards', game.stock.length > 0);
-  stockSlot.style.setProperty('--stock-layers', Math.min(8, game.stock.length));
-  stockSlot.innerHTML = game.stock.length ? cardMarkup(null, false, true) : '<span class="slot-empty">↻</span>';
+  if (game.stock.length) {
+    const layers = Array.from({ length: Math.max(0, game.stock.length - 1) }, (_, layer) => `<span class="stock-layer" style="transform:translate(${(layer * stockLayerOffsetX).toFixed(2)}px,${(layer * stockLayerOffsetY).toFixed(2)}px);z-index:${layer}"></span>`).join('');
+    stockSlot.innerHTML = `${layers}${cardMarkup(null, false, true)}`;
+    const topLayer = game.stock.length - 1;
+    const topCard = stockSlot.querySelector('.card');
+    topCard.style.transform = `translate(${(topLayer * stockLayerOffsetX).toFixed(2)}px,${(topLayer * stockLayerOffsetY).toFixed(2)}px)`;
+    topCard.style.zIndex = String(game.stock.length + 1);
+  } else stockSlot.innerHTML = '<span class="slot-empty">↻</span>';
   wasteSlot.innerHTML = '';
   const visibleWaste = game.waste.slice(-game.drawCount);
   wasteSlot.style.width = `${92 + Math.max(0, visibleWaste.length - 1) * 20}px`;
@@ -789,16 +814,21 @@ function render() {
     tableau.appendChild(slot);
   });
   const foundationCards = game.foundations.reduce((total, pile) => total + pile.length, 0);
-  score.textContent = foundationCards * 10;
+  score.textContent = game.solitaireScoring === 'vegas' ? foundationCards * 5 - 52 : foundationCards * 10;
   errorCount.textContent = `Erreurs : ${game.errors}`;
   stockCount.textContent = game.stock.length;
   wasteCount.textContent = game.waste.length;
   hiddenCount.textContent = game.tableau.flat().filter(card => !card.faceUp).length;
-  rulesSummary.textContent = `pioche de ${game.drawCount} · ${game.redealLimit === Infinity ? 'recyclages illimités' : `${game.redealLimit} recyclage${game.redealLimit > 1 ? 's' : ''}`} · ${game.generationDifficulty || 'Personnalisé'} · As ${game.acePosition === 'end' ? 'en fin de suite (K → A)' : 'au début de suite (A → K)'}`;
+  rulesSummary.textContent = `pioche de ${game.drawCount} · ${game.redealLimit === Infinity ? 'recyclages illimités' : `${game.redealLimit} recyclage${game.redealLimit > 1 ? 's' : ''}`} · ${game.generationDifficulty || 'Personnalisé'} · As ${game.acePosition === 'end' ? 'en fin de suite (K → A)' : 'au début de suite (A → K)'} · colonne vide : ${game.emptyTableauRule === 'any' ? 'toute carte' : 'Roi'} · score ${game.solitaireScoring === 'vegas' ? 'casino' : 'classique'}`;
   status.textContent = game.message;
   updateHistoryButtons();
   updateTraceControls();
   finishGameButton.disabled = !canAutoFinish();
+  if (!finishReported && game.foundations.every(pile => pile.length === 13)) {
+    finishReported = true;
+    const foundationCards = game.foundations.reduce((total, pile) => total + pile.length, 0);
+    window.GameRecords?.finish({ score: foundationCards, scoreLabel: 'Solitaire terminé', won: true, raceWinner: true });
+  }
 }
 
 function cardStateSignature(state) {
@@ -973,7 +1003,7 @@ function createVerifiedDeal(selectedDrawCount, selectedDifficulty = 'normal') {
 function createGame() {
   const selectedDrawCount = Number(drawCount.value);
   const deal = createVerifiedDeal(selectedDrawCount, dealDifficulty.value);
-  game = { ...deal, selected: null, hint: null, animation: null, errors: 0, drawCount: selectedDrawCount, redeals: 0, redealLimit: Number(redealLimit.value), acePosition: acePosition.value, message: '' };
+  game = { ...deal, selected: null, hint: null, animation: null, errors: 0, drawCount: selectedDrawCount, redeals: 0, redealLimit: Number(redealLimit.value), acePosition: acePosition.value, emptyTableauRule: emptyTableauRule.value, solitaireScoring: solitaireScoring.value, message: '' };
   game.solvable = verifyFoundationPlan(game);
   game.message = game.solvable
     ? `${game.generationDifficulty} : ${game.generationPlanLength} actions certifiées${game.generationTargetReached ? '' : ` (objectif ${game.generationTarget} non atteint après recherche exhaustive)`}.`
@@ -981,13 +1011,25 @@ function createGame() {
   gameHistory = [];
   historyIndex = -1;
   clearSolverTrace();
+  finishReported = false;
   saveHistory();
   render();
 }
 
+window.KlondikeTestAPI = Object.freeze({
+  summary: () => ({
+    cardCount: game.stock.length + game.waste.length + game.tableau.reduce((total, pile) => total + pile.length, 0) + game.foundations.reduce((total, pile) => total + pile.length, 0),
+    solvable: game.solvable,
+    certifiedActions: game.generationPlanLength,
+    hiddenCards: game.tableau.flat().filter(card => !card.faceUp).length,
+    drawCount: game.drawCount,
+    difficulty: game.generationDifficulty,
+  }),
+});
+
 stockSlot.addEventListener('click', drawStock);
 wasteSlot.addEventListener('click', () => selectCard('waste'));
-newGameButton.addEventListener('click', createGame);
+newGameButton.addEventListener('click', () => { klondikeAutosave?.clear(); createGame(); });
 autoFoundationButton.addEventListener('click', autoFoundation);
 undoButton.addEventListener('click', () => restoreHistory(historyIndex - 1));
 redoButton.addEventListener('click', () => restoreHistory(historyIndex + 1));
@@ -1007,9 +1049,41 @@ acePosition.addEventListener('change', () => {
   game.message = 'Nouvelle partie avec la nouvelle position de l’As dans les suites.';
   render();
 });
+emptyTableauRule.addEventListener('change', createGame);
+solitaireScoring.addEventListener('change', () => {
+  game.solitaireScoring = solitaireScoring.value;
+  render();
+});
 traceModeButton.addEventListener('click', toggleTraceMode);
 previousTraceButton.addEventListener('click', () => showTrace(traceIndex - 1));
 nextTraceButton.addEventListener('click', () => showTrace(traceIndex + 1));
 traceSlider.addEventListener('input', () => showTrace(Number(traceSlider.value)));
 localStorage.setItem('game-hub:last-game', 'klondike');
 createGame();
+klondikeAutosave = window.GameRuntime?.createAutosave('klondike-position', {
+  capture: () => ({ drawCount: game.drawCount, difficulty: dealDifficulty.value, game: cloneGameState(), history: gameHistory, historyIndex }),
+  validate: saved => Number(saved?.drawCount) === Number(drawCount.value) && saved?.difficulty === dealDifficulty.value,
+  restore: saved => { game = cloneGameState(saved.game); gameHistory = saved.history || [cloneGameState(game)]; historyIndex = Math.max(0, Math.min(gameHistory.length - 1, Number(saved.historyIndex) || 0)); render(); }
+});
+klondikeAutosave?.restore();
+
+if (new URLSearchParams(location.search).has('stockTest')) {
+  const checks = [];
+  const initialCount = game.stock.length;
+  const topCard = stockSlot.querySelector('.card');
+  const lastLayer = stockSlot.querySelector('.stock-layer:last-of-type');
+  checks.push(document.querySelectorAll('#stock .stock-layer').length === initialCount - 1);
+  if (lastLayer) {
+    const topBox = topCard.getBoundingClientRect();
+    const layerBox = lastLayer.getBoundingClientRect();
+    checks.push(Math.abs(topBox.left - layerBox.left - stockLayerOffsetX) < .6 && Math.abs(topBox.top - layerBox.top - stockLayerOffsetY) < .6);
+    drawStock();
+    const animationBox = document.querySelector('.stock-draw-animation')?.getBoundingClientRect();
+    checks.push(Boolean(animationBox) && Math.abs(animationBox.left - topBox.left) < .6 && Math.abs(animationBox.top - topBox.top) < .6);
+  }
+  window.setTimeout(() => {
+    checks.push(game.stock.length === initialCount - game.drawCount);
+    checks.push(document.querySelectorAll('#stock .stock-layer').length === Math.max(0, game.stock.length - 1));
+    document.title = `PIOCHE TEST · ${checks.filter(Boolean).length}/${checks.length}`;
+  }, 850);
+}

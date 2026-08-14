@@ -25,6 +25,8 @@ const constraintCombinations = document.getElementById('constraintCombinations')
 const errorCount = document.getElementById('errorCount');
 const keypad = document.getElementById('keypad');
 const hintButton = document.getElementById('hintButton');
+const hintLimit = document.getElementById('hintLimit');
+const abandonGame = document.getElementById('abandonGame');
 const typeSudoku = document.getElementById('typeSudoku');
 const typeKiller = document.getElementById('typeKiller');
 const typeThermometer = document.getElementById('typeThermometer');
@@ -42,12 +44,41 @@ const typeParity = document.getElementById('typeParity');
 const typeWhisper = document.getElementById('typeWhisper');
 const typeRenban = document.getElementById('typeRenban');
 const typeSandwich = document.getElementById('typeSandwich');
+const typeEntropic = document.getElementById('typeEntropic');
+const typeModular = document.getElementById('typeModular');
+const typeQuadruple = document.getElementById('typeQuadruple');
 const variantChoice = document.getElementById('variantChoice');
 const difficulty = document.getElementById('difficulty');
 const generateButton = document.getElementById('generate');
+const randomVariantsButton = document.getElementById('randomVariants');
 const generationStatus = document.getElementById('generationStatus');
+let lanFinished = false;
+let hintPenalty = 0;
+let hintsUsed = 0;
 
-let selectedVariants = new Set((new URLSearchParams(window.location.search).get('variants') || '').split(',').filter(variant => ['killer', 'thermometer', 'diagonal', 'kropki', 'xv', 'knight', 'king', 'nonconsecutive', 'hyper', 'disjoint', 'palindrome', 'arrow', 'parity', 'whisper', 'renban', 'sandwich'].includes(variant)));
+const VARIANT_DEFINITIONS = Object.freeze({
+  killer: { button: typeKiller, label: 'Killer', choice: 'cages Killer' },
+  thermometer: { button: typeThermometer, label: 'Thermometer', choice: 'thermomètres' },
+  diagonal: { button: typeDiagonal, label: 'Diagonal', choice: 'diagonales' },
+  kropki: { button: typeKropki, label: 'Kropki', choice: 'points Kropki' },
+  xv: { button: typeXV, label: 'XV', choice: 'marqueurs XV' },
+  knight: { button: typeKnight, label: 'Anti-cavalier', choice: 'anti-cavalier' },
+  king: { button: typeKing, label: 'Anti-roi', choice: 'anti-roi' },
+  nonconsecutive: { button: typeNonConsecutive, label: 'Non-consécutif', choice: 'non-consécutif' },
+  hyper: { button: typeHyper, label: 'Hyper', choice: 'régions Hyper' },
+  disjoint: { button: typeDisjoint, label: 'Groupes disjoints', choice: 'groupes disjoints' },
+  palindrome: { button: typePalindrome, label: 'Palindrome', choice: 'palindromes' },
+  arrow: { button: typeArrow, label: 'Arrow', choice: 'flèches' },
+  parity: { button: typeParity, label: 'Pair/Impair', choice: 'pair/impair' },
+  whisper: { button: typeWhisper, label: 'German Whispers', choice: 'German Whispers' },
+  renban: { button: typeRenban, label: 'Renban', choice: 'Renban' },
+  sandwich: { button: typeSandwich, label: 'Sandwich', choice: 'Sandwich' },
+  entropic: { button: typeEntropic, label: 'Entropique', choice: 'lignes entropiques' },
+  modular: { button: typeModular, label: 'Modulaire', choice: 'lignes modulaires' },
+  quadruple: { button: typeQuadruple, label: 'Quadruple', choice: 'quadruples' }
+});
+const VARIANT_KEYS = Object.keys(VARIANT_DEFINITIONS);
+let selectedVariants = new Set((new URLSearchParams(window.location.search).get('variants') || '').split(',').filter(variant => VARIANT_KEYS.includes(variant)));
 let selectedGame = 'sudoku';
 let traceData = null;
 let manualMode = false;
@@ -133,6 +164,8 @@ const DISJOINT_HOUSES = Array.from({ length: SIZE }, (_, offset) => Array.from({
   cellIndex(Math.floor(box / 3) * 3 + Math.floor(offset / 3), (box % 3) * 3 + offset % 3)
 ));
 const DIGIT_COLORS = ['#b83280', '#007f5f', '#4a44b8', '#bf5b00', '#0077b6', '#a23e48', '#5b6c00', '#7c3aed', '#a14b00'];
+const FULL_CANDIDATE_MASK = (1 << SIZE) - 1;
+const SUPPORT_CACHE = new Map();
 
 function peersFor(index) {
   const peers = new Set();
@@ -151,11 +184,81 @@ function peersFor(index) {
   return peers;
 }
 
+const BASE_PEERS = Array.from({ length: SIZE * SIZE }, (_, index) => peersFor(index));
+const STRUCTURAL_CONTEXTS = new Map();
+
+function structuralContext(constraints) {
+  const key = [constraints.diagonal, constraints.antiKnight, constraints.antiKing, constraints.hyper, constraints.disjoint].map(Boolean).map(Number).join('');
+  if (STRUCTURAL_CONTEXTS.has(key)) return STRUCTURAL_CONTEXTS.get(key);
+  const peers = Array.from({ length: SIZE * SIZE }, (_, index) => {
+    const result = new Set(BASE_PEERS[index]);
+    const row = rowOf(index);
+    const col = colOf(index);
+    if (constraints.diagonal) {
+      if (row === col) DIAGONAL_HOUSES[0].forEach(peer => result.add(peer));
+      if (row + col === SIZE - 1) DIAGONAL_HOUSES[1].forEach(peer => result.add(peer));
+    }
+    if (constraints.antiKnight) [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(([deltaRow, deltaCol]) => {
+      const nextRow = row + deltaRow; const nextCol = col + deltaCol;
+      if (nextRow >= 0 && nextRow < SIZE && nextCol >= 0 && nextCol < SIZE) result.add(cellIndex(nextRow, nextCol));
+    });
+    if (constraints.antiKing) [-1, 0, 1].forEach(deltaRow => [-1, 0, 1].forEach(deltaCol => {
+      const nextRow = row + deltaRow; const nextCol = col + deltaCol;
+      if ((deltaRow || deltaCol) && nextRow >= 0 && nextRow < SIZE && nextCol >= 0 && nextCol < SIZE) result.add(cellIndex(nextRow, nextCol));
+    }));
+    if (constraints.hyper) HYPER_HOUSES.forEach(house => { if (house.includes(index)) house.forEach(peer => result.add(peer)); });
+    if (constraints.disjoint) DISJOINT_HOUSES.forEach(house => { if (house.includes(index)) house.forEach(peer => result.add(peer)); });
+    result.delete(index);
+    return [...result];
+  });
+  const houses = [...HOUSES, ...(constraints.diagonal ? DIAGONAL_HOUSES : []), ...(constraints.hyper ? HYPER_HOUSES : []), ...(constraints.disjoint ? DISJOINT_HOUSES : [])];
+  const context = { peers, houses };
+  STRUCTURAL_CONTEXTS.set(key, context);
+  return context;
+}
+
 function candidateDigits(cell) {
   return cell.candidates.reduce((digits, candidate, index) => {
     if (candidate) digits.push(index + 1);
     return digits;
   }, []);
+}
+
+function candidateMask(cell) {
+  return cell.candidates.reduce((mask, candidate, index) => candidate ? mask | (1 << index) : mask, 0);
+}
+
+function countMask(mask) {
+  let count = 0;
+  for (let value = mask; value; value &= value - 1) count += 1;
+  return count;
+}
+
+function scopeSignature(snapshot, indexes) {
+  return indexes.map(index => `${snapshot.cells[index].value}:${candidateMask(snapshot.cells[index])}`).join(',');
+}
+
+function memoizedSupport(type, key, calculate) {
+  const cacheKey = `${type}|${key}`;
+  if (SUPPORT_CACHE.has(cacheKey)) return SUPPORT_CACHE.get(cacheKey);
+  const result = calculate();
+  if (SUPPORT_CACHE.size > 12000) SUPPORT_CACHE.clear();
+  SUPPORT_CACHE.set(cacheKey, result);
+  return result;
+}
+
+function cloneSnapshot(snapshot) {
+  return {
+    size: snapshot.size,
+    boxHeight: snapshot.boxHeight,
+    boxWidth: snapshot.boxWidth,
+    cells: snapshot.cells.map(cell => ({
+      ...cell,
+      candidates: cell.candidates.slice(),
+      manualNotes: cell.manualNotes.slice(),
+      hiddenCandidates: cell.hiddenCandidates.slice()
+    }))
+  };
 }
 
 function cageSupport(snapshot, cage) {
@@ -176,40 +279,66 @@ function cageSupport(snapshot, cage) {
   if (!unresolved.length) return solvedSum === cage.sum ? [] : null;
 
   const supported = unresolved.map(() => Array(SIZE).fill(false));
-  function visit(position, remaining, used) {
+  const memo = new Map();
+  const initialMask = [...solved].reduce((mask, digit) => mask | (1 << (digit - 1)), 0);
+  function feasible(position, remaining, usedMask) {
     if (position === unresolved.length) return remaining === 0;
+    const key = `${position}:${remaining}:${usedMask}`;
+    if (memo.has(key)) return memo.get(key);
     const candidates = snapshot.cells[unresolved[position]].candidates;
     let found = false;
-    for (let digit = 1; digit <= SIZE; digit += 1) {
-      if (!candidates[digit - 1] || used.has(digit) || digit > remaining) continue;
-      const nextUsed = new Set(used);
-      nextUsed.add(digit);
-      if (visit(position + 1, remaining - digit, nextUsed)) {
-        supported[position][digit - 1] = true;
-        found = true;
-      }
+    for (let digit = 1; digit <= SIZE && !found; digit += 1) {
+      const bit = 1 << (digit - 1);
+      if (!candidates[digit - 1] || (usedMask & bit) || digit > remaining) continue;
+      found = feasible(position + 1, remaining - digit, usedMask | bit);
     }
+    memo.set(key, found);
     return found;
   }
-  return visit(0, cage.sum - solvedSum, solved) ? { unresolved, supported } : null;
+  function collect(position, remaining, usedMask) {
+    if (position === unresolved.length) return;
+    const candidates = snapshot.cells[unresolved[position]].candidates;
+    for (let digit = 1; digit <= SIZE; digit += 1) {
+      const bit = 1 << (digit - 1);
+      if (!candidates[digit - 1] || (usedMask & bit) || digit > remaining || !feasible(position + 1, remaining - digit, usedMask | bit)) continue;
+      supported[position][digit - 1] = true;
+      collect(position + 1, remaining - digit, usedMask | bit);
+    }
+  }
+  const remaining = cage.sum - solvedSum;
+  if (!feasible(0, remaining, initialMask)) return null;
+  collect(0, remaining, initialMask);
+  return { unresolved, supported };
 }
 
 function thermometerSupport(snapshot, branch) {
   const supported = branch.map(() => Array(SIZE).fill(false));
-  function visit(position, previousValue) {
+  const memo = new Map();
+  function feasible(position, previousValue) {
     if (position === branch.length) return true;
+    const key = `${position}:${previousValue}`;
+    if (memo.has(key)) return memo.get(key);
     const candidates = snapshot.cells[branch[position]].candidates;
     let found = false;
-    for (let digit = previousValue + 1; digit <= SIZE; digit += 1) {
+    for (let digit = previousValue + 1; digit <= SIZE && !found; digit += 1) {
       if (!candidates[digit - 1]) continue;
-      if (visit(position + 1, digit)) {
-        supported[position][digit - 1] = true;
-        found = true;
-      }
+      found = feasible(position + 1, digit);
     }
+    memo.set(key, found);
     return found;
   }
-  return visit(0, 0) ? supported : null;
+  function collect(position, previousValue) {
+    if (position === branch.length) return;
+    const candidates = snapshot.cells[branch[position]].candidates;
+    for (let digit = previousValue + 1; digit <= SIZE; digit += 1) {
+      if (!candidates[digit - 1] || !feasible(position + 1, digit)) continue;
+      supported[position][digit - 1] = true;
+      collect(position + 1, digit);
+    }
+  }
+  if (!feasible(0, 0)) return null;
+  collect(0, 0);
+  return supported;
 }
 
 function constraintsOf(constraints) {
@@ -222,6 +351,9 @@ function constraintsOf(constraints) {
     parityCells: Array.isArray(constraints) ? [] : (constraints.parityCells || []),
     whispers: Array.isArray(constraints) ? [] : (constraints.whispers || []),
     renbans: Array.isArray(constraints) ? [] : (constraints.renbans || []),
+    entropicLines: Array.isArray(constraints) ? [] : (constraints.entropicLines || []),
+    modularLines: Array.isArray(constraints) ? [] : (constraints.modularLines || []),
+    quadruples: Array.isArray(constraints) ? [] : (constraints.quadruples || []),
     sandwich: Array.isArray(constraints) ? null : (constraints.sandwich || null),
     diagonal: !Array.isArray(constraints) && Boolean(constraints.diagonal),
     antiKnight: !Array.isArray(constraints) && Boolean(constraints.antiKnight),
@@ -242,26 +374,36 @@ function sandwichHouseSupport(snapshot, house, target) {
       const start = Math.min(onePosition, ninePosition) + 1;
       const end = Math.max(onePosition, ninePosition);
       const inside = Array.from({ length: end - start }, (_, offset) => start + offset);
-      const assignments = Array(inside.length).fill(0);
-      function visit(position, sum, used) {
-        if (sum > target) return;
-        if (position === inside.length) {
-          if (sum !== target) return;
-          found = true; supported[onePosition][0] = true; supported[ninePosition][8] = true;
-          inside.forEach((housePosition, index) => { supported[housePosition][assignments[index] - 1] = true; });
-          house.forEach((_, housePosition) => {
-            if (housePosition === onePosition || housePosition === ninePosition || inside.includes(housePosition)) return;
-            snapshot.cells[house[housePosition]].candidates.forEach((candidate, digit) => { if (candidate && digit !== 0 && digit !== 8) supported[housePosition][digit] = true; });
-          });
-          return;
+      const memo = new Map();
+      function feasible(position, remaining, usedMask) {
+        if (position === inside.length) return remaining === 0;
+        const key = `${position}:${remaining}:${usedMask}`;
+        if (memo.has(key)) return memo.get(key);
+        let possible = false;
+        for (const digit of candidateDigits(snapshot.cells[house[inside[position]]])) {
+          const bit = 1 << (digit - 1);
+          if (digit === 1 || digit === 9 || digit > remaining || (usedMask & bit)) continue;
+          if (feasible(position + 1, remaining - digit, usedMask | bit)) { possible = true; break; }
         }
-        const cell = snapshot.cells[house[inside[position]]];
-        for (const digit of candidateDigits(cell)) {
-          if (digit === 1 || digit === 9 || used.has(digit)) continue;
-          assignments[position] = digit; const nextUsed = new Set(used); nextUsed.add(digit); visit(position + 1, sum + digit, nextUsed);
+        memo.set(key, possible);
+        return possible;
+      }
+      if (!feasible(0, target, 0)) continue;
+      found = true; supported[onePosition][0] = true; supported[ninePosition][8] = true;
+      function collect(position, remaining, usedMask) {
+        if (position === inside.length) return;
+        for (const digit of candidateDigits(snapshot.cells[house[inside[position]]])) {
+          const bit = 1 << (digit - 1);
+          if (digit === 1 || digit === 9 || digit > remaining || (usedMask & bit) || !feasible(position + 1, remaining - digit, usedMask | bit)) continue;
+          supported[inside[position]][digit - 1] = true;
+          collect(position + 1, remaining - digit, usedMask | bit);
         }
       }
-      visit(0, 0, new Set());
+      collect(0, target, 0);
+      house.forEach((_, housePosition) => {
+        if (housePosition === onePosition || housePosition === ninePosition || inside.includes(housePosition)) return;
+        snapshot.cells[house[housePosition]].candidates.forEach((candidate, digit) => { if (candidate && digit !== 0 && digit !== 8) supported[housePosition][digit] = true; });
+      });
     }
   }
   return found ? supported : null;
@@ -291,52 +433,161 @@ function renbanSupport(snapshot, line) {
 function arrowSupport(snapshot, arrow) {
   const indexes = [arrow.bulb, ...arrow.path];
   const supported = indexes.map(() => Array(SIZE).fill(false));
-  const values = Array(indexes.length).fill(0);
+  let found = false;
+  for (const bulbDigit of candidateDigits(snapshot.cells[arrow.bulb])) {
+    const memo = new Map();
+    function feasible(position, remaining) {
+      if (position === arrow.path.length) return remaining === 0;
+      const key = `${position}:${remaining}`;
+      if (memo.has(key)) return memo.get(key);
+      let possible = false;
+      for (const digit of candidateDigits(snapshot.cells[arrow.path[position]])) {
+        if (digit > remaining || (position + 1 < arrow.path.length && digit === remaining)) continue;
+        if (feasible(position + 1, remaining - digit)) { possible = true; break; }
+      }
+      memo.set(key, possible);
+      return possible;
+    }
+    if (!feasible(0, bulbDigit)) continue;
+    found = true;
+    supported[0][bulbDigit - 1] = true;
+    function collect(position, remaining) {
+      if (position === arrow.path.length) return;
+      for (const digit of candidateDigits(snapshot.cells[arrow.path[position]])) {
+        if (digit > remaining || !feasible(position + 1, remaining - digit)) continue;
+        supported[position + 1][digit - 1] = true;
+        collect(position + 1, remaining - digit);
+      }
+    }
+    collect(0, bulbDigit);
+  }
+  return found ? { indexes, supported } : null;
+}
+
+function categoryLineSupport(snapshot, line, categoryOf) {
+  const supported = line.map(() => Array(SIZE).fill(false));
+  const values = Array(line.length).fill(0);
   let found = false;
   function visit(position) {
-    if (position === indexes.length) {
-      if (values[0] !== values.slice(1).reduce((sum, value) => sum + value, 0)) return;
+    if (position === line.length) {
       values.forEach((value, index) => { supported[index][value - 1] = true; });
       found = true;
       return;
     }
-    for (const digit of candidateDigits(snapshot.cells[indexes[position]])) {
+    for (const digit of candidateDigits(snapshot.cells[line[position]])) {
       values[position] = digit;
-      if (position > 0) {
-        const partialSum = values.slice(1, position + 1).reduce((sum, value) => sum + value, 0);
-        if (partialSum > values[0] || (position < indexes.length - 1 && partialSum >= values[0])) continue;
+      if (position >= 2) {
+        const categories = [categoryOf(values[position - 2]), categoryOf(values[position - 1]), categoryOf(digit)];
+        if (new Set(categories).size !== 3) continue;
       }
       visit(position + 1);
     }
   }
   visit(0);
-  return found ? { indexes, supported } : null;
+  return found ? supported : null;
+}
+
+function quadrupleSupport(snapshot, quadruple) {
+  const supported = quadruple.cells.map(() => Array(SIZE).fill(false));
+  const values = Array(quadruple.cells.length).fill(0);
+  const requiredCounts = new Map();
+  quadruple.digits.forEach(digit => requiredCounts.set(digit, (requiredCounts.get(digit) || 0) + 1));
+  let found = false;
+  function visit(position) {
+    if (position === quadruple.cells.length) {
+      const counts = new Map();
+      values.forEach(value => counts.set(value, (counts.get(value) || 0) + 1));
+      if ([...requiredCounts].some(([digit, count]) => (counts.get(digit) || 0) < count)) return;
+      values.forEach((value, index) => { supported[index][value - 1] = true; });
+      found = true;
+      return;
+    }
+    for (const digit of candidateDigits(snapshot.cells[quadruple.cells[position]])) {
+      values[position] = digit;
+      visit(position + 1);
+    }
+  }
+  visit(0);
+  return found ? supported : null;
+}
+
+function applySupport(snapshot, indexes, supported) {
+  const changedIndexes = [];
+  for (let position = 0; position < indexes.length; position += 1) {
+    const cell = snapshot.cells[indexes[position]];
+    if (cell.value) {
+      if (!supported[position][cell.value - 1]) return null;
+      continue;
+    }
+    let changed = false;
+    cell.candidates = cell.candidates.map((candidate, digit) => {
+      const next = candidate && supported[position][digit];
+      if (candidate !== next) changed = true;
+      return next;
+    });
+    if (!cell.candidates.some(Boolean)) return null;
+    if (changed) changedIndexes.push(indexes[position]);
+  }
+  return changedIndexes;
+}
+
+function reviseHouse(snapshot, house) {
+  const solved = new Set();
+  for (const index of house) {
+    const value = snapshot.cells[index].value;
+    if (!value) continue;
+    if (solved.has(value)) return null;
+    solved.add(value);
+  }
+  for (const digit of ALL_DIGITS) {
+    if (solved.has(digit)) continue;
+    if (!house.some(index => !snapshot.cells[index].value && snapshot.cells[index].candidates[digit - 1])) return null;
+  }
+  const unresolved = house.filter(index => !snapshot.cells[index].value);
+  const changed = new Set();
+  const eligible = unresolved.filter(index => countMask(candidateMask(snapshot.cells[index])) <= 4);
+  const subsetCount = 1 << eligible.length;
+  for (let subset = 0; subset < subsetCount; subset += 1) {
+    const size = countMask(subset);
+    if (size < 2 || size > 4) continue;
+    let union = 0;
+    for (let position = 0; position < eligible.length; position += 1) {
+      if (subset & (1 << position)) union |= candidateMask(snapshot.cells[eligible[position]]);
+    }
+    const unionSize = countMask(union);
+    if (unionSize < size) return null;
+    if (unionSize !== size) continue;
+    for (const index of unresolved) {
+      if (eligible.some((eligibleIndex, position) => eligibleIndex === index && (subset & (1 << position)))) continue;
+      const cell = snapshot.cells[index];
+      const nextMask = candidateMask(cell) & (FULL_CANDIDATE_MASK & ~union);
+      if (!nextMask) return null;
+      if (nextMask === candidateMask(cell)) continue;
+      cell.candidates = ALL_DIGITS.map((_, digit) => Boolean(nextMask & (1 << digit)));
+      changed.add(index);
+    }
+  }
+  return [...changed];
 }
 
 function constraintHouses(constraints) {
   const normalized = constraintsOf(constraints);
-  return [...HOUSES, ...(normalized.diagonal ? DIAGONAL_HOUSES : []), ...(normalized.hyper ? HYPER_HOUSES : []), ...(normalized.disjoint ? DISJOINT_HOUSES : [])];
+  return structuralContext(normalized).houses;
 }
 
 function peersForConstraints(index, constraints) {
-  const peers = peersFor(index);
-  const row = rowOf(index);
-  const col = colOf(index);
-  if (constraints.diagonal) {
-    if (row === col) ALL_DIGITS.forEach((_, position) => peers.add(cellIndex(position, position)));
-    if (row + col === SIZE - 1) ALL_DIGITS.forEach((_, position) => peers.add(cellIndex(position, SIZE - 1 - position)));
-  }
-  if (constraints.antiKnight) [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(([deltaRow,deltaCol]) => { const nextRow=row+deltaRow,nextCol=col+deltaCol;if(nextRow>=0&&nextRow<SIZE&&nextCol>=0&&nextCol<SIZE)peers.add(cellIndex(nextRow,nextCol)); });
-  if (constraints.antiKing) [-1,0,1].forEach(deltaRow => [-1,0,1].forEach(deltaCol => { const nextRow=row+deltaRow,nextCol=col+deltaCol;if((deltaRow||deltaCol)&&nextRow>=0&&nextRow<SIZE&&nextCol>=0&&nextCol<SIZE)peers.add(cellIndex(nextRow,nextCol)); }));
-  if (constraints.hyper) HYPER_HOUSES.forEach(house => { if (house.includes(index)) house.forEach(peer => peers.add(peer)); });
-  if (constraints.disjoint) DISJOINT_HOUSES.forEach(house => { if (house.includes(index)) house.forEach(peer => peers.add(peer)); });
-  peers.delete(index);
-  return peers;
+  return new Set(structuralContext(constraintsOf(constraints)).peers[index]);
 }
 
 function calculateCandidates(snapshot, constraints = {}) {
   const normalizedConstraints = constraintsOf(constraints);
   const { cages, thermometers } = normalizedConstraints;
+  const context = structuralContext(normalizedConstraints);
+  const parityByCell = new Map(normalizedConstraints.parityCells.map(marker => [marker.index, marker.parity]));
+  const sandwichHouses = normalizedConstraints.sandwich ? [
+    ...normalizedConstraints.sandwich.rows.map((target, row) => ({ target, house: ALL_DIGITS.map((_, col) => cellIndex(row, col)) })),
+    ...normalizedConstraints.sandwich.cols.map((target, col) => ({ target, house: ALL_DIGITS.map((_, row) => cellIndex(row, col)) }))
+  ].filter(entry => entry.target !== null && entry.target !== undefined) : [];
   for (let index = 0; index < snapshot.cells.length; index += 1) {
     const cell = snapshot.cells[index];
     if (cell.value) {
@@ -344,13 +595,12 @@ function calculateCandidates(snapshot, constraints = {}) {
       continue;
     }
     const forbidden = new Set();
-    for (const peer of peersForConstraints(index, normalizedConstraints)) {
+    for (const peer of context.peers[index]) {
       const value = snapshot.cells[peer].value;
       if (value) forbidden.add(value);
     }
     cell.candidates = ALL_DIGITS.map(digit => !forbidden.has(digit));
-    const parity = normalizedConstraints.parityCells.find(marker => marker.index === index);
-    if (parity) cell.candidates = cell.candidates.map((candidate, digit) => candidate && ((digit + 1) % 2 === parity.parity));
+    if (parityByCell.has(index)) cell.candidates = cell.candidates.map((candidate, digit) => candidate && ((digit + 1) % 2 === parityByCell.get(index)));
     if (normalizedConstraints.nonConsecutive) {
       const adjacentValues = neighbours(index).map(peer => snapshot.cells[peer].value).filter(Boolean);
       cell.candidates = cell.candidates.map((candidate, digit) => candidate && adjacentValues.every(value => Math.abs(digit + 1 - value) !== 1));
@@ -360,8 +610,13 @@ function calculateCandidates(snapshot, constraints = {}) {
   let changed = false;
   do {
     changed = false;
+    for (const house of context.houses) {
+      const revised = reviseHouse(snapshot, house);
+      if (revised === null) return false;
+      if (revised.length) changed = true;
+    }
     for (const cage of cages) {
-      const support = cageSupport(snapshot, cage);
+      const support = memoizedSupport('cage', `${cage.sum}|${scopeSignature(snapshot, cage.cells)}`, () => cageSupport(snapshot, cage));
       if (support === null) return false;
       if (Array.isArray(support)) continue;
       support.unresolved.forEach((index, position) => {
@@ -374,7 +629,7 @@ function calculateCandidates(snapshot, constraints = {}) {
     }
     for (const thermometer of thermometers) {
       for (const branch of thermometer.branches) {
-        const support = thermometerSupport(snapshot, branch);
+        const support = memoizedSupport('thermometer', scopeSignature(snapshot, branch), () => thermometerSupport(snapshot, branch));
         if (support === null) return false;
         branch.forEach((index, position) => {
           const cell = snapshot.cells[index];
@@ -412,7 +667,8 @@ function calculateCandidates(snapshot, constraints = {}) {
       }
     }
     for (const arrow of normalizedConstraints.arrows) {
-      const support = arrowSupport(snapshot, arrow);
+      const indexes = [arrow.bulb, ...arrow.path];
+      const support = memoizedSupport('arrow', scopeSignature(snapshot, indexes), () => arrowSupport(snapshot, arrow));
       if (!support) return false;
       support.indexes.forEach((index, position) => {
         const cell = snapshot.cells[index];
@@ -434,7 +690,7 @@ function calculateCandidates(snapshot, constraints = {}) {
       }
     }
     for (const line of normalizedConstraints.renbans) {
-      const support = renbanSupport(snapshot, line);
+      const support = memoizedSupport('renban', scopeSignature(snapshot, line), () => renbanSupport(snapshot, line));
       if (!support) return false;
       line.forEach((index, position) => {
         const cell = snapshot.cells[index];
@@ -445,12 +701,8 @@ function calculateCandidates(snapshot, constraints = {}) {
       });
     }
     if (normalizedConstraints.sandwich) {
-      const sandwichHouses = [
-        ...normalizedConstraints.sandwich.rows.map((target, row) => ({ target, house: ALL_DIGITS.map((_, col) => cellIndex(row, col)) })),
-        ...normalizedConstraints.sandwich.cols.map((target, col) => ({ target, house: ALL_DIGITS.map((_, row) => cellIndex(row, col)) }))
-      ];
       for (const { target, house } of sandwichHouses) {
-        const support = sandwichHouseSupport(snapshot, house, target);
+        const support = memoizedSupport('sandwich', `${target}|${scopeSignature(snapshot, house)}`, () => sandwichHouseSupport(snapshot, house, target));
         if (!support) return false;
         house.forEach((index, position) => {
           const cell = snapshot.cells[index];
@@ -461,6 +713,25 @@ function calculateCandidates(snapshot, constraints = {}) {
         });
       }
     }
+    for (const [type, lines, categoryOf] of [
+      ['entropic', normalizedConstraints.entropicLines, digit => Math.floor((digit - 1) / 3)],
+      ['modular', normalizedConstraints.modularLines, digit => (digit - 1) % 3]
+    ]) {
+      for (const line of lines) {
+        const support = memoizedSupport(type, scopeSignature(snapshot, line), () => categoryLineSupport(snapshot, line, categoryOf));
+        if (!support) return false;
+        const revised = applySupport(snapshot, line, support);
+        if (revised === null) return false;
+        if (revised.length) changed = true;
+      }
+    }
+    for (const quadruple of normalizedConstraints.quadruples) {
+      const support = memoizedSupport('quadruple', `${quadruple.digits.join(',')}|${scopeSignature(snapshot, quadruple.cells)}`, () => quadrupleSupport(snapshot, quadruple));
+      if (!support) return false;
+      const revised = applySupport(snapshot, quadruple.cells, support);
+      if (revised === null) return false;
+      if (revised.length) changed = true;
+    }
   } while (changed);
   return true;
 }
@@ -469,36 +740,50 @@ function isSolved(snapshot) {
   return snapshot.cells.every(cell => cell.value !== 0);
 }
 
-function chooseCell(snapshot) {
+function chooseCell(snapshot, constraints = {}) {
   let choice = -1;
   let count = SIZE + 1;
+  let degree = -1;
+  const peers = structuralContext(constraintsOf(constraints)).peers;
   snapshot.cells.forEach((cell, index) => {
     if (cell.value) return;
     const candidateCount = candidateDigits(cell).length;
-    if (candidateCount < count) {
+    const unresolvedDegree = peers[index].reduce((total, peer) => total + (snapshot.cells[peer].value ? 0 : 1), 0);
+    if (candidateCount < count || (candidateCount === count && unresolvedDegree > degree)) {
       choice = index;
       count = candidateCount;
+      degree = unresolvedDegree;
     }
   });
   return choice;
 }
 
 function countSolutions(source, constraints = {}, limit = 2) {
+  const memo = new Map();
+  const searchContext = structuralContext(constraintsOf(constraints));
   function search(snapshot, remainingLimit) {
+    const key = `${remainingLimit}|${snapshot.cells.map(cell => cell.value || '.').join('')}`;
+    if (memo.has(key)) return Math.min(remainingLimit, memo.get(key));
     if (!calculateCandidates(snapshot, constraints)) return 0;
     if (isSolved(snapshot)) return 1;
-    const index = chooseCell(snapshot);
+    const index = chooseCell(snapshot, constraints);
     let count = 0;
-    for (const digit of shuffled(candidateDigits(snapshot.cells[index]))) {
-      const branch = clone(snapshot);
+    const digits = candidateDigits(snapshot.cells[index]).sort((left, right) => {
+      const leftImpact = searchContext.peers[index].filter(peer => !snapshot.cells[peer].value && snapshot.cells[peer].candidates[left - 1]).length;
+      const rightImpact = searchContext.peers[index].filter(peer => !snapshot.cells[peer].value && snapshot.cells[peer].candidates[right - 1]).length;
+      return leftImpact - rightImpact;
+    });
+    for (const digit of digits) {
+      const branch = cloneSnapshot(snapshot);
       branch.cells[index].value = digit;
       branch.cells[index].candidates = singleCandidate(digit);
       count += search(branch, remainingLimit - count);
-      if (count >= remainingLimit) return count;
+      if (count >= remainingLimit) break;
     }
+    memo.set(key, count);
     return count;
   }
-  return search(clone(source), limit);
+  return search(cloneSnapshot(source), limit);
 }
 
 function findForcedMove(snapshot, constraints = {}) {
@@ -536,10 +821,10 @@ function candidateRemovals(before, after) {
 function solveWithTrace(initialSnapshot, constraints = {}) {
   const events = [];
   function addEvent(title, detail, snapshot, removals = [], assignments = []) {
-    events.push({ title, detail, snapshot: clone(snapshot), removals, assignments });
+    events.push({ title, detail, snapshot: cloneSnapshot(snapshot), removals, assignments });
   }
   function solve(snapshot) {
-    const before = clone(snapshot);
+    const before = cloneSnapshot(snapshot);
     if (!calculateCandidates(snapshot, constraints)) return null;
     const removals = candidateRemovals(before, snapshot);
     if (removals.length) addEvent('Filtrage des possibilités', 'Les contraintes de lignes, colonnes, boîtes et cages retirent les valeurs impossibles.', snapshot, removals);
@@ -547,17 +832,17 @@ function solveWithTrace(initialSnapshot, constraints = {}) {
 
     const forced = findForcedMove(snapshot, constraints);
     if (forced) {
-      const next = clone(snapshot);
+      const next = cloneSnapshot(snapshot);
       next.cells[forced.index].value = forced.digit;
       next.cells[forced.index].candidates = singleCandidate(forced.digit);
       addEvent(forced.title, forced.detail, next, [], [{ index: forced.index, value: forced.digit }]);
       return solve(next);
     }
 
-    const index = chooseCell(snapshot);
+    const index = chooseCell(snapshot, constraints);
     for (const digit of shuffled(candidateDigits(snapshot.cells[index]))) {
       const checkpoint = events.length;
-      const next = clone(snapshot);
+      const next = cloneSnapshot(snapshot);
       next.cells[index].value = digit;
       next.cells[index].candidates = singleCandidate(digit);
       addEvent('Hypothèse contrôlée', `Essai de ${digit} dans r${rowOf(index) + 1}c${colOf(index) + 1}.`, next, [], [{ index, value: digit }]);
@@ -567,7 +852,7 @@ function solveWithTrace(initialSnapshot, constraints = {}) {
     }
     return null;
   }
-  const solved = solve(clone(initialSnapshot));
+  const solved = solve(cloneSnapshot(initialSnapshot));
   if (!solved) throw new Error('La grille générée ne peut pas être résolue.');
   return { solved, events };
 }
@@ -581,26 +866,52 @@ function createSolvedValues() {
   return rows.flatMap(row => cols.map(col => digits[(row * 3 + Math.floor(row / 3) + col) % SIZE]));
 }
 
+function carvePuzzle(solution, constraints, targetClues) {
+  const units = shuffled(Array.from({ length: Math.ceil(solution.length / 2) }, (_, index) => {
+    const opposite = solution.length - 1 - index;
+    return index === opposite ? [index] : [index, opposite];
+  }));
+  const normalized = constraintsOf(constraints);
+  const familyCount = [normalized.diagonal, normalized.antiKnight, normalized.antiKing, normalized.nonConsecutive, normalized.hyper, normalized.disjoint, normalized.sandwich]
+    .filter(Boolean).length
+    + ['cages', 'thermometers', 'pairs', 'palindromes', 'arrows', 'parityCells', 'whispers', 'renbans', 'entropicLines', 'modularLines', 'quadruples']
+      .reduce((total, key) => total + (normalized[key]?.length ? 1 : 0), 0);
+  if (familyCount >= 3) {
+    const direct = Array(solution.length).fill(0);
+    let directClues = 0;
+    for (const unit of units) {
+      if (directClues >= targetClues) break;
+      unit.forEach(index => { direct[index] = solution[index]; });
+      directClues += unit.length;
+    }
+    if (countSolutions(createSnapshot(direct), constraints, 2) === 1) return direct;
+  }
+  const values = solution.slice();
+  let clueCount = values.length;
+  for (const unit of units) {
+    if (clueCount - unit.length < targetClues) continue;
+    const saved = unit.map(index => values[index]);
+    unit.forEach(index => { values[index] = 0; });
+    if (countSolutions(createSnapshot(values), constraints, 2) === 1) clueCount -= unit.length;
+    else unit.forEach((index, position) => { values[index] = saved[position]; });
+  }
+  return values;
+}
+
 function generateSudoku(difficultyName) {
   const targetClues = difficultyName === 'facile' ? 42 : (difficultyName === 'moyen' ? 31 : (difficultyName === 'difficile' ? 21 : 17));
   const solution = createSolvedValues();
-  const values = solution.slice();
-  for (const index of shuffled(Array.from({ length: SIZE * SIZE }, (_, value) => value))) {
-    if (values.filter(Boolean).length <= targetClues) break;
-    const saved = values[index];
-    values[index] = 0;
-    if (countSolutions(createSnapshot(values), [], 2) !== 1) values[index] = saved;
-  }
+  const values = carvePuzzle(solution, {}, targetClues);
   return { values, cages: [], unique: true };
 }
 
 function createSolvedWithConstraints(constraints) {
   function visit(snapshot) {
     if (!calculateCandidates(snapshot, constraints)) return null;
-    const index = chooseCell(snapshot);
+    const index = chooseCell(snapshot, constraints);
     if (index < 0) return snapshot;
     for (const digit of shuffled(candidateDigits(snapshot.cells[index]))) {
-      const next = clone(snapshot);
+      const next = cloneSnapshot(snapshot);
       next.cells[index].value = digit;
       next.cells[index].candidates = singleCandidate(digit);
       const solved = visit(next);
@@ -617,13 +928,7 @@ function generateDiagonal(difficultyName) {
   const targetClues = difficultyName === 'facile' ? 38 : (difficultyName === 'moyen' ? 30 : (difficultyName === 'difficile' ? 23 : 18));
   const constraints = { diagonal: true, cages: [], thermometers: [] };
   const solution = createSolvedWithConstraints(constraints);
-  const values = solution.slice();
-  for (const index of shuffled(Array.from({ length: SIZE * SIZE }, (_, value) => value))) {
-    if (values.filter(Boolean).length <= targetClues) break;
-    const saved = values[index];
-    values[index] = 0;
-    if (countSolutions(createSnapshot(values), constraints, 2) !== 1) values[index] = saved;
-  }
+  const values = carvePuzzle(solution, constraints, targetClues);
   return { values, cages: [], thermometers: [], diagonal: true, unique: true };
 }
 
@@ -799,15 +1104,63 @@ function createRenbans(solution, count) {
   return lines;
 }
 
-function createSandwichClues(solution) {
+function createSandwichClues(solution, difficultyName) {
   const sumBetween = values => {
     const one = values.indexOf(1); const nine = values.indexOf(9);
     return values.slice(Math.min(one, nine) + 1, Math.max(one, nine)).reduce((sum, value) => sum + value, 0);
   };
-  return {
-    rows: ALL_DIGITS.map((_, row) => sumBetween(ALL_DIGITS.map((__, col) => solution[cellIndex(row, col)]))),
-    cols: ALL_DIGITS.map((_, col) => sumBetween(ALL_DIGITS.map((__, row) => solution[cellIndex(row, col)])))
-  };
+  const clues = [
+    ...ALL_DIGITS.map((_, row) => ({ axis: 'rows', index: row, value: sumBetween(ALL_DIGITS.map((__, col) => solution[cellIndex(row, col)])) })),
+    ...ALL_DIGITS.map((_, col) => ({ axis: 'cols', index: col, value: sumBetween(ALL_DIGITS.map((__, row) => solution[cellIndex(row, col)])) }))
+  ];
+  const clueCount = difficultyName === 'facile' ? 10 : (difficultyName === 'moyen' ? 8 : (difficultyName === 'difficile' ? 6 : 4));
+  const result = { rows: Array(SIZE).fill(null), cols: Array(SIZE).fill(null) };
+  shuffled(clues).slice(0, clueCount).forEach(clue => { result[clue.axis][clue.index] = clue.value; });
+  return result;
+}
+
+function createCategoryLines(solution, type, count) {
+  const categoryOf = type === 'entropic' ? digit => Math.floor((digit - 1) / 3) : digit => (digit - 1) % 3;
+  const lines = [];
+  const occupied = new Set();
+  for (let attempt = 0; attempt < 1800 && lines.length < count; attempt += 1) {
+    const available = shuffled(Array.from({ length: SIZE * SIZE }, (_, index) => index).filter(index => !occupied.has(index)));
+    if (!available.length) break;
+    const targetLength = 3 + Math.floor(Math.random() * 4);
+    const line = [available[0]];
+    while (line.length < targetLength) {
+      const current = line[line.length - 1];
+      const options = shuffled(neighbours(current).filter(index => {
+        if (occupied.has(index) || line.includes(index)) return false;
+        if (line.length < 2) return true;
+        const categories = [solution[line[line.length - 2]], solution[current], solution[index]].map(categoryOf);
+        return new Set(categories).size === 3;
+      }));
+      if (!options.length) break;
+      line.push(options[0]);
+    }
+    if (line.length < 3) continue;
+    line.forEach(index => occupied.add(index));
+    lines.push(line);
+  }
+  return lines;
+}
+
+function createQuadruples(solution, count) {
+  const intersections = shuffled(Array.from({ length: 64 }, (_, index) => ({ row: 1 + Math.floor(index / 8), col: 1 + index % 8 })));
+  const quadruples = [];
+  for (const intersection of intersections) {
+    const cells = [
+      cellIndex(intersection.row - 1, intersection.col - 1), cellIndex(intersection.row - 1, intersection.col),
+      cellIndex(intersection.row, intersection.col - 1), cellIndex(intersection.row, intersection.col)
+    ];
+    const values = [...new Set(cells.map(index => solution[index]))];
+    if (values.length < 2) continue;
+    const clueSize = Math.min(values.length, Math.random() < .65 ? 3 : 4);
+    quadruples.push({ ...intersection, cells, digits: shuffled(values).slice(0, clueSize).sort((left, right) => left - right) });
+    if (quadruples.length >= count) break;
+  }
+  return quadruples;
 }
 
 function generateThermometer(difficultyName) {
@@ -817,13 +1170,7 @@ function generateThermometer(difficultyName) {
     const thermometers = createThermometers(solution, difficultyName);
     if (thermometers.length < 4) continue;
     const constraints = { cages: [], thermometers };
-    const values = solution.slice();
-    for (const index of shuffled(Array.from({ length: SIZE * SIZE }, (_, value) => value))) {
-      if (values.filter(Boolean).length <= targetClues) break;
-      const saved = values[index];
-      values[index] = 0;
-      if (countSolutions(createSnapshot(values), constraints, 2) !== 1) values[index] = saved;
-    }
+    const values = carvePuzzle(solution, constraints, targetClues);
     if (countSolutions(createSnapshot(values), constraints, 2) === 1) return { values, cages: [], thermometers, unique: true };
   }
   throw new Error('Impossible de créer rapidement une grille Thermometer unique. Réessayez.');
@@ -863,12 +1210,7 @@ function generatePairVariant(variants, difficultyName) {
     ];
     if (!pairs.length) continue;
     const constraints = { cages: [], thermometers: [], pairs };
-    const values = solution.slice();
-    for (const index of shuffled(Array.from({ length: SIZE * SIZE }, (_, position) => position))) {
-      if (values.filter(Boolean).length <= targetClues) break;
-      const saved = values[index]; values[index] = 0;
-      if (countSolutions(createSnapshot(values), constraints, 2) !== 1) values[index] = saved;
-    }
+    const values = carvePuzzle(solution, constraints, targetClues);
     if (countSolutions(createSnapshot(values), constraints, 2) === 1) return { values, cages: [], thermometers: [], pairs, unique: true };
   }
   throw new Error('Impossible de générer rapidement une grille de paires unique.');
@@ -890,17 +1232,27 @@ function generateCombinedVariants(variants, difficultyName) {
   const hasWhisper = variants.includes('whisper');
   const hasRenban = variants.includes('renban');
   const hasSandwich = variants.includes('sandwich');
-  const hasExtraConstraint = hasAntiKnight || hasAntiKing || hasNonConsecutive || hasHyper || hasDisjoint || hasPalindrome || hasArrow || hasParity || hasWhisper || hasRenban || hasSandwich;
+  const hasEntropic = variants.includes('entropic');
+  const hasModular = variants.includes('modular');
+  const hasQuadruple = variants.includes('quadruple');
+  const hasExtraConstraint = hasAntiKnight || hasAntiKing || hasNonConsecutive || hasHyper || hasDisjoint || hasPalindrome || hasArrow || hasParity || hasWhisper || hasRenban || hasSandwich || hasEntropic || hasModular || hasQuadruple;
   if (!hasKiller && !hasThermometer && !hasDiagonal && !hasPairs && !hasExtraConstraint) return generateSudoku(difficultyName);
   if (hasKiller && !hasThermometer && !hasDiagonal && !hasPairs && !hasExtraConstraint) return generateKiller(difficultyName);
   if (!hasKiller && hasThermometer && !hasDiagonal && !hasPairs && !hasExtraConstraint) return generateThermometer(difficultyName);
   const maximumSize = difficultyName === 'facile' ? 3 : (difficultyName === 'moyen' ? 4 : (difficultyName === 'difficile' ? 5 : 6));
-  const targetClues = hasKiller ? killerClueCount(difficultyName) : (difficultyName === 'facile' ? 36 : (difficultyName === 'moyen' ? 28 : (difficultyName === 'difficile' ? 21 : 16)));
-  for (let attempt = 0; attempt < 28; attempt += 1) {
+  const baseTargetClues = hasKiller ? killerClueCount(difficultyName) : (difficultyName === 'facile' ? 36 : (difficultyName === 'moyen' ? 28 : (difficultyName === 'difficile' ? 21 : 16)));
+  const targetClues = hasKiller ? baseTargetClues : Math.max(difficultyName === 'expert' ? 8 : 12, baseTargetClues - Math.min(10, Math.max(0, variants.length - 1) * 2));
+  for (let attempt = 0; attempt < 42; attempt += 1) {
     const palindromes = hasPalindrome ? createPalindromeLines(difficultyName === 'facile' ? 4 : (difficultyName === 'moyen' ? 6 : 8)) : [];
     if (hasPalindrome && palindromes.length < 4) continue;
     const base = { diagonal: hasDiagonal, antiKnight: hasAntiKnight, antiKing: hasAntiKing, nonConsecutive: hasNonConsecutive, hyper: hasHyper, disjoint: hasDisjoint, cages: [], thermometers: [], pairs: [], palindromes, arrows: [], parityCells: [] };
-    const solution = hasDiagonal || hasAntiKnight || hasAntiKing || hasNonConsecutive || hasHyper || hasDisjoint || hasPalindrome ? createSolvedWithConstraints(base) : createSolvedValues();
+    let solution;
+    try {
+      solution = hasDiagonal || hasAntiKnight || hasAntiKing || hasNonConsecutive || hasHyper || hasDisjoint || hasPalindrome ? createSolvedWithConstraints(base) : createSolvedValues();
+    } catch (error) {
+      const structural = variants.filter(variant => ['diagonal', 'knight', 'king', 'nonconsecutive', 'hyper', 'disjoint', 'palindrome'].includes(variant));
+      throw new Error(`Combinaison structurelle incompatible : ${structural.map(variant => VARIANT_DEFINITIONS[variant].label).join(' + ')}. Retirez au moins une de ces règles.`);
+    }
     const arrows = hasArrow ? createArrows(solution, difficultyName === 'facile' ? 4 : (difficultyName === 'moyen' ? 6 : 8)) : [];
     if (hasArrow && arrows.length < 3) continue;
     const parityCells = hasParity ? createParityCells(solution, difficultyName) : [];
@@ -908,7 +1260,7 @@ function generateCombinedVariants(variants, difficultyName) {
     if (hasWhisper && whispers.length < 3) continue;
     const renbans = hasRenban ? createRenbans(solution, difficultyName === 'facile' ? 4 : (difficultyName === 'moyen' ? 6 : 8)) : [];
     if (hasRenban && renbans.length < 3) continue;
-    const sandwich = hasSandwich ? createSandwichClues(solution) : null;
+    const sandwich = hasSandwich ? createSandwichClues(solution, difficultyName) : null;
     const cages = hasKiller ? createKillerCages(solution, maximumSize) : [];
     const thermometers = hasThermometer ? createThermometers(solution, difficultyName) : [];
     if (hasThermometer && thermometers.length < 4) continue;
@@ -916,14 +1268,14 @@ function generateCombinedVariants(variants, difficultyName) {
       ...(variants.includes('kropki') ? createPairConstraints(solution, 'kropki', 18) : []),
       ...(variants.includes('xv') ? createPairConstraints(solution, 'xv', 15) : [])
     ];
-    const constraints = { diagonal: hasDiagonal, antiKnight: hasAntiKnight, antiKing: hasAntiKing, nonConsecutive: hasNonConsecutive, hyper: hasHyper, disjoint: hasDisjoint, cages, thermometers, pairs, palindromes, arrows, parityCells, whispers, renbans, sandwich };
-    const values = solution.slice();
-    for (const index of shuffled(Array.from({ length: SIZE * SIZE }, (_, position) => position))) {
-      if (values.filter(Boolean).length <= targetClues) break;
-      const saved = values[index]; values[index] = 0;
-      if (countSolutions(createSnapshot(values), constraints, 2) !== 1) values[index] = saved;
-    }
-    if (countSolutions(createSnapshot(values), constraints, 2) === 1) return { values, cages, thermometers, pairs, palindromes, arrows, parityCells, whispers, renbans, sandwich, diagonal: hasDiagonal, antiKnight: hasAntiKnight, antiKing: hasAntiKing, nonConsecutive: hasNonConsecutive, hyper: hasHyper, disjoint: hasDisjoint, unique: true };
+    const lineCount = difficultyName === 'facile' ? 6 : (difficultyName === 'moyen' ? 5 : 4);
+    const entropicLines = hasEntropic ? createCategoryLines(solution, 'entropic', lineCount) : [];
+    const modularLines = hasModular ? createCategoryLines(solution, 'modular', lineCount) : [];
+    const quadruples = hasQuadruple ? createQuadruples(solution, difficultyName === 'facile' ? 12 : (difficultyName === 'moyen' ? 10 : (difficultyName === 'difficile' ? 8 : 6))) : [];
+    if ((hasEntropic && entropicLines.length < 3) || (hasModular && modularLines.length < 3) || (hasQuadruple && quadruples.length < 6)) continue;
+    const constraints = { diagonal: hasDiagonal, antiKnight: hasAntiKnight, antiKing: hasAntiKing, nonConsecutive: hasNonConsecutive, hyper: hasHyper, disjoint: hasDisjoint, cages, thermometers, pairs, palindromes, arrows, parityCells, whispers, renbans, sandwich, entropicLines, modularLines, quadruples };
+    const values = carvePuzzle(solution, constraints, targetClues);
+    if (countSolutions(createSnapshot(values), constraints, 2) === 1) return { values, cages, thermometers, pairs, palindromes, arrows, parityCells, whispers, renbans, sandwich, entropicLines, modularLines, quadruples, diagonal: hasDiagonal, antiKnight: hasAntiKnight, antiKing: hasAntiKing, nonConsecutive: hasNonConsecutive, hyper: hasHyper, disjoint: hasDisjoint, unique: true };
   }
   throw new Error('Impossible de créer rapidement cette combinaison de contraintes unique. Réessayez.');
 }
@@ -935,7 +1287,7 @@ function createSudokuTraceData(variantSelection, difficultyName) {
     .filter(Boolean)
     .sort();
   const puzzle = generateCombinedVariants(variants, difficultyName);
-  const variantLabel = variants.length ? variants.map(variant => ({ killer: 'Killer', thermometer: 'Thermometer', diagonal: 'Diagonal', kropki: 'Kropki', xv: 'XV', knight: 'Anti-cavalier', king: 'Anti-roi', nonconsecutive: 'Non-consécutif', hyper: 'Hyper', disjoint: 'Groupes disjoints', palindrome: 'Palindrome', arrow: 'Arrow', parity: 'Pair/Impair', whisper: 'German Whispers', renban: 'Renban', sandwich: 'Sandwich' }[variant])).join(' + ') : 'classique';
+  const variantLabel = variants.length ? variants.map(variant => VARIANT_DEFINITIONS[variant].label).join(' + ') : 'classique';
   const detail = [
     variants.includes('killer') ? 'Les cages pointillées affichent leur somme.' : '',
     variants.includes('thermometer') ? 'Chaque branche grise augmente strictement du bulbe vers son extrémité.' : '',
@@ -953,10 +1305,13 @@ function createSudokuTraceData(variantSelection, difficultyName) {
     variants.includes('whisper') ? 'Deux cases consécutives d’une ligne verte diffèrent d’au moins 5.' : '',
     variants.includes('renban') ? 'Une ligne violette contient une suite de chiffres consécutifs dans un ordre quelconque.' : '',
     variants.includes('sandwich') ? 'Les indices extérieurs donnent la somme des chiffres situés entre le 1 et le 9.' : '',
+    variants.includes('entropic') ? 'Chaque groupe de trois cases d’une ligne orange contient un chiffre bas, un moyen et un haut.' : '',
+    variants.includes('modular') ? 'Chaque groupe de trois cases d’une ligne turquoise contient les trois résidus modulo 3.' : '',
+    variants.includes('quadruple') ? 'Les chiffres d’un cercle doivent apparaître dans les quatre cases qui l’entourent.' : '',
     !variants.length ? 'Les possibilités sont filtrées par les lignes, colonnes et boîtes.' : ''
   ].filter(Boolean).join(' ');
   const initialSnapshot = createSnapshot(puzzle.values);
-  const constraints = { cages: puzzle.cages, thermometers: puzzle.thermometers || [], pairs: puzzle.pairs || [], palindromes: puzzle.palindromes || [], arrows: puzzle.arrows || [], parityCells: puzzle.parityCells || [], whispers: puzzle.whispers || [], renbans: puzzle.renbans || [], sandwich: puzzle.sandwich || null, diagonal: Boolean(puzzle.diagonal), antiKnight: Boolean(puzzle.antiKnight), antiKing: Boolean(puzzle.antiKing), nonConsecutive: Boolean(puzzle.nonConsecutive), hyper: Boolean(puzzle.hyper), disjoint: Boolean(puzzle.disjoint) };
+  const constraints = { cages: puzzle.cages, thermometers: puzzle.thermometers || [], pairs: puzzle.pairs || [], palindromes: puzzle.palindromes || [], arrows: puzzle.arrows || [], parityCells: puzzle.parityCells || [], whispers: puzzle.whispers || [], renbans: puzzle.renbans || [], sandwich: puzzle.sandwich || null, entropicLines: puzzle.entropicLines || [], modularLines: puzzle.modularLines || [], quadruples: puzzle.quadruples || [], diagonal: Boolean(puzzle.diagonal), antiKnight: Boolean(puzzle.antiKnight), antiKing: Boolean(puzzle.antiKing), nonConsecutive: Boolean(puzzle.nonConsecutive), hyper: Boolean(puzzle.hyper), disjoint: Boolean(puzzle.disjoint) };
   const result = solveWithTrace(initialSnapshot, constraints);
   return {
     game: 'sudoku',
@@ -974,6 +1329,9 @@ function createSudokuTraceData(variantSelection, difficultyName) {
     whispers: puzzle.whispers || [],
     renbans: puzzle.renbans || [],
     sandwich: puzzle.sandwich || null,
+    entropicLines: puzzle.entropicLines || [],
+    modularLines: puzzle.modularLines || [],
+    quadruples: puzzle.quadruples || [],
     diagonal: Boolean(puzzle.diagonal),
     antiKnight: Boolean(puzzle.antiKnight),
     antiKing: Boolean(puzzle.antiKing),
@@ -1024,6 +1382,7 @@ function errorCellIndexes(snapshot) {
     });
   }
   HOUSES.forEach(inspect);
+  if (traceData.diagonal) DIAGONAL_HOUSES.forEach(inspect);
   if (traceData.hyper) HYPER_HOUSES.forEach(inspect);
   if (traceData.disjoint) DISJOINT_HOUSES.forEach(inspect);
   if (traceData.antiKnight || traceData.antiKing) snapshot.cells.forEach((cell, index) => {
@@ -1034,6 +1393,25 @@ function errorCellIndexes(snapshot) {
   if (traceData.nonConsecutive) snapshot.cells.forEach((cell, index) => {
     if (!cell.value || !cell.isUserEntered) return;
     if (neighbours(index).some(peer => Math.abs(snapshot.cells[peer].value - cell.value) === 1)) errors.add(index);
+  });
+  (traceData.thermometers || []).forEach(thermometer => thermometer.branches.forEach(branch => {
+    for (let position = 0; position + 1 < branch.length; position += 1) {
+      const left = branch[position]; const right = branch[position + 1];
+      const leftValue = snapshot.cells[left].value; const rightValue = snapshot.cells[right].value;
+      if (!leftValue || !rightValue || leftValue < rightValue) continue;
+      if (snapshot.cells[left].isUserEntered) errors.add(left);
+      if (snapshot.cells[right].isUserEntered) errors.add(right);
+    }
+  }));
+  (traceData.pairs || []).forEach(pair => {
+    const leftValue = snapshot.cells[pair.a].value; const rightValue = snapshot.cells[pair.b].value;
+    if (!leftValue || !rightValue) return;
+    const valid = pair.type === 'white' ? Math.abs(leftValue - rightValue) === 1
+      : pair.type === 'black' ? leftValue === rightValue * 2 || rightValue === leftValue * 2
+        : leftValue + rightValue === pair.sum;
+    if (valid) return;
+    if (snapshot.cells[pair.a].isUserEntered) errors.add(pair.a);
+    if (snapshot.cells[pair.b].isUserEntered) errors.add(pair.b);
   });
   (traceData.palindromes || []).forEach(line => {
     for (let position = 0; position < Math.floor(line.length / 2); position += 1) {
@@ -1068,6 +1446,31 @@ function errorCellIndexes(snapshot) {
     if (new Set(values).size === values.length && Math.max(...values) - Math.min(...values) === values.length - 1) return;
     line.forEach(index => { if (snapshot.cells[index].isUserEntered) errors.add(index); });
   });
+  for (const [lines, categoryOf] of [
+    [traceData.entropicLines || [], digit => Math.floor((digit - 1) / 3)],
+    [traceData.modularLines || [], digit => (digit - 1) % 3]
+  ]) {
+    lines.forEach(line => {
+      for (let position = 0; position + 2 < line.length; position += 1) {
+        const cells = line.slice(position, position + 3);
+        const values = cells.map(index => snapshot.cells[index].value);
+        if (values.some(value => !value) || new Set(values.map(categoryOf)).size === 3) continue;
+        cells.forEach(index => { if (snapshot.cells[index].isUserEntered) errors.add(index); });
+      }
+    });
+  }
+  (traceData.quadruples || []).forEach(quadruple => {
+    const values = quadruple.cells.map(index => snapshot.cells[index].value);
+    if (values.some(value => !value)) return;
+    const available = values.slice();
+    const valid = quadruple.digits.every(digit => {
+      const position = available.indexOf(digit);
+      if (position < 0) return false;
+      available.splice(position, 1);
+      return true;
+    });
+    if (!valid) quadruple.cells.forEach(index => { if (snapshot.cells[index].isUserEntered) errors.add(index); });
+  });
   if (traceData.sandwich) {
     const inspectSandwich = (house, target) => {
       const values = house.map(index => snapshot.cells[index].value);
@@ -1076,8 +1479,8 @@ function errorCellIndexes(snapshot) {
       const sum = values.slice(Math.min(one, nine) + 1, Math.max(one, nine)).reduce((total, value) => total + value, 0);
       if (sum !== target) house.forEach(index => { if (snapshot.cells[index].isUserEntered) errors.add(index); });
     };
-    traceData.sandwich.rows.forEach((target, row) => inspectSandwich(ALL_DIGITS.map((_, col) => cellIndex(row, col)), target));
-    traceData.sandwich.cols.forEach((target, col) => inspectSandwich(ALL_DIGITS.map((_, row) => cellIndex(row, col)), target));
+    traceData.sandwich.rows.forEach((target, row) => { if (target !== null) inspectSandwich(ALL_DIGITS.map((_, col) => cellIndex(row, col)), target); });
+    traceData.sandwich.cols.forEach((target, col) => { if (target !== null) inspectSandwich(ALL_DIGITS.map((_, row) => cellIndex(row, col)), target); });
   }
   traceData.cages.forEach(cage => {
     inspect(cage.cells);
@@ -1147,6 +1550,15 @@ function impactedGroups() {
   });
   (traceData.renbans || []).forEach(line => {
     if (line.includes(activeCell)) line.forEach(index => constraintCells.add(index));
+  });
+  (traceData.entropicLines || []).forEach(line => {
+    if (line.includes(activeCell)) line.forEach(index => constraintCells.add(index));
+  });
+  (traceData.modularLines || []).forEach(line => {
+    if (line.includes(activeCell)) line.forEach(index => constraintCells.add(index));
+  });
+  (traceData.quadruples || []).forEach(quadruple => {
+    if (quadruple.cells.includes(activeCell)) quadruple.cells.forEach(index => constraintCells.add(index));
   });
   (traceData.pairs || []).forEach(pair => {
     if (pair.a === activeCell) constraintCells.add(pair.b);
@@ -1341,11 +1753,13 @@ function drawSudokuBoard(state) {
   }
   if (traceData.sandwich) {
     traceData.sandwich.rows.forEach((clue, row) => {
+      if (clue === null) return;
       const label = document.createElementNS(svg, 'text');
       label.setAttribute('x', margin - 18); label.setAttribute('y', margin + row * cellSize + cellSize / 2 + 7); label.setAttribute('text-anchor', 'middle');
       label.setAttribute('font-size', 20); label.setAttribute('font-weight', '800'); label.setAttribute('fill', colors.value); label.textContent = clue; board.appendChild(label);
     });
     traceData.sandwich.cols.forEach((clue, col) => {
+      if (clue === null) return;
       const label = document.createElementNS(svg, 'text');
       label.setAttribute('x', margin + col * cellSize + cellSize / 2); label.setAttribute('y', margin - 18); label.setAttribute('text-anchor', 'middle');
       label.setAttribute('font-size', 20); label.setAttribute('font-weight', '800'); label.setAttribute('fill', colors.value); label.textContent = clue; board.appendChild(label);
@@ -1406,6 +1820,19 @@ function drawSudokuBoard(state) {
     const points = cells.map(index => `${margin + colOf(index) * cellSize + cellSize / 2} ${margin + rowOf(index) * cellSize + cellSize / 2}`);
     line.setAttribute('d', `M ${points.join(' L ')}`); line.setAttribute('fill', 'none'); line.setAttribute('stroke', '#9333ea'); line.setAttribute('stroke-width', 11); line.setAttribute('stroke-linecap', 'round'); line.setAttribute('stroke-linejoin', 'round'); line.setAttribute('opacity', '.45'); line.style.pointerEvents = 'none'; board.appendChild(line);
   });
+  for (const [lines, color, dash] of [
+    [traceData.entropicLines || [], '#f97316', ''],
+    [traceData.modularLines || [], '#0891b2', '8 5']
+  ]) {
+    lines.forEach(cells => {
+      const line = document.createElementNS(svg, 'path');
+      const points = cells.map(index => `${margin + colOf(index) * cellSize + cellSize / 2} ${margin + rowOf(index) * cellSize + cellSize / 2}`);
+      line.setAttribute('d', `M ${points.join(' L ')}`); line.setAttribute('fill', 'none'); line.setAttribute('stroke', color); line.setAttribute('stroke-width', 10);
+      line.setAttribute('stroke-linecap', 'round'); line.setAttribute('stroke-linejoin', 'round'); line.setAttribute('opacity', '.5');
+      if (dash) line.setAttribute('stroke-dasharray', dash);
+      line.style.pointerEvents = 'none'; board.appendChild(line);
+    });
+  }
   const pairGroups = new Map();
   (traceData.pairs || []).forEach(pair => {
     const key = [Math.min(pair.a, pair.b), Math.max(pair.a, pair.b)].join(':');
@@ -1426,6 +1853,21 @@ function drawSudokuBoard(state) {
       marker.setAttribute('cx', x); marker.setAttribute('cy', y); marker.setAttribute('r', pair.type === 'black' ? 7 : 6); marker.setAttribute('fill', pair.type === 'black' ? '#17243a' : '#fff'); marker.setAttribute('stroke', '#17243a'); marker.setAttribute('stroke-width', 2);
     }
     board.appendChild(marker);
+  });
+  (traceData.quadruples || []).forEach(quadruple => {
+    const centerX = margin + quadruple.col * cellSize;
+    const centerY = margin + quadruple.row * cellSize;
+    const marker = document.createElementNS(svg, 'circle');
+    marker.setAttribute('cx', centerX); marker.setAttribute('cy', centerY); marker.setAttribute('r', 17);
+    marker.setAttribute('fill', colors.cell); marker.setAttribute('stroke', '#be123c'); marker.setAttribute('stroke-width', 2.5);
+    marker.style.pointerEvents = 'none'; board.appendChild(marker);
+    quadruple.digits.forEach((digit, position) => {
+      const label = document.createElementNS(svg, 'text');
+      label.setAttribute('x', centerX + (position % 2 ? 7 : -7));
+      label.setAttribute('y', centerY + (position < 2 ? -2 : 11));
+      label.setAttribute('text-anchor', 'middle'); label.setAttribute('font-size', 10); label.setAttribute('font-weight', '800');
+      label.setAttribute('fill', '#be123c'); label.textContent = digit; label.style.pointerEvents = 'none'; board.appendChild(label);
+    });
   });
   traceData.thermometers.forEach(thermometer => {
     thermometer.branches.forEach(branch => {
@@ -1478,6 +1920,9 @@ function relatedCells(indexes) {
     (traceData.arrows || []).forEach(arrow => { const cells = [arrow.bulb, ...arrow.path]; if (cells.includes(index)) cells.forEach(cell => related.add(cell)); });
     (traceData.whispers || []).forEach(line => { if (line.includes(index)) line.forEach(cell => related.add(cell)); });
     (traceData.renbans || []).forEach(line => { if (line.includes(index)) line.forEach(cell => related.add(cell)); });
+    (traceData.entropicLines || []).forEach(line => { if (line.includes(index)) line.forEach(cell => related.add(cell)); });
+    (traceData.modularLines || []).forEach(line => { if (line.includes(index)) line.forEach(cell => related.add(cell)); });
+    (traceData.quadruples || []).forEach(quadruple => { if (quadruple.cells.includes(index)) quadruple.cells.forEach(cell => related.add(cell)); });
     (traceData.pairs || []).forEach(pair => { if (pair.a === index) related.add(pair.b); if (pair.b === index) related.add(pair.a); });
   });
   return related;
@@ -1538,11 +1983,28 @@ function updateDirectCandidates(indexes) {
       const position = line.indexOf(index);
       cell.candidates = cell.candidates.map((candidate, digit) => candidate && support[position][digit]);
     });
+    for (const [type, lines, categoryOf] of [
+      ['entropic', traceData.entropicLines || [], digit => Math.floor((digit - 1) / 3)],
+      ['modular', traceData.modularLines || [], digit => (digit - 1) % 3]
+    ]) {
+      lines.filter(line => line.includes(index)).forEach(line => {
+        const support = memoizedSupport(type, scopeSignature(manualSnapshot, line), () => categoryLineSupport(manualSnapshot, line, categoryOf));
+        if (!support) { cell.candidates = Array(SIZE).fill(false); return; }
+        const position = line.indexOf(index);
+        cell.candidates = cell.candidates.map((candidate, digit) => candidate && support[position][digit]);
+      });
+    }
+    (traceData.quadruples || []).filter(quadruple => quadruple.cells.includes(index)).forEach(quadruple => {
+      const support = memoizedSupport('quadruple', `${quadruple.digits.join(',')}|${scopeSignature(manualSnapshot, quadruple.cells)}`, () => quadrupleSupport(manualSnapshot, quadruple));
+      if (!support) { cell.candidates = Array(SIZE).fill(false); return; }
+      const position = quadruple.cells.indexOf(index);
+      cell.candidates = cell.candidates.map((candidate, digit) => candidate && support[position][digit]);
+    });
     if (traceData.sandwich) {
       const houses = [
         { house: ALL_DIGITS.map((_, col) => cellIndex(rowOf(index), col)), target: traceData.sandwich.rows[rowOf(index)] },
         { house: ALL_DIGITS.map((_, row) => cellIndex(row, colOf(index))), target: traceData.sandwich.cols[colOf(index)] }
-      ];
+      ].filter(entry => entry.target !== null && entry.target !== undefined);
       houses.forEach(({ house, target }) => {
         const support = sandwichHouseSupport(manualSnapshot, house, target);
         if (!support) { cell.candidates = Array(SIZE).fill(false); return; }
@@ -1678,6 +2140,11 @@ function updateKeypadHighlight() {
 
 function showSudokuHint() {
   if (!manualMode) return;
+  const limit = Number(hintLimit.value);
+  if (limit && hintsUsed >= limit) {
+    eventDetail.textContent = `Limite de ${limit} indice${limit > 1 ? 's' : ''} atteinte.`;
+    return;
+  }
   const candidateSource = cell => autoCandidates.checked
     ? cell.candidates.map((candidate, index) => candidate && !cell.hiddenCandidates[index])
     : cell.candidates;
@@ -1692,8 +2159,10 @@ function showSudokuHint() {
   const digit = candidates.findIndex(Boolean) + 1;
   selectOnly(index);
   manualHint = { index, digit };
+  hintsUsed++;
+  hintPenalty += 10;
   renderManual();
-  eventDetail.textContent = `Indice : r${rowOf(index) + 1}c${colOf(index) + 1} ne peut contenir que ${digit}.`;
+  eventDetail.textContent = `Indice : r${rowOf(index) + 1}c${colOf(index) + 1} ne peut contenir que ${digit}. −10 points (${hintsUsed}${limit ? `/${limit}` : ''}).`;
   eventChanges.innerHTML = `<div>Indice violet : possibilité unique ${digit}.</div>`;
 }
 
@@ -1703,11 +2172,19 @@ function renderManual() {
   eventDetail.textContent = activeCell === null ? 'Cliquez une case, puis utilisez le clavier ou le pavé numérique.' : `Case sélectionnée : r${rowOf(activeCell) + 1}c${colOf(activeCell) + 1}.`;
   const cage = activeCell === null ? null : traceData.cages.find(item => item.cells.includes(activeCell));
   const thermometer = activeCell === null ? null : traceData.thermometers.find(item => item.branches.some(branch => branch.includes(activeCell)));
+  const entropicLine = activeCell === null ? null : (traceData.entropicLines || []).find(line => line.includes(activeCell));
+  const modularLine = activeCell === null ? null : (traceData.modularLines || []).find(line => line.includes(activeCell));
+  const quadruple = activeCell === null ? null : (traceData.quadruples || []).find(item => item.cells.includes(activeCell));
   selectedCageInfo.textContent = cage
     ? `Cage sélectionnée : somme ${cage.sum}`
-    : (thermometer ? `Thermomètre sélectionné : ${thermometer.branches.length} branche${thermometer.branches.length > 1 ? 's' : ''}.` : 'Aucune contrainte sélectionnée');
+    : thermometer ? `Thermomètre sélectionné : ${thermometer.branches.length} branche${thermometer.branches.length > 1 ? 's' : ''}.`
+      : entropicLine ? 'Ligne entropique sélectionnée.'
+        : modularLine ? 'Ligne modulaire sélectionnée.'
+          : quadruple ? `Quadruple sélectionné : ${quadruple.digits.join(', ')}.`
+            : 'Aucune contrainte sélectionnée';
   const highlightedDigits = [...lockedHighlightDigits].sort((left, right) => left - right);
   errorCount.textContent = `Erreurs : ${errorCellIndexes(manualSnapshot).size}`;
+  if (!lanFinished && isSolved(manualSnapshot) && errorCellIndexes(manualSnapshot).size === 0) window.GameRecords?.finish({ score: Math.max(0, 100 - hintPenalty), scoreLabel: `Grille terminée · ${Math.max(0, 100 - hintPenalty)} points`, won: true, raceWinner: true });
   eventChanges.innerHTML = `<div>${pencilMode ? 'Saisie de possibilités activée.' : 'Saisie de valeurs finales activée.'}</div><div>${capsLockActive ? `Verr. Maj. actif${highlightedDigits.length ? ` : ${highlightedDigits.join(', ')}` : ''}.` : 'Verr. Maj. inactif.'}</div>`;
   updateKeypadHighlight();
   renderActiveGame({ snapshot: manualSnapshot, removals: [], assignments: [] });
@@ -1759,6 +2236,8 @@ function loadPuzzle(type, difficultyName) {
   selectedCells = new Set();
   selectionAnchor = null;
   manualHint = null;
+  hintPenalty = 0;
+  hintsUsed = 0;
   manualMode = true;
   manualToggle.textContent = 'Voir la trace';
   stepSlider.max = traceData.steps.length;
@@ -1773,130 +2252,112 @@ function loadPuzzle(type, difficultyName) {
 
 function generate() {
   generateButton.disabled = true;
+  randomVariantsButton.disabled = true;
   generationStatus.textContent = 'Génération et vérification de l’unicité en cours…';
   window.setTimeout(() => {
+    const startedAt = performance.now();
     try {
+      SUPPORT_CACHE.clear();
       loadPuzzle(selectedVariants, difficulty.value);
       const name = selectedVariants.size
-        ? `Sudoku ${[...selectedVariants].sort().map(variant => ({ killer: 'Killer', thermometer: 'Thermometer', diagonal: 'Diagonal', kropki: 'Kropki', xv: 'XV', knight: 'Anti-cavalier', king: 'Anti-roi', nonconsecutive: 'Non-consécutif', hyper: 'Hyper', disjoint: 'Groupes disjoints', palindrome: 'Palindrome', arrow: 'Arrow', parity: 'Pair/Impair', whisper: 'German Whispers', renban: 'Renban', sandwich: 'Sandwich' }[variant])).join(' + ')}`
+        ? `Sudoku ${[...selectedVariants].sort().map(variant => VARIANT_DEFINITIONS[variant].label).join(' + ')}`
         : 'Sudoku classique';
-      generationStatus.textContent = `Grille ${name} ${difficulty.value} générée, solution unique vérifiée.`;
+      generationStatus.textContent = `Grille ${name} ${difficulty.value} générée en ${((performance.now() - startedAt) / 1000).toFixed(2)} s, solution unique vérifiée.`;
     } catch (error) {
       generationStatus.textContent = `Erreur : ${error.message}`;
     } finally {
       generateButton.disabled = false;
+      randomVariantsButton.disabled = false;
     }
+  }, 0);
+}
+
+function randomVariantCombination() {
+  const structural = shuffled(['diagonal', 'knight', 'king', 'nonconsecutive', 'hyper', 'disjoint', 'palindrome']);
+  const expensive = shuffled(['killer', 'thermometer', 'arrow', 'whisper', 'renban', 'sandwich', 'entropic', 'modular', 'quadruple']);
+  const decorative = shuffled(VARIANT_KEYS.filter(variant => !structural.includes(variant) && !expensive.includes(variant)));
+  const ranges = {
+    facile: [2, 4],
+    moyen: [3, 5],
+    difficile: [4, 7],
+    expert: [5, 8]
+  };
+  const [minimum, maximum] = ranges[difficulty.value] || ranges.moyen;
+  const wanted = minimum + Math.floor(Math.random() * (maximum - minimum + 1));
+  const expensiveLimit = difficulty.value === 'expert' ? 3 : difficulty.value === 'difficile' ? 2 : 1;
+  const combination = [structural[0], ...expensive.slice(0, Math.min(expensiveLimit, wanted - 1))];
+  combination.push(...decorative.slice(0, wanted - combination.length));
+  return new Set(combination);
+}
+
+function generateRandomVariants() {
+  generateButton.disabled = true;
+  randomVariantsButton.disabled = true;
+  generationStatus.textContent = 'Recherche d’une combinaison compatible et vérification de son unicité…';
+  window.setTimeout(() => {
+    const startedAt = performance.now();
+    let lastError = null;
+    const maximumAttempts = 18;
+    for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+      const combination = randomVariantCombination();
+      try {
+        SUPPORT_CACHE.clear();
+        loadPuzzle(combination, difficulty.value);
+        selectedVariants = combination;
+        updateVariantChoice();
+        const name = [...combination].sort().map(variant => VARIANT_DEFINITIONS[variant].label).join(' + ');
+        generationStatus.textContent = `Combinaison compatible ${name} générée en ${((performance.now() - startedAt) / 1000).toFixed(2)} s, solution unique vérifiée.`;
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (lastError) generationStatus.textContent = `Aucune combinaison validée après ${maximumAttempts} essais : ${lastError.message}`;
+    generateButton.disabled = false;
+    randomVariantsButton.disabled = false;
   }, 0);
 }
 
 function updateVariantChoice() {
   typeSudoku.classList.toggle('selected', selectedVariants.size === 0);
-  typeKiller.classList.toggle('selected', selectedVariants.has('killer'));
-  typeThermometer.classList.toggle('selected', selectedVariants.has('thermometer'));
-  typeDiagonal.classList.toggle('selected', selectedVariants.has('diagonal'));
-  typeKropki.classList.toggle('selected', selectedVariants.has('kropki'));
-  typeXV.classList.toggle('selected', selectedVariants.has('xv'));
-  typeKnight.classList.toggle('selected', selectedVariants.has('knight'));
-  typeKing.classList.toggle('selected', selectedVariants.has('king'));
-  typeNonConsecutive.classList.toggle('selected', selectedVariants.has('nonconsecutive'));
-  typeHyper.classList.toggle('selected', selectedVariants.has('hyper'));
-  typeDisjoint.classList.toggle('selected', selectedVariants.has('disjoint'));
-  typePalindrome.classList.toggle('selected', selectedVariants.has('palindrome'));
-  typeArrow.classList.toggle('selected', selectedVariants.has('arrow'));
-  typeParity.classList.toggle('selected', selectedVariants.has('parity'));
-  typeWhisper.classList.toggle('selected', selectedVariants.has('whisper'));
-  typeRenban.classList.toggle('selected', selectedVariants.has('renban'));
-  typeSandwich.classList.toggle('selected', selectedVariants.has('sandwich'));
+  Object.entries(VARIANT_DEFINITIONS).forEach(([variant, definition]) => definition.button.classList.toggle('selected', selectedVariants.has(variant)));
   variantChoice.textContent = selectedVariants.size
-    ? `Variantes cumulées : ${[...selectedVariants].sort().map(variant => ({ killer: 'cages Killer', thermometer: 'thermomètres', diagonal: 'diagonales', kropki: 'points Kropki', xv: 'marqueurs XV', knight: 'anti-cavalier', king: 'anti-roi', nonconsecutive: 'non-consécutif', hyper: 'régions Hyper', disjoint: 'groupes disjoints', palindrome: 'palindromes', arrow: 'flèches', parity: 'pair/impair', whisper: 'German Whispers', renban: 'Renban', sandwich: 'Sandwich' }[variant])).join(' + ')}.`
+    ? `Variantes cumulées : ${[...selectedVariants].sort().map(variant => VARIANT_DEFINITIONS[variant].choice).join(' + ')}.`
     : 'Sudoku classique.';
 }
+
+function sudokuDiagnosticSummary() {
+  if (!traceData) return null;
+  const finalSnapshot = traceData.steps[traceData.steps.length - 1]?.snapshot || traceData.initialSnapshot;
+  return {
+    variants: traceData.puzzleType,
+    clueCount: traceData.initialSnapshot.cells.filter(cell => cell.value).length,
+    stepCount: traceData.steps.length,
+    solved: isSolved(finalSnapshot),
+    unique: countSolutions(traceData.initialSnapshot, traceData, 2) === 1,
+  };
+}
+
+window.SudokuTestAPI = Object.freeze({
+  summary: sudokuDiagnosticSummary,
+  variants: () => VARIANT_KEYS.slice(),
+  countCurrentSolutions: () => traceData ? countSolutions(traceData.initialSnapshot, traceData, 2) : 0,
+});
 
 typeSudoku.addEventListener('click', () => {
   selectedVariants.clear();
   updateVariantChoice();
 });
-typeKiller.addEventListener('click', () => {
-  if (selectedVariants.has('killer')) selectedVariants.delete('killer');
-  else selectedVariants.add('killer');
-  updateVariantChoice();
-});
-typeThermometer.addEventListener('click', () => {
-  if (selectedVariants.has('thermometer')) selectedVariants.delete('thermometer');
-  else selectedVariants.add('thermometer');
-  updateVariantChoice();
-});
-typeDiagonal.addEventListener('click', () => {
-  if (selectedVariants.has('diagonal')) selectedVariants.delete('diagonal');
-  else selectedVariants.add('diagonal');
-  updateVariantChoice();
-});
-typeKropki.addEventListener('click', () => {
-  if (selectedVariants.has('kropki')) selectedVariants.delete('kropki');
-  else selectedVariants.add('kropki');
-  updateVariantChoice();
-});
-typeXV.addEventListener('click', () => {
-  if (selectedVariants.has('xv')) selectedVariants.delete('xv');
-  else selectedVariants.add('xv');
-  updateVariantChoice();
-});
-typeKnight.addEventListener('click', () => {
-  if (selectedVariants.has('knight')) selectedVariants.delete('knight');
-  else selectedVariants.add('knight');
-  updateVariantChoice();
-});
-typeKing.addEventListener('click', () => {
-  if (selectedVariants.has('king')) selectedVariants.delete('king');
-  else selectedVariants.add('king');
-  updateVariantChoice();
-});
-typeNonConsecutive.addEventListener('click', () => {
-  if (selectedVariants.has('nonconsecutive')) selectedVariants.delete('nonconsecutive');
-  else selectedVariants.add('nonconsecutive');
-  updateVariantChoice();
-});
-typeHyper.addEventListener('click', () => {
-  if (selectedVariants.has('hyper')) selectedVariants.delete('hyper');
-  else selectedVariants.add('hyper');
-  updateVariantChoice();
-});
-typeDisjoint.addEventListener('click', () => {
-  if (selectedVariants.has('disjoint')) selectedVariants.delete('disjoint');
-  else selectedVariants.add('disjoint');
-  updateVariantChoice();
-});
-typePalindrome.addEventListener('click', () => {
-  if (selectedVariants.has('palindrome')) selectedVariants.delete('palindrome');
-  else selectedVariants.add('palindrome');
-  updateVariantChoice();
-});
-typeArrow.addEventListener('click', () => {
-  if (selectedVariants.has('arrow')) selectedVariants.delete('arrow');
-  else selectedVariants.add('arrow');
-  updateVariantChoice();
-});
-typeParity.addEventListener('click', () => {
-  if (selectedVariants.has('parity')) selectedVariants.delete('parity');
-  else selectedVariants.add('parity');
-  updateVariantChoice();
-});
-typeWhisper.addEventListener('click', () => {
-  if (selectedVariants.has('whisper')) selectedVariants.delete('whisper');
-  else selectedVariants.add('whisper');
-  updateVariantChoice();
-});
-typeRenban.addEventListener('click', () => {
-  if (selectedVariants.has('renban')) selectedVariants.delete('renban');
-  else selectedVariants.add('renban');
-  updateVariantChoice();
-});
-typeSandwich.addEventListener('click', () => {
-  if (selectedVariants.has('sandwich')) selectedVariants.delete('sandwich');
-  else selectedVariants.add('sandwich');
-  updateVariantChoice();
+Object.entries(VARIANT_DEFINITIONS).forEach(([variant, definition]) => {
+  definition.button.addEventListener('click', () => {
+    if (selectedVariants.has(variant)) selectedVariants.delete(variant);
+    else selectedVariants.add(variant);
+    updateVariantChoice();
+  });
 });
 generateButton.addEventListener('click', generate);
+randomVariantsButton.addEventListener('click', generateRandomVariants);
 stepSlider.addEventListener('input', render);
 previousStep.addEventListener('click', () => { stepSlider.value = Math.max(0, Number(stepSlider.value) - 1); render(); });
 nextStep.addEventListener('click', () => { stepSlider.value = Math.min(traceData.steps.length, Number(stepSlider.value) + 1); render(); });
@@ -1924,6 +2385,25 @@ manualReset.addEventListener('click', () => {
 manualUndo.addEventListener('click', () => restoreHistory(manualHistoryIndex - 1));
 manualRedo.addEventListener('click', () => restoreHistory(manualHistoryIndex + 1));
 hintButton.addEventListener('click', showSudokuHint);
+abandonGame.addEventListener('click', () => {
+  if (!confirm('Abandonner cette grille ?')) return;
+  lanFinished = true;
+  board.style.pointerEvents = 'none';
+  keypad.style.pointerEvents = 'none';
+  eventDetail.textContent = 'Grille abandonnée.';
+  window.GameRecords?.finish({ score: 0, scoreLabel: 'Abandon', won: false });
+});
+window.addEventListener('lan:start', () => {
+  lanFinished = false;
+  board.style.pointerEvents = '';
+  keypad.style.pointerEvents = '';
+});
+window.addEventListener('lan:finished', () => {
+  lanFinished = true;
+  board.style.pointerEvents = 'none';
+  keypad.style.pointerEvents = 'none';
+  eventDetail.textContent = 'Partie LAN terminée : un joueur a résolu la grille en premier.';
+});
 autoCandidates.addEventListener('change', () => { if (manualMode) renderManual(); });
 showErrors.addEventListener('change', () => { if (manualMode) renderManual(); });
 constraintCombinations.addEventListener('change', () => { if (manualMode) { recalculateActiveCandidates(); renderManual(); } });
