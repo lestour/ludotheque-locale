@@ -66,6 +66,24 @@ const games = [
     href: 'games/grid/fusion-2048.html'
   },
   {
+    id: 'puzzle-image',
+    title: 'Atelier Puzzle Image',
+    category: 'grid',
+    status: 'Jouable',
+    icon: '🖼️', accent: '#315fc9',
+    description: 'Importez une image, choisissez parmi sept découpes, activez les rotations et assemblez des pièces classiques ou irrégulières.',
+    href: 'games/grid/puzzle-image.html'
+  },
+  {
+    id: 'takuzu',
+    title: 'Takuzu',
+    category: 'grid',
+    status: 'Jouable',
+    icon: '◐', accent: '#2563eb',
+    description: 'Grilles binaires de 6 à 12 cases avec générateur contraint, indices expliqués et résolution logique pas à pas.',
+    href: 'games/grid/takuzu.html'
+  },
+  {
     id: 'arcade',
     title: 'Arcade local',
     category: 'arcade',
@@ -138,6 +156,15 @@ const games = [
     href: 'games/arcade/traversee-turbo.html'
   },
   {
+    id: 'blindes-arene',
+    title: 'Blindés d’Arène',
+    category: 'arcade',
+    status: 'Jouable',
+    icon: '🛡️', accent: '#b45309',
+    description: 'Combat de blindés à vagues avec arènes procédurales connectées, ennemis spécialisés, caisses et améliorations.',
+    href: 'games/arcade/blindes-arene.html'
+  },
+  {
     id: 'asteria',
     title: 'Chroniques d’Asteria',
     category: 'arcade',
@@ -165,6 +192,15 @@ const games = [
     href: 'games/board/connect-four.html'
   },
   {
+    id: 'disques-reversibles',
+    title: 'Disques Réversibles',
+    category: 'board',
+    status: 'Jouable',
+    icon: '⚫', accent: '#166534',
+    description: 'Encadrez et retournez les disques sur quatre tailles de plateau, avec variantes et bot stratégique.',
+    href: 'games/board/disques-reversibles.html'
+  },
+  {
     id: 'bataille',
     title: 'Bataille',
     category: 'cards',
@@ -172,6 +208,15 @@ const games = [
     icon: '⚔️', accent: '#b91c1c', cardIcon: '♠️',
     description: 'Affrontez l’ordinateur avec un paquet classique, batailles incluses.',
     href: 'games/cards/classic/bataille.html'
+  },
+  {
+    id: 'pyramide-13',
+    title: 'Pyramide 13',
+    category: 'cards',
+    status: 'Jouable',
+    icon: '🔺', accent: '#166534', cardIcon: '♣',
+    description: 'Réussite de paires totalisant treize avec donne garantie, recyclage de pioche, indices et annulation.',
+    href: 'games/cards/classic/pyramide-13.html'
   },
   {
     id: 'bataille-corse',

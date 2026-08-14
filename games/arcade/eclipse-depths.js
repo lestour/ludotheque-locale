@@ -66,18 +66,18 @@ function sound(kind) {
   } catch {}
 }
 
-function createPlayer() { return { x: 90, y: 420, width: 28, height: 44, normalHeight: 44, vx: 0, vy: 0, facing: 1, grounded: false, jumps: 0, coyote: 0, jumpBuffer: 0, attackCooldown: 0, dashCooldown: 0, dashTimer: 0, invulnerable: 0, morph: false, shotCount: 0, charge: 0, speedCharge: 0, speedBoost: 0, afterimages: [] }; }
+function createPlayer() { return { x: 90, y: 420, width: 28, height: 44, normalHeight: 44, vx: 0, vy: 0, facing: 1, grounded: false, jumps: 0, coyote: 0, jumpBuffer: 0, wallSide: 0, wallGrace: 0, attackCooldown: 0, dashCooldown: 0, dashTimer: 0, invulnerable: 0, morph: false, shotCount: 0, charge: 0, speedCharge: 0, speedBoost: 0, afterimages: [] }; }
 
 function saveGame() {
   if (!game || window.LanMultiplayer?.active) return;
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 4, seed: game.seed, options: { worldSize: worldSizeSelect.value, difficulty: difficultySelect.value, gameMode: gameModeSelect.value }, roomId: game.roomId, inventory: game.inventory, explored: [...game.explored], clearedRooms: [...game.clearedRooms], collectedRooms: [...game.collectedRooms], masteryRewards: [...game.masteryRewards], openedEdges: [...game.openedEdges], maxEnergy: game.maxEnergy, energy: game.energy, maxMissiles: game.maxMissiles, missiles: game.missiles, score: game.score, elapsed: game.elapsed }));
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 6, seed: game.seed, options: { worldSize: worldSizeSelect.value, difficulty: difficultySelect.value, gameMode: gameModeSelect.value }, roomId: game.roomId, inventory: game.inventory, explored: [...game.explored], clearedRooms: [...game.clearedRooms], collectedRooms: [...game.collectedRooms], collectedFeatures: [...game.collectedFeatures], masteryRewards: [...game.masteryRewards], openedEdges: [...game.openedEdges], maxEnergy: game.maxEnergy, energy: game.energy, maxMissiles: game.maxMissiles, missiles: game.missiles, score: game.score, elapsed: game.elapsed, highlightAbility: game.highlightAbility }));
     document.getElementById('continue').disabled = false;
   } catch {}
 }
 
 function loadSave() {
-  try { const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); return [2, 3, 4].includes(saved?.version) && saved.seed ? saved : null; } catch { return null; }
+  try { const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); return [2, 3, 4, 5, 6].includes(saved?.version) && saved.seed ? saved : null; } catch { return null; }
 }
 
 function applySavedOptions(saved) {
@@ -88,8 +88,8 @@ function createGame(seed, saved = null) {
   const world = EclipseDepthsWorld.generateWorld(seed, worldSizeSelect.value); const startRoom = world.rooms.some(room => room.id === saved?.roomId) ? saved.roomId : world.startRoom;
   return {
     seed, random: EclipseDepthsWorld.randomFor(`eclipse-play:${seed}`), world, roomId: startRoom, layout: null, roomStates: new Map(), player: createPlayer(),
-    inventory: saved?.inventory || ['pulseCannon'], explored: new Set(saved?.explored || [startRoom]), clearedRooms: new Set(saved?.clearedRooms || []), collectedRooms: new Set(saved?.collectedRooms || []), masteryRewards: new Set(saved?.masteryRewards || []),
-    openedEdges: new Set(saved?.openedEdges || []), maxEnergy: saved?.maxEnergy || 8, energy: saved?.energy || saved?.maxEnergy || 8, maxMissiles: saved?.maxMissiles || 0, missiles: saved?.missiles ?? saved?.maxMissiles ?? 0, score: saved?.score || 0, elapsed: saved?.elapsed || 0, projectiles: [], enemyProjectiles: [], bombs: [], particles: [], camera: { x: 0, y: 0 }, completed: false, nextAutosave: (saved?.elapsed || 0) + 10
+    inventory: saved?.inventory || ['pulseCannon'], explored: new Set(saved?.explored || [startRoom]), clearedRooms: new Set(saved?.clearedRooms || []), collectedRooms: new Set(saved?.collectedRooms || []), collectedFeatures: new Set(saved?.collectedFeatures || []), masteryRewards: new Set(saved?.masteryRewards || []),
+    openedEdges: new Set(saved?.openedEdges || []), maxEnergy: saved?.maxEnergy || 8, energy: saved?.energy || saved?.maxEnergy || 8, maxMissiles: saved?.maxMissiles || 0, missiles: saved?.missiles ?? saved?.maxMissiles ?? 0, score: saved?.score || 0, elapsed: saved?.elapsed || 0, highlightAbility: saved?.highlightAbility || null, scanUntil: 0, projectiles: [], enemyProjectiles: [], bombs: [], particles: [], camera: { x: 0, y: 0 }, completed: false, nextAutosave: (saved?.elapsed || 0) + 10
   };
 }
 
@@ -112,7 +112,7 @@ function roomState(id) {
     const enemies = game.clearedRooms.has(id) ? [] : layout.enemies.map(createEnemy);
     const puzzle = layout.puzzle ? { ...layout.puzzle, nodes: layout.puzzle.nodes.map(node => ({ ...node, active: false })), progress: 0, timer: 0, solved: game.clearedRooms.has(id) } : null;
     const masterySolved = room.type !== 'mastery' || game.clearedRooms.has(id);
-    game.roomStates.set(id, { layout, enemies, obstacles: layout.obstacles.map(obstacle => ({ ...obstacle })), puzzle, drops: [], masterySolved, masteryDirection: 0, cleared: game.clearedRooms.has(id) || !enemies.length && !puzzle && masterySolved });
+    game.roomStates.set(id, { layout, enemies, obstacles: layout.obstacles.map(obstacle => ({ ...obstacle })), platformFeatures: (layout.platformFeatures || []).map(feature => ({ ...feature, collected: game.collectedFeatures.has(feature.id) })), puzzle, drops: [], masterySolved, masteryDirection: 0, cleared: game.clearedRooms.has(id) || !enemies.length && !puzzle && masterySolved });
   }
   return game.roomStates.get(id);
 }
@@ -209,20 +209,23 @@ function interact() {
 function updatePlayer(delta) {
   const player = game.player; const direction = (controls.has('right') ? 1 : 0) - (controls.has('left') ? 1 : 0); if (direction) player.facing = direction; player.afterimages ||= []; if (player.dashTimer > 0 && (!player.afterimages.length || game.elapsed - player.afterimages.at(-1).time > .035)) player.afterimages.push({ x: player.x, y: player.y, morph: player.morph, time: game.elapsed }); player.afterimages = player.afterimages.filter(image => game.elapsed - image.time < .22);
   if (player.grounded && player.groundPlatform) { player.x += player.groundPlatform.deltaX || 0; player.y += player.groundPlatform.deltaY || 0; }
-  player.coyote = player.grounded ? 0.1 : Math.max(0, player.coyote - delta); player.jumpBuffer = Math.max(0, player.jumpBuffer - delta);
+  player.coyote = player.grounded ? 0.1 : Math.max(0, player.coyote - delta); player.jumpBuffer = Math.max(0, player.jumpBuffer - delta); player.wallGrace = Math.max(0, player.wallGrace - delta);
   const maxJumps = owned('jumpBoots') ? 2 : 1;
-  if (player.jumpBuffer > 0 && (player.coyote > 0 || player.jumps < maxJumps)) { player.vy = owned('jumpBoots') ? -510 : -420; player.grounded = false; player.coyote = 0; player.jumpBuffer = 0; player.jumps++; sound('jump'); }
+  if (player.jumpBuffer > 0 && player.wallGrace > 0 && !player.grounded) { player.vy = owned('tractionModule') ? -500 : -450; player.vx = -player.wallSide * (owned('tractionModule') ? 360 : 310); player.facing = -player.wallSide; player.wallGrace = 0; player.jumpBuffer = 0; player.jumps = Math.min(player.jumps, maxJumps - 1); sound('jump'); }
+  else if (player.jumpBuffer > 0 && (player.coyote > 0 || player.jumps < maxJumps)) { player.vy = owned('jumpBoots') ? -510 : -420; player.grounded = false; player.coyote = 0; player.jumpBuffer = 0; player.jumps++; sound('jump'); }
   if (owned('speedBooster') && direction && player.grounded) player.speedCharge = Math.min(1.6, player.speedCharge + delta); else player.speedCharge = Math.max(0, player.speedCharge - delta * 2.2);
   if (player.speedCharge >= 1.18) player.speedBoost = 0.24; else player.speedBoost = Math.max(0, player.speedBoost - delta);
   const acceleration = player.grounded ? 1900 : 1050; const target = direction * (player.speedBoost > 0 ? 410 : player.morph ? 175 : 245); player.vx += clamp(target - player.vx, -acceleration * delta, acceleration * delta);
   if (!direction && player.grounded && player.dashTimer <= 0) player.vx *= Math.pow(0.003, delta);
   player.vy += 1240 * delta; player.attackCooldown = Math.max(0, player.attackCooldown - delta); player.dashCooldown = Math.max(0, player.dashCooldown - delta); player.dashTimer = Math.max(0, player.dashTimer - delta); player.invulnerable = Math.max(0, player.invulnerable - delta);
-  const previousBottom = player.y + player.height; const previousX = player.x; player.x += player.vx * delta;
+  const previousBottom = player.y + player.height; const previousX = player.x; player.wallSide = 0; player.x += player.vx * delta;
   for (const obstacle of activeObstacles()) {
     if (obstacle.type === 'speed' && player.speedBoost > 0 && overlaps(player, obstacle)) { obstacle.health = 0; addParticles(obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height / 2, '#fef08a', 18); game.score += 300; continue; }
     if (!overlaps(player, obstacle) || obstacle.type === 'phase' && player.dashTimer > 0) continue;
-    if (player.vx > 0) player.x = obstacle.x - player.width; else if (player.vx < 0) player.x = obstacle.x + obstacle.width; else player.x = previousX; player.vx = 0;
+    if (player.vx > 0) { player.x = obstacle.x - player.width; player.wallSide = 1; } else if (player.vx < 0) { player.x = obstacle.x + obstacle.width; player.wallSide = -1; } else player.x = previousX; player.vx = 0;
   }
+  if (player.x <= 45 && direction < 0) player.wallSide = -1; else if (player.x + player.width >= game.layout.width - 45 && direction > 0) player.wallSide = 1;
+  if (player.wallSide && !player.grounded && player.vy > 0 && direction === player.wallSide) { player.wallGrace = owned('tractionModule') ? 0.24 : 0.12; player.vy = Math.min(player.vy, owned('tractionModule') ? 82 : 145); }
   player.y += player.vy * delta; player.grounded = false; player.groundPlatform = null;
   const landingSurfaces = [...game.layout.platforms, ...(game.layout.movingPlatforms || []), ...activeObstacles().filter(obstacle => ['jump', 'plasma'].includes(obstacle.type))];
   if (player.vy >= 0) for (const platform of landingSurfaces) {
@@ -273,7 +276,7 @@ function updateEnemies(delta) {
     else if (enemy.style === 'flying') { enemy.vx = Math.sign(dx) * enemy.speed * 0.7; enemy.y += Math.sin(enemy.phase * 2.8) * 42 * delta; }
     else if (enemy.style === 'ranged' && enemy.cooldown <= 0) { spawnEnemyProjectile(enemy, Math.atan2(dy, dx)); enemy.cooldown = 1.5 + random(); }
     else if (enemy.style === 'charge' && enemy.cooldown <= 0) { enemy.vx = Math.sign(dx) * 320; enemy.cooldown = 2; }
-    if (!enemy.boss && enemy.style !== 'flying') enemy.y = game.layout.floorY - enemy.height;
+    if (!enemy.boss && enemy.style !== 'flying') enemy.y = (enemy.supportY || game.layout.floorY) - enemy.height;
     const nextX = clamp(enemy.x + enemy.vx * delta, 60, game.layout.width - 60 - enemy.width); const candidate = { ...enemy, x: nextX };
     const blocked = activeObstacles().some(obstacle => overlaps(candidate, obstacle));
     const supported = enemy.boss || enemy.style === 'flying' || game.layout.platforms.some(platform => candidate.x + candidate.width > platform.x + 3 && candidate.x < platform.x + platform.width - 3 && Math.abs(candidate.y + candidate.height - platform.y) <= 5);
@@ -297,7 +300,7 @@ function openDoor(door) {
 
 function hitPuzzleNode(projectile, node, puzzle) {
   if (projectile.life <= 0 || !overlaps(projectile, { x: node.x - node.radius, y: node.y - node.radius, width: node.radius * 2, height: node.radius * 2 })) return false;
-  const order = puzzle.type === 'relay' ? [1, 0, 2] : puzzle.type === 'timedRelay' ? [0, 2, 1] : [0, 1, 2]; const expected = order[puzzle.progress];
+  const order = puzzle.order || [0, 1, 2, 3]; const expected = order[puzzle.progress];
   if (node.order === expected) { node.active = true; puzzle.progress++; if (puzzle.timeLimit && puzzle.progress === 1) puzzle.timer = puzzle.timeLimit; statusElement.textContent = `Relais ${puzzle.progress}/${order.length} activé${puzzle.timer ? ` · ${puzzle.timer.toFixed(1)} s` : ''}.`; }
   else { puzzle.progress = 0; puzzle.nodes.forEach(candidate => { candidate.active = false; }); statusElement.textContent = 'Séquence incorrecte : circuit réinitialisé.'; }
   if (puzzle.progress >= order.length) { puzzle.solved = true; sound('item'); game.score += 500; statusElement.textContent = 'Circuit résolu : les portes sont alimentées.'; if (!roomState(game.roomId).enemies.length) clearCurrentRoom(); }
@@ -381,7 +384,7 @@ function collectPickup(pickup, broadcast = true) {
   const upgrade = mainUpgradeMap.get(pickup.id) || bonusUpgradeMap.get(pickup.id); if (pickup.id.startsWith('energyTank')) { game.maxEnergy += 2; game.energy = game.maxEnergy; }
   if (pickup.id === 'missileLauncher') { game.maxMissiles = Math.max(game.maxMissiles, 5); game.missiles = game.maxMissiles; }
   if (pickup.id.startsWith('missilePack')) { game.maxMissiles += 3; game.missiles = game.maxMissiles; }
-  game.score += pickup.main ? 3200 : 1100; sound('item'); addParticles(game.layout.width / 2, game.layout.floorY - 72, upgrade?.color || '#fef08a', 25); renderInventory(); updateObjective(); saveGame();
+  game.highlightAbility = pickup.id; game.score += pickup.main ? 3200 : 1100; sound('item'); addParticles(game.layout.width / 2, game.layout.floorY - 72, upgrade?.color || '#fef08a', 25); renderInventory(); updateObjective(); saveGame();
   if (broadcast && sharedCombat()) window.LanMultiplayer.sendAction({ type: 'eclipse-pickup', roomId: room.id, pickupId: pickup.id, main: pickup.main })?.catch(() => {});
   if (broadcast) showOverlay(upgrade?.name || 'Amélioration', `${upgrade?.effect || `Nouvelle capacité : ${upgrade?.gate}.`} ${pickup.main ? 'Un nouveau secteur est désormais accessible.' : 'Cette amélioration est optionnelle.'}`, closeOverlay);
   else statusElement.textContent = `${upgrade?.name || 'Amélioration'} récupérée par l’équipe.`;
@@ -401,6 +404,7 @@ function update(delta) {
   updateMovingPlatforms(delta); updatePlayer(delta); updateEnemies(delta); updateProjectiles(delta); updateBombs(delta); updatePuzzleTimer(delta); updateMasteryChallenge();
   const pickup = availablePickup(); if (pickup && overlaps(game.player, pickup)) collectPickup(pickup);
   const runtime = roomState(game.roomId); runtime.drops.forEach(drop => { if (overlaps(game.player, drop)) { drop.collected = true; game.energy = Math.min(game.maxEnergy, game.energy + drop.energy); sound('save'); } }); runtime.drops = runtime.drops.filter(drop => !drop.collected);
+  runtime.platformFeatures.forEach(feature => { if (feature.collected || !overlaps(game.player, { x: feature.x - 15, y: feature.y - 18, width: 30, height: 30 })) return; feature.collected = true; game.collectedFeatures.add(feature.id); const rewards = { energy: 1, relay: 0, archive: 0, relic: 2 }; game.energy = Math.min(game.maxEnergy, game.energy + rewards[feature.type]); game.score += feature.type === 'relic' ? 450 : feature.type === 'archive' ? 250 : 140; sound('item'); addParticles(feature.x, feature.y, feature.type === 'relay' ? '#67e8f9' : '#fef08a', 12); statusElement.textContent = feature.type === 'relay' ? 'Relais d’altitude synchronisé.' : feature.type === 'archive' ? 'Archive secrète analysée.' : feature.type === 'relic' ? 'Relique de secteur récupérée.' : 'Capsule énergétique récupérée.'; saveGame(); });
   game.particles.forEach(particle => { particle.x += particle.vx * delta; particle.y += particle.vy * delta; particle.vy += 250 * delta; particle.life -= delta; }); game.particles = game.particles.filter(particle => particle.life > 0);
   const targetCameraX = clamp(game.player.x - WIDTH * 0.36, 0, Math.max(0, game.layout.width - WIDTH)); const targetCameraY = clamp(game.player.y - HEIGHT * 0.58, 0, Math.max(0, game.layout.height - HEIGHT));
   game.camera.x += (targetCameraX - game.camera.x) * Math.min(1, delta * 7); game.camera.y += (targetCameraY - game.camera.y) * Math.min(1, delta * 7);
@@ -412,6 +416,11 @@ function update(delta) {
 function drawBackground(room, theme) {
   context.fillStyle = theme.background; context.fillRect(0, 0, game.layout.width, game.layout.height); context.fillStyle = theme.far;
   for (let index = 0; index < Math.ceil(game.layout.width / 94) + 1; index++) { const x = index * 94 + room.x * 17 % 70; const height = 85 + (index * 47 + room.y * 31) % Math.max(180, game.layout.height * 0.45); context.fillRect(x, game.layout.height - height, 46, height); }
+  const architecture = game.layout.architecture || { ribs: 4, shafts: 1, damaged: false };
+  context.strokeStyle = `${theme.detail}48`; context.lineWidth = 8;
+  for (let index = 0; index < architecture.ribs; index++) { const x = (index + 0.5) * game.layout.width / architecture.ribs; context.beginPath(); context.moveTo(x, 0); context.lineTo(x + (index % 2 ? 24 : -24), game.layout.floorY); context.stroke(); }
+  for (let index = 0; index < architecture.shafts; index++) { const x = game.layout.width * (index + 1) / (architecture.shafts + 1); const shaft = context.createLinearGradient(x - 75, 0, x + 75, 0); shaft.addColorStop(0, 'transparent'); shaft.addColorStop(0.5, `${theme.detail}18`); shaft.addColorStop(1, 'transparent'); context.fillStyle = shaft; context.fillRect(x - 75, 0, 150, game.layout.floorY); }
+  if (architecture.damaged) { context.strokeStyle = '#02061788'; context.lineWidth = 5; for (let index = 0; index < 7; index++) { const x = 90 + (architecture.seed + index * 173) % Math.max(100, game.layout.width - 180); const y = 75 + (architecture.seed + index * 97) % Math.max(80, game.layout.floorY - 170); context.beginPath(); context.moveTo(x, y); context.lineTo(x + 15, y + 22); context.lineTo(x - 4, y + 39); context.stroke(); } }
   context.globalAlpha = 0.18; context.strokeStyle = theme.detail; for (let y = 50; y < game.layout.height; y += 72) { context.beginPath(); context.moveTo(0, y); context.lineTo(game.layout.width, y + Math.sin(y) * 8); context.stroke(); } context.globalAlpha = 1;
   context.fillStyle = `${theme.detail}44`; for (let index = 0; index < 28; index++) { const x = (index * 173 + game.elapsed * (10 + index % 3) + room.x * 41) % game.layout.width; const y = 35 + (index * 79 + room.y * 29) % Math.max(70, game.layout.height - 100); context.fillRect(x, y, 2 + index % 3, 2 + index % 2); }
 }
@@ -431,12 +440,19 @@ function drawTraversalObstacles(theme) {
 
 function drawPuzzle(runtime) {
   if (!runtime.puzzle) return;
-  const order = runtime.puzzle.type === 'relay' ? [1, 0, 2] : runtime.puzzle.type === 'timedRelay' ? [0, 2, 1] : [0, 1, 2]; runtime.puzzle.nodes.forEach(node => { context.fillStyle = node.active ? '#22c55e' : '#0f172a'; context.strokeStyle = node.order === order[runtime.puzzle.progress] ? '#fef08a' : '#67e8f9'; context.lineWidth = 5; context.beginPath(); context.arc(node.x, node.y, node.radius, 0, Math.PI * 2); context.fill(); context.stroke(); context.fillStyle = '#fff'; context.font = '900 15px Arial'; context.textAlign = 'center'; context.fillText(String(node.order + 1), node.x, node.y + 5); });
+  const order = runtime.puzzle.order || [0, 1, 2, 3]; runtime.puzzle.nodes.forEach(node => { context.fillStyle = node.active ? '#22c55e' : '#0f172a'; context.strokeStyle = node.order === order[runtime.puzzle.progress] ? '#fef08a' : '#67e8f9'; context.lineWidth = 5; context.beginPath(); context.arc(node.x, node.y, node.radius, 0, Math.PI * 2); context.fill(); context.stroke(); context.fillStyle = '#fff'; context.font = '900 15px Arial'; context.textAlign = 'center'; context.fillText(String(order.indexOf(node.order) + 1), node.x, node.y + 5); });
   if (runtime.puzzle.timer) { context.fillStyle = '#fef08a'; context.font = '900 18px Arial'; context.fillText(`${runtime.puzzle.timer.toFixed(1)} s`, game.layout.width / 2, game.layout.floorY - 125); }
 }
 
 function drawEnvironment(theme) {
-  (game.layout.environment || []).forEach(item => { context.save(); context.translate(item.x, item.y); context.scale(item.scale, item.scale); if (item.type === 'pipe') { context.fillStyle = theme.wall; context.fillRect(-9, -72, 18, 72); context.fillStyle = theme.platform; context.fillRect(-14, -75, 28, 9); } else if (item.type === 'crystal') { context.fillStyle = theme.detail; context.globalAlpha = 0.55; context.beginPath(); context.moveTo(0, -55); context.lineTo(14, -18); context.lineTo(0, 0); context.lineTo(-14, -18); context.closePath(); context.fill(); } else { context.strokeStyle = theme.detail; context.lineWidth = 4; context.beginPath(); context.arc(0, -25, 18, 0, Math.PI * 2); context.stroke(); for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 2) { context.beginPath(); context.moveTo(0, -25); context.lineTo(Math.cos(angle + game.elapsed * 3) * 15, -25 + Math.sin(angle + game.elapsed * 3) * 15); context.stroke(); } } context.restore(); });
+  (game.layout.environment || []).forEach(item => { context.save(); context.translate(item.x, item.y); context.scale(item.scale, item.scale); context.globalAlpha = item.depth === 0 ? 0.55 : 0.85;
+    if (item.type === 'pipe' || item.type === 'cable') { context.fillStyle = item.type === 'cable' ? '#111827' : theme.wall; context.fillRect(-9, -72, 18, 72); context.fillStyle = theme.platform; context.fillRect(-14, -75, 28, 9); }
+    else if (item.type === 'crystal' || item.type === 'relic') { context.fillStyle = item.type === 'relic' ? '#fef08a' : theme.detail; context.beginPath(); context.moveTo(0, -55); context.lineTo(14, -18); context.lineTo(0, 0); context.lineTo(-14, -18); context.closePath(); context.fill(); }
+    else if (item.type === 'terminal') { context.fillStyle = theme.wall; context.fillRect(-25, -58, 50, 58); context.fillStyle = '#67e8f9'; context.fillRect(-17, -49, 34, 21); context.fillStyle = '#f8fafc'; context.fillRect(-12, -19, 8, 5); context.fillRect(4, -19, 8, 5); }
+    else if (item.type === 'lamp') { context.strokeStyle = theme.platform; context.lineWidth = 5; context.beginPath(); context.moveTo(0, 0); context.lineTo(0, -58); context.stroke(); context.fillStyle = '#fef08a'; context.shadowColor = '#facc15'; context.shadowBlur = 18; context.beginPath(); context.arc(0, -62, 9, 0, Math.PI * 2); context.fill(); context.shadowBlur = 0; }
+    else if (item.type === 'reactor' || item.type === 'pillar') { context.fillStyle = theme.wall; context.fillRect(-22, -88, 44, 88); context.strokeStyle = item.type === 'reactor' ? '#fb7185' : theme.detail; context.lineWidth = 5; context.strokeRect(-15, -73, 30, 52); }
+    else { context.strokeStyle = theme.detail; context.lineWidth = 4; context.beginPath(); context.arc(0, -25, 18, 0, Math.PI * 2); context.stroke(); for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 2) { context.beginPath(); context.moveTo(0, -25); context.lineTo(Math.cos(angle + game.elapsed * 3) * 15, -25 + Math.sin(angle + game.elapsed * 3) * 15); context.stroke(); } }
+    context.restore(); });
 }
 
 function drawEnemy(enemy) {
@@ -465,6 +481,7 @@ function draw() {
   if (game.layout.hazard) { context.fillStyle = game.layout.hazard === 'lava' ? '#f97316' : game.layout.hazard === 'void' ? '#7e22ce' : '#e11d48'; for (let x = 80; x < game.layout.width - 80; x += 85) context.fillRect(x, game.layout.floorY - 10, 42, 6); }
   (game.layout.spikes || []).forEach(spike => { context.fillStyle = owned('spikeSuit') ? '#64748b' : '#f43f5e'; for (let x = spike.x; x < spike.x + spike.width; x += 18) { context.beginPath(); context.moveTo(x, spike.y + spike.height); context.lineTo(x + 9, spike.y); context.lineTo(x + 18, spike.y + spike.height); context.fill(); } });
   game.layout.anchors.forEach(anchor => { context.strokeStyle = '#e9d5ff'; context.lineWidth = 3; context.beginPath(); context.arc(anchor.x, anchor.y, 11, 0, Math.PI * 2); context.stroke(); });
+  roomState(game.roomId).platformFeatures.forEach(feature => { if (feature.collected) return; context.save(); context.translate(feature.x, feature.y); context.shadowColor = feature.type === 'relay' ? '#22d3ee' : '#fde047'; context.shadowBlur = 13; context.fillStyle = feature.type === 'energy' ? '#22c55e' : feature.type === 'relay' ? '#22d3ee' : feature.type === 'archive' ? '#c084fc' : '#fde047'; context.beginPath(); context.moveTo(0, -12); context.lineTo(11, 0); context.lineTo(0, 12); context.lineTo(-11, 0); context.closePath(); context.fill(); context.shadowBlur = 0; context.restore(); });
   drawDoors(room, theme); drawPuzzle(roomState(game.roomId)); if (room.type === 'station') { context.fillStyle = '#67e8f9'; context.fillRect(game.layout.width / 2 - 46, game.layout.floorY - 70, 92, 70); context.fillStyle = '#07121f'; context.fillRect(game.layout.width / 2 - 30, game.layout.floorY - 58, 60, 45); }
   roomState(game.roomId).enemies.forEach(drawEnemy); roomState(game.roomId).drops.forEach(drop => { context.fillStyle = '#22c55e'; context.beginPath(); context.arc(drop.x + 7, drop.y + 7, 7, 0, Math.PI * 2); context.fill(); }); const pickup = availablePickup(); if (pickup) { const upgrade = mainUpgradeMap.get(pickup.id) || bonusUpgradeMap.get(pickup.id); context.fillStyle = upgrade?.color || '#facc15'; context.shadowColor = context.fillStyle; context.shadowBlur = 20; context.fillRect(pickup.x, pickup.y, pickup.width, pickup.height); context.shadowBlur = 0; context.fillStyle = '#07121f'; context.font = '900 23px Arial'; context.textAlign = 'center'; context.fillText(upgrade?.icon || '+', pickup.x + 18, pickup.y + 25); }
   game.projectiles.forEach(projectile => { context.fillStyle = projectile.missile ? '#f97316' : projectile.charged ? '#fef08a' : projectile.explosive ? '#f59e0b' : projectile.plasma ? '#fb7185' : '#67e8f9'; context.fillRect(projectile.x, projectile.y, projectile.width, projectile.height); }); game.enemyProjectiles.forEach(projectile => { context.fillStyle = '#f43f5e'; context.fillRect(projectile.x, projectile.y, projectile.width, projectile.height); }); game.bombs.forEach(bomb => { context.fillStyle = '#facc15'; context.beginPath(); context.arc(bomb.x + 8, bomb.y + 8, 8 + Math.sin(bomb.timer * 25) * 2, 0, Math.PI * 2); context.fill(); });
@@ -481,12 +498,12 @@ function mapGeometry(target) {
 
 function drawMap(target, revealAll = false) {
   target.fillStyle = '#06111d'; target.fillRect(0, 0, target.canvas.width, target.canvas.height); const geometry = mapGeometry(target);
-  game.world.edges.forEach(edge => { const first = roomById(edge.a); const second = roomById(edge.b); if (!revealAll && (!game.explored.has(first.id) || !game.explored.has(second.id))) return; target.strokeStyle = edge.requires && !owned(edge.requires) ? '#e11d48' : edge.kind === 'returnShortcut' ? '#facc15' : '#64748b'; target.lineWidth = 2; target.beginPath(); target.moveTo(geometry.x(first), geometry.y(first)); target.lineTo(geometry.x(second), geometry.y(second)); target.stroke(); });
+  game.world.edges.forEach(edge => { const first = roomById(edge.a); const second = roomById(edge.b); if (!revealAll && (!game.explored.has(first.id) || !game.explored.has(second.id))) return; const newlyAccessible = game.highlightAbility && edge.requires === game.highlightAbility && owned(game.highlightAbility); target.strokeStyle = newlyAccessible ? '#22d3ee' : edge.requires && !owned(edge.requires) ? '#e11d48' : edge.kind === 'returnShortcut' ? '#facc15' : '#64748b'; target.lineWidth = newlyAccessible ? 5 : 2; target.beginPath(); target.moveTo(geometry.x(first), geometry.y(first)); target.lineTo(geometry.x(second), geometry.y(second)); target.stroke(); });
   game.world.rooms.forEach(room => { if (!revealAll && !game.explored.has(room.id)) return; target.fillStyle = room.id === game.roomId ? '#fff' : game.clearedRooms.has(room.id) ? '#22c55e' : room.pickup && !game.collectedRooms.has(room.id) ? '#f59e0b' : room.bonus && !game.collectedRooms.has(room.id) ? '#c084fc' : '#64748b'; const size = room.type.includes('Boss') || room.type === 'boss' ? 7 : 5; target.fillRect(geometry.x(room) - size / 2, geometry.y(room) - size / 2, size, size); });
 }
 
 function drawMinimap() { drawMap(minimapContext, false); }
-function drawExpandedMap() { context.save(); context.globalAlpha = 0.94; context.fillStyle = '#020617'; context.fillRect(70, 45, WIDTH - 140, HEIGHT - 90); context.globalAlpha = 1; const offscreen = document.createElement('canvas'); offscreen.width = WIDTH - 180; offscreen.height = HEIGHT - 130; const mapContext = offscreen.getContext('2d'); drawMap(mapContext, owned('mapChip')); context.drawImage(offscreen, 90, 65); context.fillStyle = '#fff'; context.font = '800 15px Arial'; context.textAlign = 'center'; context.fillText('PLAN DE LA STATION · M pour fermer', WIDTH / 2, HEIGHT - 55); context.restore(); }
+function drawExpandedMap() { context.save(); context.globalAlpha = 0.94; context.fillStyle = '#020617'; context.fillRect(70, 45, WIDTH - 140, HEIGHT - 90); context.globalAlpha = 1; const offscreen = document.createElement('canvas'); offscreen.width = WIDTH - 180; offscreen.height = HEIGHT - 130; const mapContext = offscreen.getContext('2d'); drawMap(mapContext, owned('mapChip') || game.scanUntil > performance.now()); context.drawImage(offscreen, 90, 65); context.fillStyle = '#fff'; context.font = '800 15px Arial'; context.textAlign = 'center'; const highlighted = mainUpgradeMap.get(game.highlightAbility) || bonusUpgradeMap.get(game.highlightAbility); context.fillText(`PLAN DE LA STATION · ${highlighted ? `accès ${highlighted.name} en cyan · ` : ''}M pour fermer`, WIDTH / 2, HEIGHT - 55); context.restore(); }
 
 function renderInventory() {
   if (!game) return; const upgrades = [...EclipseDepthsWorld.MAIN_UPGRADES.map(upgrade => ({ ...upgrade, main: true })), ...EclipseDepthsWorld.BONUS_UPGRADES];
@@ -519,7 +536,7 @@ function finishGame() {
 
 function loop(now) { const delta = Math.min(0.034, Math.max(0, (now - previousTime) / 1000)); previousTime = now; if (running) update(delta); draw(); frame = requestAnimationFrame(loop); }
 function togglePause(force) { if (!game || game.completed || !overlay.hidden) return; paused = force ?? !paused; controls.clear(); document.getElementById('pause').textContent = paused ? 'Reprendre' : 'Pause'; statusElement.textContent = paused ? 'Exploration en pause.' : 'Exploration reprise.'; if (!paused) previousTime = performance.now(); }
-function toggleMap() { if (!game || paused) return; showMap = !showMap; controls.clear(); draw(); }
+function toggleMap() { if (!game || paused) return; showMap = !showMap; if (showMap && owned('scanPulse')) { game.scanUntil = performance.now() + 4000; statusElement.textContent = 'Écho spectral actif : les embranchements cachés apparaissent brièvement.'; } controls.clear(); draw(); }
 
 const keyMap = { ArrowLeft: 'left', q: 'left', a: 'left', ArrowRight: 'right', d: 'right', f: 'shoot', F: 'shoot' };
 document.addEventListener('keydown', event => {
@@ -549,14 +566,14 @@ window.EclipseDepthsTestAPI = {
     const generatedWorlds = Object.keys(EclipseDepthsWorld.SIZE_SETTINGS).map(size => EclipseDepthsWorld.generateWorld(diagnosticSeed, size));
     const worlds = generatedWorlds.map(world => ({ size: world.size, ...EclipseDepthsWorld.validateWorld(world) }));
     const sampleLayouts = generatedWorlds.flatMap(world => { const startLayout = EclipseDepthsWorld.generateRoomLayout(world, world.startRoom); const movingLayout = world.rooms.map(room => EclipseDepthsWorld.generateRoomLayout(world, room.id)).find(layout => layout.movingPlatforms.length); return movingLayout ? [startLayout, movingLayout] : [startLayout]; });
-    return { canvas: WIDTH === 960 && HEIGHT === 540, worlds, mainUpgrades: EclipseDepthsWorld.MAIN_UPGRADES.length, bonusTypes: EclipseDepthsWorld.BONUS_UPGRADES.length, bossPatterns: new Set(Object.values(bossDefinitions).map(boss => boss.pattern)).size, mobileControls: document.querySelectorAll('[data-control]').length, variableRooms: sampleLayouts.some(layout => layout.width > WIDTH || layout.height > HEIGHT), movingRooms: sampleLayouts.some(layout => layout.movingPlatforms.length), saveVersion: 4 };
+    return { canvas: WIDTH === 960 && HEIGHT === 540, worlds, mainUpgrades: EclipseDepthsWorld.MAIN_UPGRADES.length, bonusTypes: EclipseDepthsWorld.BONUS_UPGRADES.length, bossPatterns: new Set(Object.values(bossDefinitions).map(boss => boss.pattern)).size, mobileControls: document.querySelectorAll('[data-control]').length, variableRooms: sampleLayouts.some(layout => layout.width > WIDTH || layout.height > HEIGHT), movingRooms: sampleLayouts.some(layout => layout.movingPlatforms.length), purposefulPlatforms: generatedWorlds.every(world => world.rooms.every(room => EclipseDepthsWorld.validateRoomLayout(world, room.id).purposefulPlatforms)), platformFeatures: sampleLayouts.reduce((total, layout) => total + layout.platformFeatures.length, 0), wallJump: 'wallGrace' in createPlayer(), mapAbilityHighlight: true, shuffledBonusModules: generatedWorlds.every(world => world.bonusDistribution === 'seeded-shuffle'), saveVersion: 6 };
   },
   selfTest() {
     const first = EclipseDepthsWorld.generateWorld('repeatable', 'standard'); const second = EclipseDepthsWorld.generateWorld('repeatable', 'standard'); const validation = EclipseDepthsWorld.validateWorld(first);
     const orders = new Set(['ordre-a', 'ordre-b', 'ordre-c', 'ordre-d'].map(seed => EclipseDepthsWorld.generateWorld(seed, 'standard').mainOrder.join(',')));
     const masteryRooms = first.rooms.filter(room => room.type === 'mastery');
     const jumpGraphs = first.rooms.map(room => EclipseDepthsWorld.validateRoomLayout(first, room.id).jumpGraph);
-    return { deterministic: JSON.stringify(first) === JSON.stringify(second), progression: validation.mainProgression, finalReachable: validation.valid, bonusesReachable: validation.bonusReachable, layoutsValid: validation.validLayouts, jumpablePlatforms: jumpGraphs.every(result => result.valid && result.maximumRise <= EclipseDepthsWorld.JUMP_PHYSICS.maximumRise && result.maximumGap <= EclipseDepthsWorld.JUMP_PHYSICS.maximumGap), masteryMechanics: masteryRooms.length >= 5 && masteryRooms.every(room => EclipseDepthsWorld.validateRoomLayout(first, room.id).traversalMechanic), gatedRegions: validation.gatedMainRegions === EclipseDepthsWorld.MAIN_UPGRADES.length, traversalChallenges: validation.traversalRooms >= EclipseDepthsWorld.MAIN_UPGRADES.length, masteryChallenges: validation.masteryRooms >= 5, puzzleRooms: validation.puzzleRooms > 0, variableOrder: orders.size > 1, distinctBosses: new Set(Object.values(bossDefinitions).map(boss => boss.pattern)).size === 6 };
+    return { deterministic: JSON.stringify(first) === JSON.stringify(second), progression: validation.mainProgression, finalReachable: validation.valid, bonusesReachable: validation.bonusReachable, pickupPlacement: validation.pickupPlacementValid, layoutsValid: validation.validLayouts, jumpablePlatforms: jumpGraphs.every(result => result.valid && result.maximumRise <= EclipseDepthsWorld.JUMP_PHYSICS.maximumRise && result.maximumGap <= EclipseDepthsWorld.JUMP_PHYSICS.maximumGap), masteryMechanics: masteryRooms.length >= 5 && masteryRooms.every(room => EclipseDepthsWorld.validateRoomLayout(first, room.id).traversalMechanic), gatedRegions: validation.gatedMainRegions === EclipseDepthsWorld.MAIN_UPGRADES.length, traversalChallenges: validation.traversalRooms >= EclipseDepthsWorld.MAIN_UPGRADES.length, masteryChallenges: validation.masteryRooms >= 5, puzzleRooms: validation.puzzleRooms > 0, variableOrder: orders.size > 1, distinctBosses: new Set(Object.values(bossDefinitions).map(boss => boss.pattern)).size === 6 };
   }
 };
 

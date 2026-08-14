@@ -25,6 +25,8 @@
     { id: 'cannonModule', name: 'Condensateur', icon: '»', effect: 'Cadence et dégâts améliorés' },
     { id: 'mapChip', name: 'Puce cartographique', icon: '▦', effect: 'Révèle les salles voisines' },
     { id: 'overcharge', name: 'Surcharge cinétique', icon: 'ϟ', effect: 'Le dash inflige des dégâts' },
+    { id: 'scanPulse', name: 'Écho spectral', icon: '⌾', effect: 'Le plan révèle temporairement les embranchements et modules cachés' },
+    { id: 'tractionModule', name: 'Griffes de paroi', icon: '⋔', effect: 'Prolonge l’adhérence murale et renforce le saut mural' },
     { id: 'energyTank2', name: 'Réservoir d’énergie II', icon: '♥', effect: '+2 énergie maximale' },
     { id: 'missilePack2', name: 'Réserve explosive', icon: '◆', effect: 'Explosion plus large' },
     { id: 'cannonModule2', name: 'Focaliseur plasma', icon: '»', effect: 'Tirs plus rapides' }
@@ -125,14 +127,12 @@
   }
 
   function routePlatform(anchor, bounds, index, random) {
-    const span = bounds.maximumX - bounds.minimumX; const width = Math.min(225, Math.max(104, span * (0.38 + random() * 0.16)));
-    const rise = 30 + random() * 23;
-    const direction = index % 2 ? -1 : 1;
-    const gap = 18 + random() * 74;
-    let x = anchor.floor ? bounds.minimumX + random() * Math.max(1, span - width) : direction > 0 ? anchor.x + anchor.width + gap : anchor.x - width - gap;
+    const span = Math.max(120, bounds.maximumX - bounds.minimumX); const width = Math.min(span, 112 + random() * Math.min(74, span * 0.24));
+    const rise = 24 + random() * 22; const gap = 12 + random() * 48; const direction = index % 2 ? -1 : 1;
+    let x = direction > 0 ? anchor.x + anchor.width + gap : anchor.x - width - gap;
     if (x < bounds.minimumX || x + width > bounds.maximumX) x = direction > 0 ? anchor.x - width - gap : anchor.x + anchor.width + gap;
-    if (x < bounds.minimumX || x + width > bounds.maximumX) x = bounds.minimumX + random() * Math.max(1, span - width);
-    return { x, y: Math.max(105, anchor.y - rise), width, height: 18, routeIndex: index };
+    x = Math.max(bounds.minimumX, Math.min(bounds.maximumX - width, x));
+    return { x, y: Math.max(105, anchor.y - rise), width, height: 18, routeIndex: index, reachableFrom: anchor.routeIndex ?? -1 };
   }
 
   function freeNeighbors(room, occupied) {
@@ -143,7 +143,7 @@
     const settings = SIZE_SETTINGS[size] || SIZE_SETTINGS.standard; const random = randomFor(`eclipse-world:${seed}:${size}`);
     const criticalLength = MAIN_UPGRADES.length * settings.segment + 2; const coordinates = criticalCoordinates(criticalLength, settings.columns);
     const upgradeOrder = [MAIN_UPGRADES[0], ...shuffle(MAIN_UPGRADES.slice(1, -1), random), MAIN_UPGRADES.at(-1)];
-    const world = { seed, size, rooms: [], edges: [], startRoom: 'critical-0', finalRoom: `critical-${criticalLength - 1}`, mainOrder: upgradeOrder.map(item => item.id), bonusOrder: [], width: settings.columns + 6, height: Math.ceil(criticalLength / settings.columns) + 6 };
+    const world = { seed, size, rooms: [], edges: [], startRoom: 'critical-0', finalRoom: `critical-${criticalLength - 1}`, mainOrder: upgradeOrder.map(item => item.id), bonusOrder: [], bonusDistribution: 'seeded-shuffle', width: settings.columns + 6, height: Math.ceil(criticalLength / settings.columns) + 6 };
     const occupied = new Map();
     coordinates.forEach((point, index) => {
       const pickupIndex = index > 0 && index <= MAIN_UPGRADES.length * settings.segment && index % settings.segment === 0 ? index / settings.segment - 1 : -1;
@@ -166,6 +166,8 @@
     world.rooms[criticalLength - 1].traversalRequirement = upgradeOrder.at(-1).id;
 
     const branchCandidates = shuffle(world.rooms.filter(room => room.criticalIndex >= 2 && room.criticalIndex < criticalLength - 2), random);
+    const masteryBonusIds = new Set(['chargeBeam', 'missileLauncher', 'morphBombs', 'speedBooster', 'spikeSuit']);
+    const bonusPool = [...shuffle(BONUS_UPGRADES.filter(bonus => masteryBonusIds.has(bonus.id)), random), ...shuffle(BONUS_UPGRADES.filter(bonus => !masteryBonusIds.has(bonus.id)), random)];
     for (let bonusIndex = 0; bonusIndex < settings.bonuses; bonusIndex++) {
       const anchor = branchCandidates.find(room => freeNeighbors(room, new Set(occupied.keys())).length);
       if (!anchor) break;
@@ -182,9 +184,9 @@
         const nextPoint = shuffle([{ x: firstRoom.x, y: firstRoom.y - 1 }, { x: firstRoom.x + 1, y: firstRoom.y }, { x: firstRoom.x, y: firstRoom.y + 1 }, { x: firstRoom.x - 1, y: firstRoom.y }], random).find(point => !occupied.has(coordinateKey(point.x, point.y)));
         if (nextPoint) { finalRoom = createRoom(`branch-${bonusIndex}-1`, nextPoint.x, nextPoint.y, anchor.zoneIndex, 'secret'); world.rooms.push(finalRoom); occupied.set(coordinateKey(finalRoom.x, finalRoom.y), finalRoom); connect(world, firstRoom, finalRoom); }
       }
-      const bonus = BONUS_UPGRADES[bonusIndex % BONUS_UPGRADES.length]; finalRoom.bonus = bonus.id; world.bonusOrder.push({ roomId: finalRoom.id, bonus: bonus.id, requires: requirement });
+      const bonus = bonusPool[bonusIndex % bonusPool.length]; finalRoom.bonus = bonus.id; world.bonusOrder.push({ roomId: finalRoom.id, bonus: bonus.id, requires: requirement });
       const masteryPoint = shuffle([{ x: finalRoom.x, y: finalRoom.y - 1 }, { x: finalRoom.x + 1, y: finalRoom.y }, { x: finalRoom.x, y: finalRoom.y + 1 }, { x: finalRoom.x - 1, y: finalRoom.y }], random).find(point => !occupied.has(coordinateKey(point.x, point.y)));
-      if (masteryPoint && ['chargeBeam', 'missileLauncher', 'morphBombs', 'speedBooster', 'spikeSuit'].includes(bonus.id)) {
+      if (masteryPoint && masteryBonusIds.has(bonus.id)) {
         const mastery = createRoom(`mastery-${bonusIndex}`, masteryPoint.x, masteryPoint.y, anchor.zoneIndex, 'mastery');
         mastery.traversalRequirement = bonus.id; mastery.masteryReward = 'energyCell'; mastery.puzzle = bonus.id;
         world.rooms.push(mastery); occupied.set(coordinateKey(mastery.x, mastery.y), mastery); connect(world, finalRoom, mastery, bonus.id, 'masteryGate', bonus.id);
@@ -212,10 +214,10 @@
     const width = widthChoices[Math.floor(random() * widthChoices.length)]; const height = heightChoices[Math.floor(random() * heightChoices.length)]; const floorY = height - 62;
     const traversal = room.traversalRequirement; const grappleGap = 360; const platforms = traversal === 'grapple' ? [{ x: 0, y: floorY, width: width / 2 - grappleGap / 2, height: 62, floor: true }, { x: width / 2 + grappleGap / 2, y: floorY, width: width / 2 - grappleGap / 2, height: 62, floor: true }] : [{ x: 0, y: floorY, width, height: 62, floor: true }];
     const platformCount = room.type === 'boss' || room.type === 'finalBoss' ? 3 : 4 + Math.floor(random() * 5);
-    const routeAnchors = platforms.map(platform => platform);
+    const routeFloors = [...platforms]; const routeAnchors = [...routeFloors];
     for (let index = 0; index < platformCount; index++) {
-      const route = index % routeAnchors.length; const anchor = routeAnchors[route];
-      const floor = platforms[route]; const bounds = { minimumX: floor.x + 45, maximumX: floor.x + floor.width - 45 };
+      const route = index % routeFloors.length; const anchor = routeAnchors[route]; const floor = routeFloors[route];
+      const bounds = { minimumX: floor.x + 34, maximumX: floor.x + floor.width - 34 };
       const platform = routePlatform(anchor, bounds, index, random); platforms.push(platform); routeAnchors[route] = platform;
     }
     const movingPlatforms = [];
@@ -230,12 +232,16 @@
     const difficultyFactor = { easy: 0.75, normal: 1, hard: 1.3, extreme: 1.65 }[difficulty] || 1;
     const baseCount = ['station', 'navigation', 'secret'].includes(room.type) ? 0 : room.type === 'boss' ? 1 : room.type === 'finalBoss' ? 1 : 2 + room.zoneIndex;
     const enemyCount = Math.ceil(baseCount * difficultyFactor); const enemies = [];
+    const aerialPlatforms = platforms.filter(platform => !platform.floor && platform.width >= 92).map((platform, index) => ({ ...platform, id: `${room.id}-platform-${index}` }));
     for (let index = 0; index < enemyCount; index++) {
       const type = room.boss && !index ? room.boss : ['crawler', 'drone', 'turret', 'charger'][Math.floor(random() * 4)]; const boss = Boolean(room.boss && !index);
-      const floorSegments = platforms.filter(platform => platform.y === floorY); const segment = floorSegments[Math.floor(random() * floorSegments.length)] || platforms[0];
+      const floorSegments = platforms.filter(platform => platform.y === floorY); const perch = !boss && type !== 'drone' && aerialPlatforms.length && index % 2 ? aerialPlatforms[index % aerialPlatforms.length] : null; const segment = perch || floorSegments[Math.floor(random() * floorSegments.length)] || platforms[0];
       const groundX = segment.x + 35 + random() * Math.max(1, segment.width - 70);
-      enemies.push({ id: `${room.id}-enemy-${index}`, type, x: boss ? width - 225 : type === 'drone' ? 140 + random() * (width - 310) : groundX, y: boss ? floorY - 62 : type === 'drone' ? 150 + random() * Math.max(170, height - 380) : floorY - 28, tier: room.zoneIndex + 1, boss });
+      enemies.push({ id: `${room.id}-enemy-${index}`, type, x: boss ? width - 225 : type === 'drone' ? 140 + random() * (width - 310) : groundX, y: boss ? floorY - 62 : type === 'drone' ? 150 + random() * Math.max(170, height - 380) : segment.y - 28, supportId: perch?.id || null, supportY: perch?.y || floorY, tier: room.zoneIndex + 1, boss });
     }
+    const occupiedPlatforms = new Set(enemies.map(enemy => enemy.supportId).filter(Boolean));
+    const featureTypes = room.type === 'secret' ? ['relic', 'energy', 'relic'] : room.type === 'challenge' ? ['relay', 'energy', 'relay'] : ['energy', 'relay', 'archive'];
+    const platformFeatures = aerialPlatforms.filter(platform => !occupiedPlatforms.has(platform.id)).map((platform, index) => ({ id: `${room.id}-feature-${index}`, type: featureTypes[(index + room.zoneIndex) % featureTypes.length], platformId: platform.id, x: platform.x + platform.width / 2, y: platform.y - 18, collected: false }));
     const anchors = traversal === 'grapple' || room.zoneIndex >= 3 ? [{ x: width / 2 - 120, y: Math.max(120, floorY - 300) }, { x: width / 2 + 120, y: Math.max(150, floorY - 270) }] : [];
     const obstacles = [];
     const barrierX = width / 2 - 28;
@@ -248,9 +254,13 @@
     if (traversal === 'morphBombs') obstacles.push({ id: 'bomb-blocks', type: 'bomb', x: barrierX - 25, y: floorY - 58, width: 110, height: 58, health: 1 });
     if (traversal === 'speedBooster') obstacles.push({ id: 'speed-wall', type: 'speed', x: barrierX, y: floorY - 145, width: 52, height: 145, health: 1 });
     const spikes = traversal === 'spikeSuit' || room.zoneIndex >= 2 && room.type === 'challenge' ? [{ x: width * 0.35, y: floorY - 16, width: width * 0.3, height: 16 }] : [];
-    const puzzle = room.puzzle && !['chargeBeam', 'missileLauncher', 'morphBombs', 'speedBooster', 'spikeSuit'].includes(room.puzzle) ? { type: room.puzzle, timeLimit: room.puzzle === 'timedRelay' ? 7 : 0, nodes: [0.28, 0.5, 0.72].map((ratio, index) => ({ id: `${room.id}-node-${index}`, x: width * ratio, y: floorY - 68 - (index % 2) * 18, radius: 18, order: index })) } : null;
-    const environment = Array.from({ length: Math.max(4, Math.floor(width / 250)) }, (_, index) => ({ type: ['pipe', 'crystal', 'vent'][index % 3], x: 70 + index * (width - 140) / Math.max(1, Math.floor(width / 250) - 1), y: floorY, scale: 0.7 + random() * 0.65 }));
-    return { width, height, floorY, platforms, movingPlatforms, enemies, anchors, obstacles, spikes, puzzle, environment, traversal, hazard: room.zoneIndex === 2 ? 'lava' : room.zoneIndex === 3 ? 'void' : room.zoneIndex === 4 ? 'plasma' : null };
+    const puzzleOrders = { relay: [1, 0, 3, 2], timedRelay: [0, 2, 1, 3], mirror: [0, 3, 1, 2], pulse: [2, 0, 3, 1] }; const puzzleType = room.puzzle === 'relay' && room.zoneIndex >= 2 ? ['relay', 'mirror', 'pulse'][Math.floor(random() * 3)] : room.puzzle;
+    const puzzleOrder = puzzleOrders[puzzleType] || [0, 1, 2, 3];
+    const puzzle = puzzleType && !['chargeBeam', 'missileLauncher', 'morphBombs', 'speedBooster', 'spikeSuit'].includes(puzzleType) ? { type: puzzleType, order: puzzleOrder, timeLimit: puzzleType === 'timedRelay' ? 8 : 0, nodes: [0.22, 0.41, 0.59, 0.78].map((ratio, index) => ({ id: `${room.id}-node-${index}`, x: width * ratio, y: floorY - 68 - (index % 2) * 28, radius: 18, order: index })) } : null;
+    const decorTypes = room.type === 'station' ? ['terminal', 'pipe', 'lamp'] : room.type === 'boss' || room.type === 'finalBoss' ? ['reactor', 'pillar', 'vent'] : room.type === 'secret' ? ['crystal', 'relic', 'pipe'] : ['pipe', 'crystal', 'vent', 'cable'];
+    const environment = Array.from({ length: Math.max(5, Math.floor(width / 210)) }, (_, index) => ({ type: decorTypes[index % decorTypes.length], x: 62 + index * (width - 124) / Math.max(1, Math.floor(width / 210) - 1), y: floorY, scale: 0.68 + random() * 0.68, depth: index % 3 }));
+    const architecture = { type: room.type, ribs: Math.max(4, Math.floor(width / 180)), shafts: height > 700 ? 2 : 1, damaged: room.zoneIndex > 1 && room.type !== 'station', seed: Math.floor(random() * 0xffffffff) };
+    return { width, height, floorY, platforms, movingPlatforms, enemies, platformFeatures, anchors, obstacles, spikes, puzzle, environment, architecture, traversal, hazard: room.zoneIndex === 2 ? 'lava' : room.zoneIndex === 3 ? 'void' : room.zoneIndex === 4 ? 'plasma' : null };
   }
 
   function validateRoomLayout(world, roomId) {
@@ -266,8 +276,9 @@
       return endpoints.some(endpoint => layout.platforms.some(surface => canJumpBetween(surface, endpoint)));
     });
     const traversalMechanic = !room.traversalRequirement || (room.traversalRequirement === 'grapple' ? layout.anchors.length >= 2 : room.traversalRequirement === 'spikeSuit' ? layout.spikes.length > 0 : layout.obstacles.some(obstacle => ({ morphCore: 'morph', jumpBoots: 'jump', phaseDash: 'phase', plasmaCore: 'plasma', chargeBeam: 'charge', missileLauncher: 'missile', morphBombs: 'bomb', speedBooster: 'speed' })[room.traversalRequirement] === obstacle.type));
-    const puzzleValid = !layout.puzzle || layout.puzzle.nodes.length === 3 && new Set(layout.puzzle.nodes.map(node => node.order)).size === 3;
-    return { valid: platformBounds && jumpGraph.valid && movingBounds && movingAccessible && traversalMechanic && puzzleValid, platformBounds, jumpGraph, movingBounds, movingAccessible, traversalMechanic, puzzleValid };
+    const puzzleValid = !layout.puzzle || layout.puzzle.nodes.length === layout.puzzle.order.length && new Set(layout.puzzle.order).size === layout.puzzle.nodes.length && layout.puzzle.order.every(order => layout.puzzle.nodes.some(node => node.order === order));
+    const purposefulPlatforms = layout.platforms.filter(platform => !platform.floor).every((platform, index) => layout.enemies.some(enemy => enemy.supportId === `${room.id}-platform-${index}`) || layout.platformFeatures.some(feature => feature.platformId === `${room.id}-platform-${index}`));
+    return { valid: platformBounds && jumpGraph.valid && movingBounds && movingAccessible && traversalMechanic && puzzleValid && purposefulPlatforms, platformBounds, jumpGraph, movingBounds, movingAccessible, traversalMechanic, puzzleValid, purposefulPlatforms };
   }
 
   function validateWorld(world) {
@@ -290,7 +301,8 @@
     const traversalRooms = world.rooms.filter(room => room.traversalRequirement).length; const stationCount = world.rooms.filter(room => room.type === 'station').length; const masteryRooms = world.rooms.filter(room => room.type === 'mastery').length; const puzzleRooms = world.rooms.filter(room => room.puzzle).length;
     const layoutFailures = world.rooms.map(room => ({ roomId: room.id, ...validateRoomLayout(world, room.id) })).filter(result => !result.valid);
     const validLayouts = layoutFailures.length === 0;
-    return { valid: reachable.has(world.finalRoom) && mainProgression && bonusReachable && uniqueCoordinates && validDoors && validLayouts && gatedMainRegions === MAIN_UPGRADES.length && traversalRooms >= MAIN_UPGRADES.length && stationCount >= MAIN_UPGRADES.length, reachable: reachable.size, rooms: world.rooms.length, mainProgression, bonusReachable, uniqueCoordinates, validDoors, validLayouts, layoutFailures: layoutFailures.slice(0, 3), gatedMainRegions, traversalRooms, stationCount, masteryRooms, puzzleRooms, shortcuts: world.edges.filter(edge => edge.kind === 'returnShortcut').length, branches: world.bonusOrder.length };
+    const mainPickups = world.rooms.filter(room => room.pickup).map(room => room.pickup); const pickupPlacementValid = mainPickups.length === MAIN_UPGRADES.length && new Set(mainPickups).size === MAIN_UPGRADES.length && world.rooms.filter(room => room.pickup).every(room => room.type === 'boss' && room.criticalIndex !== null) && world.rooms.filter(room => room.bonus).every(room => room.criticalIndex === null);
+    return { valid: reachable.has(world.finalRoom) && mainProgression && bonusReachable && uniqueCoordinates && validDoors && validLayouts && pickupPlacementValid && gatedMainRegions === MAIN_UPGRADES.length && traversalRooms >= MAIN_UPGRADES.length && stationCount >= MAIN_UPGRADES.length, reachable: reachable.size, rooms: world.rooms.length, mainProgression, bonusReachable, pickupPlacementValid, uniqueCoordinates, validDoors, validLayouts, layoutFailures: layoutFailures.slice(0, 3), gatedMainRegions, traversalRooms, stationCount, masteryRooms, puzzleRooms, shortcuts: world.edges.filter(edge => edge.kind === 'returnShortcut').length, branches: world.bonusOrder.length };
   }
 
   window.EclipseDepthsWorld = { SIZE_SETTINGS, MAIN_UPGRADES, BONUS_UPGRADES, ZONE_THEMES, JUMP_PHYSICS, randomFor, generateWorld, generateRoomLayout, validateRoomLayout, validateWorld, canJumpBetween, platformReachability };

@@ -82,6 +82,7 @@ function segment(x1, y1, x2, y2, type = 'rail', strength = 1) {
 }
 
 function buildTable() {
+  const variant = themeSelect.value;
   const gapFactor = difficultySettings[difficultySelect.value].gap;
   const innerGap = 118 * gapFactor;
   const leftFlipperX = WIDTH / 2 - innerGap;
@@ -95,18 +96,23 @@ function buildTable() {
     segment(116, 415, 196, 505, 'rail'), segment(604, 415, 524, 505, 'rail'),
     segment(136, 545, 235, 610, 'rail'), segment(584, 545, 485, 610, 'rail')
   ];
+  const bumpers = variant === 'retro' ? [
+    { x: 190, y: 255, radius: 34, value: 800, pulse: 0 }, { x: 360, y: 205, radius: 37, value: 1000, pulse: 0 }, { x: 530, y: 255, radius: 34, value: 800, pulse: 0 }, { x: 275, y: 395, radius: 29, value: 1200, pulse: 0 }, { x: 445, y: 395, radius: 29, value: 1200, pulse: 0 }
+  ] : variant === 'abyss' ? [
+    { x: 205, y: 230, radius: 34, value: 1000, pulse: 0 }, { x: 515, y: 230, radius: 34, value: 1000, pulse: 0 }, { x: 285, y: 365, radius: 30, value: 1350, pulse: 0 }, { x: 435, y: 365, radius: 30, value: 1350, pulse: 0 }, { x: 360, y: 500, radius: 27, value: 1800, pulse: 0 }
+  ] : [
+    { x: 215, y: 265, radius: 37, value: 900, pulse: 0 }, { x: 360, y: 205, radius: 39, value: 1200, pulse: 0 }, { x: 505, y: 275, radius: 37, value: 900, pulse: 0 }, { x: 360, y: 410, radius: 31, value: 1500, pulse: 0 }
+  ];
+  if (variant === 'abyss') walls.push(segment(165, 330, 250, 455, 'guide'), segment(555, 330, 470, 455, 'guide'));
+  if (variant === 'retro') walls.push(segment(255, 615, 315, 650, 'guide'), segment(465, 615, 405, 650, 'guide'));
   return {
+    variant,
     walls,
     flippers: [
       { side: 'left', pivotX: leftFlipperX, pivotY: 880, length: flipperConfig.length, radius: 15, rest: 0.2, active: -0.53, angle: 0.2, angularVelocity: 0 },
       { side: 'right', pivotX: rightFlipperX, pivotY: 880, length: flipperConfig.length, radius: 15, rest: Math.PI - 0.2, active: Math.PI + 0.53, angle: Math.PI - 0.2, angularVelocity: 0 }
     ],
-    bumpers: [
-      { x: 215, y: 265, radius: 37, value: 900, pulse: 0 },
-      { x: 360, y: 205, radius: 39, value: 1200, pulse: 0 },
-      { x: 505, y: 275, radius: 37, value: 900, pulse: 0 },
-      { x: 360, y: 410, radius: 31, value: 1500, pulse: 0 }
-    ],
+    bumpers,
     slings: [
       { x: 205, y: 725, radius: 42, value: 350, pulse: 0 },
       { x: 515, y: 725, radius: 42, value: 350, pulse: 0 }
@@ -124,7 +130,7 @@ function initialBalls() {
 }
 
 function createBall(x = 641, y = 905, shooter = true) {
-  return { x, y, previousX: x, previousY: y, vx: 0, vy: 0, radius: BALL_RADIUS, inShooter: shooter, alive: true, trail: [], rampCooldown: 0, laneCooldown: 0, spinnerCooldown: 0, saucerCooldown: 0, launchStrength: 0, skillShotChecked: false, id: `${Date.now()}:${Math.random()}` };
+  return { x, y, previousX: x, previousY: y, vx: 0, vy: 0, radius: BALL_RADIUS, inShooter: shooter, alive: true, trail: [], rampCooldown: 0, laneCooldown: 0, spinnerCooldown: 0, saucerCooldown: 0, launchStrength: 0, skillShotChecked: false, stuckTimer: 0, recoveries: 0, id: `${Date.now()}:${Math.random()}` };
 }
 
 function createGame(seed = `${Date.now()}:${Math.random()}`) {
@@ -340,33 +346,30 @@ function startOverdrive() {
 }
 
 function updateBall(ball, delta) {
-  ball.previousX = ball.x; ball.previousY = ball.y;
   ball.rampCooldown = Math.max(0, ball.rampCooldown - delta); ball.laneCooldown = Math.max(0, ball.laneCooldown - delta); ball.spinnerCooldown = Math.max(0, ball.spinnerCooldown - delta); ball.saucerCooldown = Math.max(0, ball.saucerCooldown - delta);
   if (ball.inShooter && launchHeld) {
     game.launchCharge = Math.min(1, game.launchCharge + delta * 0.72);
     ball.y = 905 + Math.sin(game.elapsed * 7) * game.launchCharge * 5; ball.vx = 0; ball.vy = 0; return;
   }
-  ball.vy += difficultySettings[difficultySelect.value].gravity * delta;
-  ball.vx *= Math.pow(0.9985, delta * 60); ball.vy *= Math.pow(0.999, delta * 60);
-  ball.x += ball.vx * delta; ball.y += ball.vy * delta;
-  if (ball.inShooter && ball.y < 125) {
-    ball.inShooter = false; ball.x = 590; ball.vx = -190; ball.vy = Math.max(60, Math.abs(ball.vy) * 0.12);
-    if (!ball.skillShotChecked) {
-      ball.skillShotChecked = true;
-      if (ball.launchStrength >= 0.5 && ball.launchStrength <= 0.7) { game.skillShots++; addScore(12000 * game.skillShots, 'SKILL SHOT', 565, 112, '#fde047'); sound('extra'); statusElement.textContent = `Skill shot réussi ×${game.skillShots} !`; }
+  const estimatedTravel = Math.hypot(ball.vx, ball.vy) * delta + difficultySettings[difficultySelect.value].gravity * delta * delta;
+  const substeps = clamp(Math.ceil(estimatedTravel / (ball.radius * 0.58)), 1, 10); const step = delta / substeps;
+  for (let substep = 0; substep < substeps && ball.alive; substep++) {
+    ball.previousX = ball.x; ball.previousY = ball.y;
+    ball.vy += difficultySettings[difficultySelect.value].gravity * step; ball.vx *= Math.pow(0.9985, step * 60); ball.vy *= Math.pow(0.999, step * 60); ball.x += ball.vx * step; ball.y += ball.vy * step;
+    if (ball.inShooter && ball.y < 125) {
+      ball.inShooter = false; ball.x = 590; ball.vx = -190; ball.vy = Math.max(60, Math.abs(ball.vy) * 0.12);
+      if (!ball.skillShotChecked) { ball.skillShotChecked = true; if (ball.launchStrength >= 0.5 && ball.launchStrength <= 0.7) { game.skillShots++; addScore(12000 * game.skillShots, 'SKILL SHOT', 565, 112, '#fde047'); sound('extra'); statusElement.textContent = `Skill shot réussi ×${game.skillShots} !`; } }
     }
+    for (const wall of game.table.walls) collideSegment(ball, wall, wall.type === 'guide' ? 0.9 : undefined);
+    for (const flipper of game.table.flippers) collideFlipper(ball, flipper);
+    for (const bumper of game.table.bumpers) collideCircle(ball, bumper, difficultySettings[difficultySelect.value].bumper, () => hitBumper(ball, bumper));
+    for (const sling of game.table.slings) collideCircle(ball, sling, 520, () => { if (sling.pulse <= 0.08) { sling.pulse = 0.22; addScore(sling.value, 'FRONDE', sling.x, sling.y); sound('flipper'); } });
+    game.table.targets.forEach((target, index) => collideCircle(ball, target, 390, () => hitTarget(ball, target, index)));
+    game.table.lanes.forEach((lane, index) => { if (ball.previousY >= lane.y + 22 && ball.y < lane.y + 22 && Math.abs(ball.x - lane.x) < lane.radius) hitLane(ball, lane, index); });
+    game.table.ramps.forEach(ramp => { if (ball.previousY >= ramp.y && ball.y < ramp.y && Math.abs(ball.x - ramp.x) < 52) hitRamp(ball, ramp); });
+    const spinner = game.table.spinner; if ((ball.previousY - spinner.y) * (ball.y - spinner.y) <= 0 && Math.abs(ball.x - spinner.x) <= spinner.halfWidth) hitSpinner(ball);
+    const saucer = game.table.saucer; if (distance(ball, saucer) < saucer.radius - 2 && Math.hypot(ball.vx, ball.vy) > 90) captureSaucer(ball);
   }
-  for (const wall of game.table.walls) collideSegment(ball, wall, wall.type === 'guide' ? 0.9 : undefined);
-  for (const flipper of game.table.flippers) collideFlipper(ball, flipper);
-  for (const bumper of game.table.bumpers) collideCircle(ball, bumper, difficultySettings[difficultySelect.value].bumper, () => hitBumper(ball, bumper));
-  for (const sling of game.table.slings) collideCircle(ball, sling, 520, () => { if (sling.pulse <= 0.08) { sling.pulse = 0.22; addScore(sling.value, 'FRONDE', sling.x, sling.y); sound('flipper'); } });
-  game.table.targets.forEach((target, index) => collideCircle(ball, target, 390, () => hitTarget(ball, target, index)));
-  game.table.lanes.forEach((lane, index) => { if (ball.previousY >= lane.y + 22 && ball.y < lane.y + 22 && Math.abs(ball.x - lane.x) < lane.radius) hitLane(ball, lane, index); });
-  game.table.ramps.forEach(ramp => { if (ball.previousY >= ramp.y && ball.y < ramp.y && Math.abs(ball.x - ramp.x) < 52) hitRamp(ball, ramp); });
-  const spinner = game.table.spinner;
-  if ((ball.previousY - spinner.y) * (ball.y - spinner.y) <= 0 && Math.abs(ball.x - spinner.x) <= spinner.halfWidth) hitSpinner(ball);
-  const saucer = game.table.saucer;
-  if (distance(ball, saucer) < saucer.radius - 2 && Math.hypot(ball.vx, ball.vy) > 90) captureSaucer(ball);
   const leftOutlaneLimit = game.table.flippers[0].pivotX - 34;
   if (ball.alive && game.kickbackLit && ball.y > 940 && ball.x < leftOutlaneLimit) {
     game.kickbackLit = false; ball.x = 105; ball.y = 900; ball.vx = 260; ball.vy = -820;
@@ -374,6 +377,8 @@ function updateBall(ball, delta) {
   }
   if (ball.x < 24) { ball.x = 24; ball.vx = Math.abs(ball.vx) * 0.75; }
   if (ball.x > WIDTH - 24) { ball.x = WIDTH - 24; ball.vx = -Math.abs(ball.vx) * 0.75; }
+  const speed = Math.hypot(ball.vx, ball.vy); ball.stuckTimer = !ball.inShooter && ball.y < 930 && speed < 34 ? ball.stuckTimer + delta : 0;
+  if (ball.stuckTimer > 2.4) { ball.stuckTimer = 0; ball.recoveries++; ball.vx += (WIDTH / 2 - ball.x) * 1.8 + (game.random() - 0.5) * 90; ball.vy = -Math.max(310, Math.abs(ball.vy) + 210); statusElement.textContent = 'Bille dégagée automatiquement d’une zone morte.'; }
   ball.trail.push({ x: ball.x, y: ball.y }); if (ball.trail.length > 9) ball.trail.shift();
   if (ball.y > HEIGHT + 35) drainBall(ball);
 }
@@ -638,7 +643,7 @@ window.addEventListener('lan:start', startGame);
 document.addEventListener('visibilitychange', () => { if (document.hidden && running && !paused) togglePause(); });
 game = createGame('preview'); updateHud();
 window.PinballTestAPI = {
-  diagnostics: () => ({ canvas: WIDTH === 720 && HEIGHT === 1000, difficulties: Object.keys(difficultySettings), modes: [...modeSelect.options].map(option => option.value), themes: Object.keys(themes), flipperStyles: Object.keys(flipperSettings), mobileControls: document.querySelectorAll('[data-control]').length, directTouchFlippers: getComputedStyle(canvas).touchAction === 'none' && canvas.hasAttribute('tabindex'), bumpers: game.table.bumpers.length, targets: game.table.targets.length, lanes: game.table.lanes.length, flippers: game.table.flippers.length, spinner: Boolean(game.table.spinner), saucer: Boolean(game.table.saucer) }),
+  diagnostics: () => ({ canvas: WIDTH === 720 && HEIGHT === 1000, difficulties: Object.keys(difficultySettings), modes: [...modeSelect.options].map(option => option.value), themes: Object.keys(themes), flipperStyles: Object.keys(flipperSettings), tableVariant: game.table.variant, mobileControls: document.querySelectorAll('[data-control]').length, directTouchFlippers: getComputedStyle(canvas).touchAction === 'none' && canvas.hasAttribute('tabindex'), bumpers: game.table.bumpers.length, targets: game.table.targets.length, lanes: game.table.lanes.length, flippers: game.table.flippers.length, spinner: Boolean(game.table.spinner), saucer: Boolean(game.table.saucer) }),
   selfTest() {
     const testBall = { x: 100, y: 95, vx: 0, vy: -200, radius: BALL_RADIUS };
     const bounced = collideSegment(testBall, segment(50, 86, 585, 86)) && testBall.vy > 0;
@@ -661,8 +666,9 @@ window.PinballTestAPI = {
     const firstBallLocks = game.lockedBalls === 1 && game.balls.some(ball => ball.inShooter);
     const secondLock = createBall(game.table.saucer.x, game.table.saucer.y, false); game.balls = [secondLock]; game.lockReady = true; captureSaucer(secondLock);
     const multiballStarts = game.balls.filter(ball => ball.alive && !ball.inShooter).length === 3 && game.jackpotReady;
+    game = createGame('tunneling-test'); const fastBall = { ...createBall(360, 110, false), vx: 0, vy: -5200 }; game.balls = [fastBall]; updateBall(fastBall, FIXED_STEP); const antiTunneling = fastBall.y >= 86 + fastBall.radius && fastBall.vy > 0;
     game = previousGame; launchHeld = previousLaunchHeld; statusElement.textContent = previousStatus; soundToggle.checked = previousSound; hapticsToggle.checked = previousHaptics;
-    return { bounced, launchesIntoPlayfield, spinnerScores, skillShotScores, firstBallLocks, multiballStarts, launcherFloor: table.walls.some(wall => wall.y1 === 952 && wall.y2 === 952), symmetricFlippers: Math.abs((table.flippers[0].pivotX + table.flippers[1].pivotX) - WIDTH) < 0.01 };
+    return { bounced, launchesIntoPlayfield, spinnerScores, skillShotScores, firstBallLocks, multiballStarts, antiTunneling, launcherFloor: table.walls.some(wall => wall.y1 === 952 && wall.y2 === 952), symmetricFlippers: Math.abs((table.flippers[0].pivotX + table.flippers[1].pivotX) - WIDTH) < 0.01 };
   }
 };
 try { localStorage.setItem('game-hub:last-game', 'pinball'); } catch {}

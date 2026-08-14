@@ -1,12 +1,12 @@
 const routes = [
   '../index.html',
   '../replay.html',
-  '../games/grid/sudoku.html', '../games/grid/nonogram.html', '../games/grid/minesweeper.html', '../games/grid/logic-puzzles.html', '../games/grid/fusion-2048.html',
-  '../games/arcade/arcade.html', '../games/arcade/pong.html', '../games/arcade/stellar-assault.html', '../games/arcade/vector-drift.html', '../games/arcade/pocket-platformer.html', '../games/arcade/pinball.html', '../games/arcade/labyrinthe-glouton.html', '../games/arcade/traversee-turbo.html', '../games/arcade/asteria.html', '../games/arcade/eclipse-depths.html',
-  '../games/cards/classic/bataille.html', '../games/cards/classic/bataille-corse.html', '../games/cards/classic/casino-plis.html', '../games/cards/classic/klondike.html', '../games/cards/classic/rami-cartes.html', '../games/cards/classic/memory.html',
+  '../games/grid/sudoku.html', '../games/grid/nonogram.html', '../games/grid/minesweeper.html', '../games/grid/logic-puzzles.html', '../games/grid/fusion-2048.html', '../games/grid/puzzle-image.html', '../games/grid/takuzu.html',
+  '../games/arcade/arcade.html', '../games/arcade/pong.html', '../games/arcade/stellar-assault.html', '../games/arcade/vector-drift.html', '../games/arcade/pocket-platformer.html', '../games/arcade/pinball.html', '../games/arcade/labyrinthe-glouton.html', '../games/arcade/traversee-turbo.html', '../games/arcade/blindes-arene.html', '../games/arcade/asteria.html', '../games/arcade/eclipse-depths.html',
+  '../games/cards/classic/bataille.html', '../games/cards/classic/bataille-corse.html', '../games/cards/classic/casino-plis.html', '../games/cards/classic/klondike.html', '../games/cards/classic/rami-cartes.html', '../games/cards/classic/memory.html', '../games/cards/classic/pyramide-13.html',
   '../games/cards/modern/symbole-unique.html', '../games/cards/modern/totem-reflexe.html', '../games/cards/modern/derniere-couleur.html', '../games/cards/modern/grille-zero.html', '../games/cards/modern/sixieme-carte.html', '../games/cards/modern/course-1000.html', '../games/cards/modern/roi-pirate.html', '../games/cards/modern/chatastrophe.html',
   '../games/board/board-games.html?variant=estate', '../games/board/board-games.html?variant=world', '../games/board/board-games.html?variant=payday', '../games/board/chess.html?variant=chess', '../games/board/chess.html?variant=checkers', '../games/board/go.html', '../games/board/mahjong.html', '../games/board/rami-tuiles.html',
-  '../games/board/tiles-routes.html', '../games/board/connect-four.html',
+  '../games/board/tiles-routes.html', '../games/board/connect-four.html', '../games/board/disques-reversibles.html',
   '../games/rhythm/rhythm.html', '../games/rhythm/karaoke.html', '../games/rhythm/rhythm-echo.html', '../games/rhythm/audio-lab.html'
 ];
 const resultsElement = document.getElementById('results');
@@ -242,6 +242,14 @@ async function waitForGameInvariant(frameWindow, route) {
         assert(solvers.length === generators.length && solvers.every(solver => solver.solved), `Solveur(s) invalide(s) : ${solvers.filter(solver => !solver.solved).map(solver => `${solver.mode} ${solver.size}×${solver.size}`).join(', ')}.`);
         return `${solvers.length} configurations de générateurs et solveurs contrôlées (${solvers.reduce((total, solver) => total + solver.milliseconds, 0)} ms).`;
       }
+    } else if (route.includes('/puzzle-image.html')) {
+      const summary = frameWindow.PuzzleImageTestAPI?.diagnostics();
+      assert(summary?.formats >= 7 && summary.rotation && summary.shapeModes.length === 3 && summary.imageImport && summary.recommendedLandscape && summary.pieces > 0 && summary.complementaryEdges && summary.zoomMinimum <= .12 && summary.zoomMaximum >= 4 && summary.pannableWorkspace && summary.cameraButtons === 4 && summary.keyboardCamera && summary.canvas, 'Atelier Puzzle Image incomplet ou arêtes non complémentaires.');
+      return `${summary.formats} formats, arêtes complémentaires, rotations et caméra étendue validés.`;
+    } else if (route.includes('/takuzu.html')) {
+      const summary = frameWindow.TakuzuTestAPI?.diagnostics();
+      assert(summary?.sizes.length === 4 && summary.difficulties.length === 4 && summary.valid && summary.uniqueRows && summary.logicalSolver && summary.textInputs === 0, 'Générateur ou interface Takuzu invalide.');
+      return 'Takuzu valide, unique et sans saisie textuelle.';
     } else if (route.includes('/arcade.html')) {
       const summary = frameWindow.ArcadeTestAPI?.diagnostics();
       if (summary) {
@@ -259,8 +267,8 @@ async function waitForGameInvariant(frameWindow, route) {
     } else if (route.includes('/connect-four.html')) {
       const summary = frameWindow.ConnectFourTestAPI?.diagnostics();
       if (summary) {
-        assert(summary.slots === summary.columns * summary.rows && summary.legal === summary.columns, 'Le plateau Alignement quatre est incohérent.');
-        return `${summary.columns}×${summary.rows}, ${summary.legal} colonnes jouables.`;
+        assert(summary.slots === summary.columns * summary.rows && summary.legal === summary.columns && summary.search && Number.isFinite(summary.evaluation), 'Le plateau ou le bot Alignement quatre est incohérent.');
+        return `${summary.columns}×${summary.rows}, ${summary.legal} colonnes jouables et recherche tactique.`;
       }
     } else if (route.includes('/memory.html')) {
       const summary = frameWindow.MemoryTestAPI?.diagnostics();
@@ -277,8 +285,8 @@ async function waitForGameInvariant(frameWindow, route) {
     } else if (route.includes('/stellar-assault.html')) {
       const summary = frameWindow.StellarAssaultTestAPI?.diagnostics();
       if (summary) {
-        assert(summary.canvas && summary.enemies.length >= 8, 'Les archétypes ennemis d’Assaut Stellaire sont incomplets.');
-        assert(summary.projectiles.length >= 7 && summary.movements.length >= 6 && summary.formations.length >= 6, 'Les attaques ou motifs procéduraux sont incomplets.');
+        assert(summary.canvas && summary.enemies.length >= 10, 'Les archétypes ennemis d’Assaut Stellaire sont incomplets.');
+        assert(summary.projectiles.length >= 7 && summary.movements.length >= 8 && summary.formations.length >= 8, 'Les attaques ou motifs procéduraux sont incomplets.');
         assert(summary.upgrades.length >= 10 && summary.difficultyScaling && summary.mobileControls === 7, 'La progression, la difficulté ou les commandes mobiles sont incomplètes.');
         assert(summary.shipClasses.length === 4 && summary.specialAvailable, 'Les classes ou la surcharge tactique sont absentes.');
         const boss = frameWindow.StellarAssaultTestAPI.preview('boss', 5);
@@ -306,12 +314,16 @@ async function waitForGameInvariant(frameWindow, route) {
       }
     } else if (route.includes('/labyrinthe-glouton.html')) {
       const summary = frameWindow.GloutonTestAPI?.diagnostics();
-      assert(summary.connected && summary.ghostBehaviors === 4 && summary.powerSources === 4 && summary.formats.length === 3 && summary.canvas, 'Labyrinthe glouton incomplet ou non connecté.');
-      return 'Labyrinthe connecté, quatre IA et bonus validés.';
+      assert(summary.connected && summary.movement && summary.startable && summary.ghostBehaviors === 4 && summary.powerSources === 4 && summary.formats.length === 3 && summary.canvas, 'Labyrinthe glouton incomplet, immobile ou non connecté.');
+      return 'Labyrinthe connecté, déplacement continu, quatre IA et bonus validés.';
     } else if (route.includes('/traversee-turbo.html')) {
       const summary = frameWindow.TraverseeTestAPI?.diagnostics();
-      assert(summary.lanes === 13 && summary.road && summary.river && summary.safeRows === 3 && summary.difficulties.length === 4 && summary.canvas, 'Traversée procédurale incomplète.');
-      return 'Routes, rivières, zones sûres et difficultés validées.';
+      assert(summary.visibleRows === 13 && summary.generatedRows > 40 && summary.road && summary.river && summary.obstacleTypes >= 8 && summary.safeSpacing && summary.continuousAdvance && summary.scrollingCamera && summary.checkpointInterval === 12 && summary.minimumClearance >= 2.2 && summary.bufferedInput && summary.hitbox < .3 && summary.difficulties.length === 4 && summary.endless && summary.canvas, 'Ascension procédurale incomplète ou trop punitive.');
+      return 'Défilement vertical, génération continue, refuges et huit obstacles validés.';
+    } else if (route.includes('/blindes-arene.html')) {
+      const summary = frameWindow.TankArenaTestAPI?.diagnostics();
+      assert(summary?.route && summary.walls > 0 && summary.enemyKinds >= 4 && summary.difficulties.length === 4 && summary.arenas.length === 3 && summary.modes.length === 3 && summary.mobileControls === 5 && summary.canvas, 'Arène de blindés invalide ou déconnectée.');
+      return `${summary.walls} murs avec route garantie et ennemis spécialisés validés.`;
     } else if (route.includes('/pinball.html')) {
       const summary = frameWindow.PinballTestAPI?.diagnostics();
       if (summary) {
@@ -321,13 +333,22 @@ async function waitForGameInvariant(frameWindow, route) {
         assert(Object.values(physics).every(Boolean), `Une mécanique du flipper est invalide : ${JSON.stringify(physics)}.`);
         return `${summary.bumpers} bumpers, skill shot, spinner, verrouillage et multibille validés.`;
       }
+    } else if (route.includes('/pyramide-13.html')) {
+      const summary = frameWindow.PyramidTestAPI?.diagnostics();
+      assert(summary?.pyramid === 28 && summary.stock === 24 && summary.kings === 4 && summary.guaranteedPairs === 12 && summary.recycles.length === 3 && summary.undo, 'Donne garantie de Pyramide 13 invalide.');
+      return 'Pyramide garantie : quatre Rois, douze paires et pioche complète.';
+    } else if (route.includes('/disques-reversibles.html')) {
+      const summary = frameWindow.ReversibleDiscsTestAPI?.diagnostics();
+      assert(summary?.sizes.length === 4 && summary.difficulties.length === 4 && summary.variants.length === 3 && summary.openingMoves === 4 && summary.flipCount && summary.botSearch && summary.passSearch && summary.positionalEvaluation, 'Disques Réversibles invalide.');
+      return 'Ouverture à quatre coups, retournements et bot stratégique validés.';
     } else if (route.includes('/asteria.html')) {
       const summary = frameWindow.AsteriaTestAPI?.diagnostics();
       if (summary) {
         const mechanics = frameWindow.AsteriaTestAPI.selfTest();
         assert(summary.canvas && summary.worldSizes.length === 4 && summary.worldSizes.every(world => world.valid), `Un format de monde Asteria est invalide : ${JSON.stringify(summary.worldSizes)}.`);
         assert(summary.dungeons.length === 6 && summary.dungeons.every(dungeon => dungeon.valid), `Un donjon modulaire est invalide : ${JSON.stringify(summary.dungeons)}.`);
-        assert(summary.items.length >= 8 && summary.enemies.length >= 8 && summary.mobileControls === 8, 'La progression, les ennemis ou les commandes d’Asteria sont incomplets.');
+        assert(summary.items.length >= 8 && summary.enemies.length >= 8 && summary.mobileControls === 8 && summary.constrainedBossAccess && summary.levelProgression && summary.mapHighlightsUsableGates && summary.saveVersion === 7, 'La progression, les sceaux, la carte, les ennemis ou les commandes d’Asteria sont incomplets.');
+        assert(summary.merchantSpecialties >= 3 && summary.worldSizes.every(world => world.merchantProgression && world.merchantVariety), 'Les marchands spécialisés ou leur progression sont invalides.');
         assert(summary.bossPatterns.length === 6, `Les boss d’Asteria ne sont pas assez distincts : ${JSON.stringify(summary.bossPatterns)}.`);
         assert(Object.values(mechanics).every(Boolean), `Une mécanique de génération Asteria est invalide : ${JSON.stringify(mechanics)}.`);
         return `${summary.worldSizes.length} mondes, ${summary.dungeons.length} donjons progressifs et coopération validés.`;
@@ -337,7 +358,7 @@ async function waitForGameInvariant(frameWindow, route) {
       if (summary) {
         const mechanics = frameWindow.EclipseDepthsTestAPI.selfTest();
         assert(summary.canvas && summary.worlds.length === 4 && summary.worlds.every(world => world.valid), `Une station procédurale est invalide : ${JSON.stringify(summary.worlds)}.`);
-        assert(summary.mainUpgrades === 5 && summary.bonusTypes >= 13 && summary.bossPatterns === 6 && summary.mobileControls >= 9 && summary.variableRooms && summary.movingRooms, 'La progression, les boss, les salles variables ou les commandes du Metroid-like sont incomplets.');
+        assert(summary.mainUpgrades === 5 && summary.bonusTypes >= 15 && summary.bossPatterns === 6 && summary.mobileControls >= 9 && summary.variableRooms && summary.movingRooms && summary.purposefulPlatforms && summary.platformFeatures > 0 && summary.wallJump && summary.mapAbilityHighlight && summary.shuffledBonusModules && summary.saveVersion === 6, 'La progression, la carte, les plateformes utiles, les salles variables ou les commandes du Metroid-like sont incomplètes.');
         assert(Object.values(mechanics).every(Boolean), `Une mécanique de progression est invalide : ${JSON.stringify(mechanics)}.`);
         return `${summary.worlds.length} tailles, cinq capacités et six boss procéduraux validés.`;
       }
@@ -471,7 +492,7 @@ async function run() {
   for (const route of routes) await test(`Ressources · ${route.replace('../', '')}`, () => testAssets(route));
   for (const route of routes) {
     await test(`Chargement · ${route.replace('../', '')}`, () => loadRoute(route));
-    if (['/sudoku.html', '/mahjong.html', '/rami-tuiles.html', '/rami-cartes.html', '/course-1000.html', '/symbole-unique.html', '/totem-reflexe.html', '/derniere-couleur.html', '/sixieme-carte.html', '/chatastrophe.html', '/roi-pirate.html', '/klondike.html', '/grille-zero.html', '/bataille.html', '/bataille-corse.html', '/casino-plis.html', '/board-games.html', '/tiles-routes.html', '/chess.html', '/go.html', '/rhythm.html', '/karaoke.html', '/minesweeper.html', '/nonogram.html', '/logic-puzzles.html', '/arcade.html', '/fusion-2048.html', '/connect-four.html', '/memory.html', '/pong.html', '/stellar-assault.html', '/vector-drift.html', '/pocket-platformer.html', '/pinball.html', '/labyrinthe-glouton.html', '/traversee-turbo.html', '/asteria.html', '/eclipse-depths.html', '/rhythm-echo.html', '/audio-lab.html'].some(path => route.includes(path))) {
+    if (['/sudoku.html', '/mahjong.html', '/rami-tuiles.html', '/rami-cartes.html', '/course-1000.html', '/symbole-unique.html', '/totem-reflexe.html', '/derniere-couleur.html', '/sixieme-carte.html', '/chatastrophe.html', '/roi-pirate.html', '/klondike.html', '/grille-zero.html', '/bataille.html', '/bataille-corse.html', '/casino-plis.html', '/pyramide-13.html', '/board-games.html', '/tiles-routes.html', '/chess.html', '/go.html', '/disques-reversibles.html', '/rhythm.html', '/karaoke.html', '/minesweeper.html', '/nonogram.html', '/logic-puzzles.html', '/puzzle-image.html', '/takuzu.html', '/arcade.html', '/fusion-2048.html', '/connect-four.html', '/memory.html', '/pong.html', '/stellar-assault.html', '/vector-drift.html', '/pocket-platformer.html', '/pinball.html', '/labyrinthe-glouton.html', '/traversee-turbo.html', '/blindes-arene.html', '/asteria.html', '/eclipse-depths.html', '/rhythm-echo.html', '/audio-lab.html'].some(path => route.includes(path))) {
       await test(`Invariant · ${route.replace('../', '')}`, () => waitForGameInvariant(sandbox.contentWindow, route));
     }
   }
@@ -485,6 +506,7 @@ async function run() {
     '../games/arcade/pinball.html',
     '../games/arcade/labyrinthe-glouton.html',
     '../games/arcade/traversee-turbo.html',
+    '../games/arcade/blindes-arene.html',
     '../games/arcade/asteria.html',
     '../games/arcade/eclipse-depths.html',
     '../games/cards/modern/derniere-couleur.html',

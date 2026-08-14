@@ -187,6 +187,20 @@ class StaticProjectTests(unittest.TestCase):
             with self.subTest(feature=feature):
                 self.assertIn(feature, crossing)
 
+    def test_new_catalog_games_expose_validated_engines(self):
+        files = {
+            "games/grid/puzzle-image.js": ["recommend", "edgeDescriptor", "piecePath", "screenToWorld", "zoomAt", "trySnap", "PuzzleImageTestAPI"],
+            "games/grid/takuzu.js": ["generateSolution", "logicalMove", "validSequence", "TakuzuTestAPI"],
+            "games/cards/classic/pyramide-13.js": ["guaranteedDeck", "exposed", "findMove", "PyramidTestAPI"],
+            "games/board/disques-reversibles.js": ["flipsFor", "legalMoves", "minimax", "ReversibleDiscsTestAPI"],
+            "games/arcade/blindes-arene.js": ["generateWalls", "routeExists", "spawnWave", "TankArenaTestAPI"],
+        }
+        for path, features in files.items():
+            script = (ROOT / path).read_text(encoding="utf-8")
+            for feature in features:
+                with self.subTest(path=path, feature=feature):
+                    self.assertIn(feature, script)
+
     def test_asteria_exposes_progressive_world_and_dungeons(self):
         world = (ROOT / "games/arcade/asteria-world.js").read_text(encoding="utf-8")
         game = (ROOT / "games/arcade/asteria.js").read_text(encoding="utf-8")

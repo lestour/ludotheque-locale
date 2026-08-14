@@ -31,10 +31,12 @@ const enemyDefinitions = {
   hunter: { name: 'Chasseur', health: 40, speed: 58, radius: 17, color: '#22c55e', score: 180, cooldown: 4.2, attack: 'missile' },
   gunner: { name: 'Artilleur', health: 52, speed: 45, radius: 19, color: '#facc15', score: 210, cooldown: 3.5, attack: 'spread' },
   tank: { name: 'Cuirassé', health: 105, speed: 27, radius: 23, color: '#94a3b8', score: 320, cooldown: 2.8, attack: 'cross' },
+  splitter: { name: 'Cellule scissile', health: 68, speed: 41, radius: 22, color: '#2dd4bf', score: 250, cooldown: 3.2, attack: 'bubble' },
+  warper: { name: 'Spectre de phase', health: 58, speed: 52, radius: 20, color: '#e879f9', score: 270, cooldown: 4.4, attack: 'laser' },
   boss: { name: 'Noyau ennemi', health: 900, speed: 25, radius: 52, color: '#ef4444', score: 3000, cooldown: 1.5, attack: 'boss' }
 };
-const movementPatterns = ['sweep', 'sine', 'zigzag', 'orbit', 'dive', 'convoy'];
-const formationPatterns = ['grid', 'wedge', 'ring', 'columns', 'swarm', 'pincer'];
+const movementPatterns = ['sweep', 'sine', 'zigzag', 'orbit', 'dive', 'convoy', 'phase', 'swarm'];
+const formationPatterns = ['grid', 'wedge', 'ring', 'columns', 'swarm', 'pincer', 'spiral', 'walls'];
 const projectileTypes = ['direct', 'bomb', 'bubble', 'laser', 'missile', 'diagonal', 'horizontal'];
 const shipClasses = {
   balanced: { label: 'Polyvalent', health: 100, shield: 50, damage: 12, fireInterval: 0.21, shots: 1, spread: 0.14, speed: 320, dashInterval: 3.4 },
@@ -169,6 +171,8 @@ function wavePlan(wave, mode = gameModeSelect.value) {
   if (wave >= 5) unlocked.push('laser');
   if (wave >= 6) unlocked.push('hunter');
   if (wave >= 8) unlocked.push('tank');
+  if (wave >= 9) unlocked.push('splitter');
+  if (wave >= 11) unlocked.push('warper');
   return {
     boss,
     count: boss ? 1 + Math.min(8, Math.floor(wave / 3)) : Math.min(34, 7 + wave * 2),
@@ -201,6 +205,10 @@ function formationPositions(pattern, count) {
       const side = index % 2 ? 1 : -1;
       positions.push({ x: WIDTH / 2 + side * (120 + Math.floor(index / 2) * 42), y: 90 + Math.floor(index / 4) * 58 });
     }
+  } else if (pattern === 'spiral') {
+    for (let index = 0; index < count; index++) { const angle = index * 2.15; const radius = 24 + index * Math.min(19, 250 / Math.max(1, count)); positions.push({ x: WIDTH / 2 + Math.cos(angle) * radius, y: 165 + Math.sin(angle) * radius * 0.48 }); }
+  } else if (pattern === 'walls') {
+    for (let index = 0; index < count; index++) positions.push({ x: index % 2 ? WIDTH - 115 - Math.floor(index / 4) * 54 : 115 + Math.floor(index / 4) * 54, y: 70 + index % 5 * 52 });
   } else {
     for (let index = 0; index < count; index++) positions.push({ x: 85 + random() * (WIDTH - 170), y: 65 + random() * 190 });
   }
@@ -243,7 +251,7 @@ function createEnemy(type, position, movement) {
     type, x: position.x, y: -70 - random() * 120, targetX: position.x, targetY: position.y, baseX: position.x, baseY: position.y,
     radius: definition.radius, health, maxHealth: health, speed: definition.speed * difficulty().speed * (1 + state.wave * 0.018),
     cooldown: definition.cooldown * (0.55 + random() * 0.75) / difficulty().fire, age: 0, phase: random() * Math.PI * 2,
-    movement, entered: false, flash: 0, diving: false, dead: false
+    movement, entered: false, flash: 0, diving: false, dead: false, moveStep: 0
   };
 }
 
@@ -309,6 +317,8 @@ function updateEnemy(enemy, delta) {
   else if (enemy.movement === 'zigzag') enemy.x += Math.sign(Math.sin(enemy.age * 2.3 + enemy.phase)) * enemy.speed * delta;
   else if (enemy.movement === 'orbit') { enemy.x = WIDTH / 2 + Math.cos(enemy.age * 0.58 + enemy.phase) * amplitude; enemy.y = 165 + Math.sin(enemy.age * 0.9 + enemy.phase) * 80; }
   else if (enemy.movement === 'convoy') { enemy.x += Math.sin(enemy.age * 1.1 + enemy.phase) * 35 * delta; enemy.y += Math.max(2, state.wave * 0.32) * delta; }
+  else if (enemy.movement === 'phase') { const step = Math.floor(enemy.age / 1.45); if (step > enemy.moveStep) { enemy.moveStep = step; enemy.baseX = 65 + random() * (WIDTH - 130); enemy.baseY = 75 + random() * 245; addParticles(enemy.x, enemy.y, '#e879f9', 8, 80); } enemy.x += (enemy.baseX - enemy.x) * Math.min(1, delta * 7); enemy.y += (enemy.baseY - enemy.y) * Math.min(1, delta * 7); }
+  else if (enemy.movement === 'swarm') { enemy.x += (state.player.x - enemy.x) * delta * 0.08 + Math.sin(enemy.age * 3 + enemy.phase) * enemy.speed * delta; enemy.y = enemy.baseY + Math.cos(enemy.age * 2.1 + enemy.phase) * 38; }
   else if (enemy.movement === 'dive' && enemy.age > 3.2 + enemy.phase % 2.5) {
     enemy.diving = true;
     enemy.y += enemy.speed * 1.9 * delta;
@@ -387,6 +397,7 @@ function destroyEnemy(enemy) {
   state.kills++;
   state.player.special = Math.min(state.player.maxSpecial, state.player.special + (enemy.type === 'boss' ? 38 : Math.min(9, 2 + definition.score / 60)));
   if (enemy.type === 'boss') state.bosses++;
+  if (enemy.type === 'splitter') for (const side of [-1, 1]) { const child = createEnemy('scout', { x: clamp(enemy.x + side * 26, 30, WIDTH - 30), y: enemy.y }, 'swarm'); child.x = clamp(enemy.x + side * 26, 30, WIDTH - 30); child.y = enemy.y; child.baseX = child.x; child.baseY = child.y; child.entered = true; child.health *= 0.55; child.maxHealth = child.health; state.enemies.push(child); }
   gainExperience(definition.score * 0.13 + state.wave * 2);
   dropPickup(enemy);
   addParticles(enemy.x, enemy.y, definition.color, enemy.type === 'boss' ? 65 : 14, enemy.type === 'boss' ? 280 : 160);
@@ -715,6 +726,8 @@ function drawEnemy(enemy) {
   else if (enemy.type === 'laser') { context.moveTo(0, -enemy.radius); context.lineTo(enemy.radius, 0); context.lineTo(0, enemy.radius); context.lineTo(-enemy.radius, 0); }
   else if (enemy.type === 'hunter') { context.moveTo(0, enemy.radius); context.lineTo(enemy.radius * 0.75, -enemy.radius); context.lineTo(0, -enemy.radius * 0.45); context.lineTo(-enemy.radius * 0.75, -enemy.radius); }
   else if (enemy.type === 'gunner') { range(8).forEach(index => { const angle = index / 8 * Math.PI * 2; const radius = index % 2 ? enemy.radius * 0.52 : enemy.radius; const x = Math.cos(angle) * radius, y = Math.sin(angle) * radius; if (!index) context.moveTo(x, y); else context.lineTo(x, y); }); }
+  else if (enemy.type === 'splitter') { context.arc(0, 0, enemy.radius, 0, Math.PI * 2); context.moveTo(0, -enemy.radius); context.lineTo(0, enemy.radius); }
+  else if (enemy.type === 'warper') { context.moveTo(0, -enemy.radius); context.lineTo(enemy.radius, enemy.radius); context.lineTo(0, enemy.radius * .45); context.lineTo(-enemy.radius, enemy.radius); }
   else { range(enemy.type === 'boss' ? 12 : 6).forEach(index => { const count = enemy.type === 'boss' ? 12 : 6; const angle = index / count * Math.PI * 2; const radius = enemy.radius * (index % 2 && enemy.type === 'boss' ? 0.72 : 1); const x = Math.cos(angle) * radius, y = Math.sin(angle) * radius; if (!index) context.moveTo(x, y); else context.lineTo(x, y); }); }
   context.closePath(); context.fill(); context.stroke();
   if (enemy.type === 'bomber') { context.fillStyle = '#422006'; context.beginPath(); context.arc(0, 0, 7, 0, Math.PI * 2); context.fill(); }

@@ -87,7 +87,7 @@ function saveGame() {
   if (!state) return;
   try {
     const safePlayer = state.scene === 'dungeon' && state.returnPosition ? { ...state.player, x: state.returnPosition.x, y: state.returnPosition.y, attackTimer: 0, itemTimer: 0, invulnerable: 0 } : state.player;
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 6, options: { worldSize: worldSizeSelect.value, difficulty: difficultySelect.value, gameMode: gameModeSelect.value, adventurers: adventurersSelect.value }, seed: state.seed, player: safePlayer, inventory: state.inventory, selectedItem: state.selectedItem, coins: state.coins, heartPieces: state.heartPieces, completedMain: state.completedMain, completedDungeons: [...state.completedDungeons], openedChests: [...state.openedChests], clearedObstacles: [...state.clearedObstacles], merchantPurchases: [...state.merchantPurchases], explored: [...state.explored], mapRevealed: state.mapRevealed, elapsed: state.elapsed, score: state.score, weaponLevel: state.weaponLevel, armorLevel: state.armorLevel, bombLevel: state.bombLevel, maxHealth: state.maxHealth, health: state.health }));
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 7, options: { worldSize: worldSizeSelect.value, difficulty: difficultySelect.value, gameMode: gameModeSelect.value, adventurers: adventurersSelect.value }, seed: state.seed, player: safePlayer, inventory: state.inventory, selectedItem: state.selectedItem, coins: state.coins, heartPieces: state.heartPieces, completedMain: state.completedMain, completedDungeons: [...state.completedDungeons], openedChests: [...state.openedChests], clearedObstacles: [...state.clearedObstacles], merchantPurchases: [...state.merchantPurchases], explored: [...state.explored], mapRevealed: state.mapRevealed, elapsed: state.elapsed, score: state.score, weaponLevel: state.weaponLevel, armorLevel: state.armorLevel, bombLevel: state.bombLevel, maxHealth: state.maxHealth, health: state.health, level: state.level, experience: state.experience }));
     document.getElementById('continue').disabled = false;
   } catch {}
 }
@@ -96,7 +96,7 @@ function loadSave() {
   try {
     const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
     if (!saved || typeof saved !== 'object' || !['string', 'number'].includes(typeof saved.seed)) return null;
-    if (saved.version && saved.version > 6) return null;
+    if (saved.version && saved.version > 7) return null;
     return saved;
   } catch { return null; }
 }
@@ -127,7 +127,7 @@ function createState(seed, saved = null) {
     player,
     inventory, selectedItem, coins: saved?.coins ?? 25, heartPieces: saved?.heartPieces ?? 0,
     completedMain, completedDungeons: new Set(completedDungeons), openedChests: new Set(openedChests), clearedObstacles: new Set(restoredClearedObstacles), merchantPurchases: new Set(saved?.merchantPurchases || []),
-    maxHealth, health: saved?.health || maxHealth, weaponLevel: saved?.weaponLevel || 1, armorLevel: saved?.armorLevel || 0, bombLevel: saved?.bombLevel || 1,
+    maxHealth, health: saved?.health || maxHealth, weaponLevel: saved?.weaponLevel || 1, armorLevel: saved?.armorLevel || 0, bombLevel: saved?.bombLevel || 1, level: saved?.level || 1, experience: saved?.experience || 0,
     elapsed: saved?.elapsed || 0, enemies: [], projectiles: [], particles: [], pickups: [], explored: new Set(saved?.explored || [`${world.start.x},${world.start.y}`]), mapRevealed: Boolean(saved?.mapRevealed), camera: { x: startX, y: startY }, roomTransition: 0,
     completed: false, roomSolved: false, currentPuzzleProgress: 0, companionPlates: 0, score: saved?.score || 0, nextAutosave: (saved?.elapsed || 0) + 12, enemySerial: 0, encounterTimer: 2
   };
@@ -280,8 +280,22 @@ function damageEnemy(enemy, amount, broadcast = true) {
   if (broadcast && sharedDungeonCombat()) window.LanMultiplayer.sendAction({ type: 'enemy-damage', dungeonId: state.dungeon.id, roomId: state.room.id, enemyId: enemy.id, amount })?.catch(() => {});
   enemy.health -= amount; sound('hit'); enemy.vx += (enemy.x - state.player.x) * 2.2; enemy.vy += (enemy.y - state.player.y) * 2.2;
   if (enemy.health > 0) return;
-  enemy.dead = true; const reward = enemy.boss ? 45 : 1 + Math.floor(random() * 4); state.coins += reward; state.score += Math.round((enemy.boss ? 3000 : 120) * difficultySettings[difficultySelect.value].score * (1 + state.completedMain * 0.2));
+  enemy.dead = true; const reward = enemy.boss ? 45 : 1 + Math.floor(random() * 4); state.coins += reward; state.score += Math.round((enemy.boss ? 3000 : 120) * difficultySettings[difficultySelect.value].score * (1 + state.completedMain * 0.2)); gainExperience(enemy.boss ? 90 + state.completedMain * 25 : 7 + Math.ceil(enemy.maxHealth * 0.7));
   if (enemy.boss) completeBoss(); else if (random() < 0.12) state.pickups.push({ x: enemy.x, y: enemy.y, type: 'heart', radius: 10 });
+}
+
+function experienceForLevel(level) { return 70 + level * 45; }
+function gainExperience(amount) {
+  state.experience += amount;
+  let leveled = false;
+  while (state.experience >= experienceForLevel(state.level)) {
+    state.experience -= experienceForLevel(state.level); state.level++; leveled = true;
+    if (state.level % 2 === 0) state.maxHealth++;
+    if (state.level % 3 === 0) state.weaponLevel++;
+    if (state.level % 4 === 0) state.armorLevel++;
+    state.health = state.maxHealth;
+  }
+  if (leveled) { sound('item'); log(`Rang ${state.level} atteint : santé restaurée et équipement renforcé.`); renderInventory(); }
 }
 
 function hurtPlayer(amount) {
@@ -378,7 +392,7 @@ function interact() {
     else { state.mapRevealed = true; saveGame(); showOverlay(target.label, 'La carte murale révèle désormais les régions, les donjons et les routes de Clairval sur votre minimap.', closeOverlay); }
     return;
   }
-  if ('stock' in target) return openMerchant(target);
+  if ('stock' in target) { if (target.requires && !owned(target.requires)) { statusElement.textContent = `${target.label} est installé au-delà d’un passage nécessitant ${itemDefinitions[target.requires]?.label || target.requires}.`; return; } return openMerchant(target); }
   if ('reward' in target && 'opened' in target) return openChest(target);
   if ('gateFor' in target || target.ambient || target.cave) { if (owned(target.requires)) clearNearbyObstacle(target.requires); else statusElement.textContent = `${target.label} : ${itemDefinitions[target.requires]?.label || target.requires} nécessaire.`; return; }
   if ('main' in target) enterDungeon(target);
@@ -427,6 +441,7 @@ function checkDoorTransition() {
   if (!door) { clampDungeonPlayer(); return; }
   if (!state.room.cleared && state.enemies.length) { statusElement.textContent = 'Les portes sont scellées tant que les ennemis restent.'; clampDungeonPlayer(); return; }
   if (door.locked && !state.room.cleared) { statusElement.textContent = 'Cette porte exige la résolution de la salle.'; clampDungeonPlayer(); return; }
+  if (door.requiredSigils && state.dungeon.sigils < door.requiredSigils) { statusElement.textContent = `Le sanctuaire du boss exige ${door.requiredSigils} sceaux (${state.dungeon.sigils}/${door.requiredSigils}).`; clampDungeonPlayer(); return; }
   state.room = state.dungeon.rooms[door.to]; state.dungeon.currentRoom = door.to; state.roomTransition = 0.35;
   state.player.x = side === 'west' ? canvas.width - 74 : side === 'east' ? 74 : slot < 0 ? canvas.width * 0.35 : canvas.width * 0.65;
   state.player.y = side === 'north' ? canvas.height - 74 : side === 'south' ? 74 : slot < 0 ? canvas.height * 0.36 : canvas.height * 0.64;
@@ -484,8 +499,14 @@ function solvePuzzleStep(room) {
     state.currentPuzzleProgress++;
   }
   if (room.puzzle.id === 'coopPlates' ? state.companionPlates >= required : state.currentPuzzleProgress >= required) {
-    room.cleared = true; state.roomSolved = true; state.score += 600 * room.enemyTier; sound('solve'); log(`Énigme résolue : ${room.puzzle.label}.`); window.LanMultiplayer?.sendAction({ type: 'room-cleared', dungeonId: state.dungeon.id, roomId: room.id })?.catch(() => {});
+    room.cleared = true; state.roomSolved = true; state.score += 600 * room.enemyTier; claimRoomSigil(room); sound('solve'); log(`Énigme résolue : ${room.puzzle.label}.`); window.LanMultiplayer?.sendAction({ type: 'room-cleared', dungeonId: state.dungeon.id, roomId: room.id })?.catch(() => {});
   } else statusElement.textContent = `${room.puzzle.label} · étape ${state.currentPuzzleProgress}/${required}.`;
+}
+
+function claimRoomSigil(room) {
+  if (!room?.sigilReward || room.sigilClaimed || !state.dungeon) return;
+  room.sigilClaimed = true; state.dungeon.sigils += room.sigilReward; state.score += 350;
+  log(`Sceau du sanctuaire obtenu (${state.dungeon.sigils}/${state.dungeon.totalSigils}).`); sound('item');
 }
 
 function completeBoss() {
@@ -520,11 +541,11 @@ function grantReward(reward) {
 
 function openChest(chest) { chest.opened = true; state.openedChests.add(chest.id); grantReward(chest.reward); showOverlay('Coffre secret', `Vous trouvez : ${rewardNames[chest.reward] || chest.reward}.`, closeOverlay); }
 
-function merchantPrice(item) { return Math.ceil(({ potion: 18, bombBag: 35, armorUpgrade: 70, heartContainer: 95, bow: 80 })[item] * difficultySettings[difficultySelect.value].price / 5) * 5; }
+function merchantPrice(item) { return Math.ceil((({ potion: 18, bombBag: 35, armorUpgrade: 70, heartContainer: 95, bow: 80, heartPiece: 42, weaponRune: 68, armorRune: 68, coinCache: 30 })[item] || 50) * difficultySettings[difficultySelect.value].price / 5) * 5; }
 function openMerchant(merchant) {
   shopElement.hidden = false; shopElement.innerHTML = merchant.stock.map(item => { const price = merchantPrice(item); const bought = state.merchantPurchases.has(`${merchant.id}:${item}`); return `<button type="button" data-buy="${item}" data-merchant="${merchant.id}"${bought ? ' disabled' : ''}><strong>${rewardNames[item] || item}</strong><span>${bought ? 'Acheté' : `${price} pièces`}</span></button>`; }).join('');
   shopElement.querySelectorAll('[data-buy]').forEach(button => button.onclick = () => buyItem(merchant, button.dataset.buy));
-  showOverlay('Marchand itinérant', 'Les stocks diffèrent selon les régions et ne sont achetables qu’une fois.', closeOverlay, true);
+  showOverlay(merchant.label || 'Marchand itinérant', `Spécialité : ${merchant.specialty || 'ravitaillement'}. Chaque stock est propre à ce comptoir et ne peut être acheté qu’une fois.`, closeOverlay, true);
 }
 function openDungeonMerchant() { openMerchant({ id: `dungeon:${state.dungeon.id}`, stock: ['potion', 'heartContainer', 'armorUpgrade'] }); }
 function buyItem(merchant, item) {
@@ -550,7 +571,7 @@ function update(delta) {
   state.elapsed += delta; state.player.attackTimer = Math.max(0, state.player.attackTimer - delta); state.player.itemTimer = Math.max(0, state.player.itemTimer - delta); state.player.invulnerable = Math.max(0, state.player.invulnerable - delta); state.roomTransition = Math.max(0, state.roomTransition - delta); state.combatShake = Math.max(0, (state.combatShake || 0) - delta);
   movePlayer(delta); updateEnemies(delta); updateProjectiles(delta);
   state.pickups.forEach(pickup => { if (distance(pickup, state.player) < pickup.radius + state.player.radius) { pickup.dead = true; if (gameModeSelect.value !== 'expedition') state.health = Math.min(state.maxHealth, state.health + 1); else state.coins += 2; } }); state.pickups = state.pickups.filter(pickup => !pickup.dead);
-  if (state.scene === 'dungeon' && !state.enemies.length && state.room && ['encounter', 'miniboss', 'challenge'].includes(state.room.type)) state.room.cleared = true;
+  if (state.scene === 'dungeon' && !state.enemies.length && state.room && ['encounter', 'miniboss', 'challenge'].includes(state.room.type) && !state.room.puzzle) { state.room.cleared = true; claimRoomSigil(state.room); }
   if (state.scene === 'world') { const point = tilePosition(state.player); state.explored.add(`${point.x},${point.y}`); maintainWorldEncounters(delta); }
   state.camera.x += (state.player.x - state.camera.x) * Math.min(1, delta * 7); state.camera.y += (state.player.y - state.camera.y) * Math.min(1, delta * 7);
   remotePlayers.forEach(remote => { remote.displayX += (remote.x - remote.displayX) * Math.min(1, delta * 10); remote.displayY += (remote.y - remote.displayY) * Math.min(1, delta * 10); });
@@ -577,6 +598,7 @@ function drawWorld() {
   (state.world.scenery || []).filter(visible).forEach(item => push(layerSort(item.y, item.elevation || 0) + 11, () => drawScenery(item, offsetX, offsetY)));
   (state.world.cliffs || []).forEach(cliff => {
     for (let index = 0; index < cliff.width; index++) { const tile = { x: cliff.x + index, y: cliff.y }; if (!visible(tile)) continue; push(layerSort(cliff.y, 0) + TILE, () => drawCliffTile(cliff, tile.x, offsetX, offsetY)); }
+    if (visible({ x: cliff.ladderX, y: cliff.y })) push(layerSort(cliff.y, 0) + TILE + 1, () => drawCliffLadder(cliff, offsetX, offsetY));
     for (let y = cliff.topY; y < cliff.y; y++) { if (visible({ x: cliff.x, y })) push(layerSort(y, 0) + TILE - 2, () => drawCliffSide(cliff, 'west', y, offsetX, offsetY)); if (visible({ x: cliff.x + cliff.width, y })) push(layerSort(y, 0) + TILE - 1, () => drawCliffSide(cliff, 'east', y, offsetX, offsetY)); }
   });
   state.world.obstacles.filter(obstacle => !obstacle.cleared && !['cliffWall', 'crackedCliff', 'cliffSide', 'cliffBack'].includes(obstacle.type) && visible(obstacle)).forEach(obstacle => push(layerSort(obstacle.y, AsteriaWorld.elevationAt(state.world, obstacle.x, obstacle.y)) + 13, () => drawObstaclePerspective(obstacle, offsetX, offsetY)));
@@ -589,7 +611,8 @@ function drawWorld() {
   state.pickups.forEach(pickup => push(pickup.y, () => { context.fillStyle = '#ef4444'; context.font = '22px Arial'; context.fillText('♥', pickup.x + offsetX, pickup.y + offsetY); }));
   state.enemies.forEach(enemy => push(layerSort(enemy.y / TILE, elevationAtEntity(enemy)), () => drawEnemy(enemy, offsetX, offsetY)));
   const sceneKey = 'world'; remotePlayers.forEach(remote => { if (remote.state && remote.state !== sceneKey) return; push(remote.displayY, () => { context.save(); context.globalAlpha = 0.4; context.fillStyle = '#e879f9'; context.beginPath(); context.arc(remote.displayX + offsetX, remote.displayY + offsetY, 15, 0, Math.PI * 2); context.fill(); context.restore(); }); });
-  push(layerSort(state.player.y / TILE, elevationAtEntity(state.player)), () => drawPlayer(offsetX, offsetY)); drawables.sort((left, right) => left.sortY - right.sortY).forEach(item => item.draw());
+  const playerTile = tilePosition(state.player); const climbingCliff = (state.world.cliffs || []).find(cliff => Math.abs(playerTile.x - cliff.ladderX) < 0.8 && playerTile.y >= cliff.topY - 1 && playerTile.y <= cliff.y + 1.4);
+  push(layerSort(state.player.y / TILE, elevationAtEntity(state.player)) + (climbingCliff ? TILE * 2 : 0), () => drawPlayer(offsetX, offsetY)); drawables.sort((left, right) => left.sortY - right.sortY).forEach(item => item.draw());
   state.projectiles.forEach(projectile => { context.fillStyle = projectile.friendly ? '#fde047' : '#fb7185'; context.beginPath(); context.arc(projectile.x + offsetX, projectile.y + offsetY, projectile.radius, 0, Math.PI * 2); context.fill(); });
   drawWorldAmbience(currentBiome());
   context.fillStyle = '#fff'; context.font = '800 15px Arial'; context.textAlign = 'center'; context.fillText(state.world.village.name, worldToPixel(state.world.start.x) + offsetX, worldToPixel(state.world.start.y - 5) + offsetY, 130);
@@ -625,8 +648,11 @@ function drawCliffTile(cliff, tileX, offsetX, offsetY) {
   const x = tileX * TILE + offsetX; const y = cliff.y * TILE + offsetY; const obstacle = state.world.obstacles.find(item => item.cliffId === cliff.id && item.x === tileX); const ladder = tileX === cliff.ladderX;
   context.fillStyle = '#9ca3af'; context.beginPath(); context.moveTo(x, y + 7); context.lineTo(x + 10, y - cliff.height); context.lineTo(x + TILE + 8, y - cliff.height); context.lineTo(x + TILE, y + 7); context.fill();
   context.fillStyle = '#4b5563'; context.fillRect(x, y + 7, TILE, TILE - 7); context.fillStyle = '#6b7280'; for (let row = 0; row < 3; row++) context.fillRect(x + (row % 2) * 8, y + 13 + row * 11, TILE - 10, 5);
-  if (ladder) { context.strokeStyle = '#d6a85f'; context.lineWidth = 4; context.beginPath(); context.moveTo(x + 13, y + TILE); context.lineTo(x + 13, y - cliff.height + 7); context.moveTo(x + 31, y + TILE); context.lineTo(x + 31, y - cliff.height + 7); context.stroke(); context.lineWidth = 3; for (let rung = y - cliff.height + 12; rung < y + TILE; rung += 10) { context.beginPath(); context.moveTo(x + 13, rung); context.lineTo(x + 31, rung); context.stroke(); } }
-  else if (obstacle?.type === 'crackedCliff') { context.strokeStyle = obstacle.cleared ? '#111827' : '#fbbf24'; context.lineWidth = obstacle.cleared ? 11 : 3; context.beginPath(); context.moveTo(x + 22, y + 13); context.lineTo(x + 16, y + 26); context.lineTo(x + 28, y + 37); context.lineTo(x + 21, y + 48); context.stroke(); }
+  if (!ladder && obstacle?.type === 'crackedCliff') { context.strokeStyle = obstacle.cleared ? '#111827' : '#fbbf24'; context.lineWidth = obstacle.cleared ? 11 : 3; context.beginPath(); context.moveTo(x + 22, y + 13); context.lineTo(x + 16, y + 26); context.lineTo(x + 28, y + 37); context.lineTo(x + 21, y + 48); context.stroke(); }
+}
+
+function drawCliffLadder(cliff, offsetX, offsetY) {
+  const x = cliff.ladderX * TILE + offsetX; const y = cliff.y * TILE + offsetY; context.strokeStyle = '#d6a85f'; context.lineWidth = 4; context.beginPath(); context.moveTo(x + 13, y + TILE); context.lineTo(x + 13, y - cliff.height + 7); context.moveTo(x + 31, y + TILE); context.lineTo(x + 31, y - cliff.height + 7); context.stroke(); context.lineWidth = 3; for (let rung = y - cliff.height + 12; rung < y + TILE; rung += 10) { context.beginPath(); context.moveTo(x + 13, rung); context.lineTo(x + 31, rung); context.stroke(); }
 }
 
 function drawCliffSide(cliff, side, tileY, offsetX, offsetY) {
@@ -659,11 +685,45 @@ function drawTileDetail(biome, x, y, tileX, tileY) {
 
 function drawWorldIcon(tileX, tileY, icon, offsetX, offsetY, size) { context.font = `${size}px Arial`; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(icon, worldToPixel(tileX) + offsetX, worldToPixel(tileY) + offsetY); }
 
+function drawDungeonArchitecture(room, base) {
+  const visual = room.visual || { floor: 'arena', decor: [], variant: 0, wear: 0.4 };
+  const glow = context.createRadialGradient(canvas.width / 2, canvas.height / 2, 40, canvas.width / 2, canvas.height / 2, canvas.width * 0.62);
+  glow.addColorStop(0, `${base}cc`); glow.addColorStop(1, '#070b13'); context.fillStyle = glow; context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = '#111827'; context.fillRect(24, 24, canvas.width - 48, 24); context.fillRect(24, canvas.height - 48, canvas.width - 48, 24); context.fillRect(24, 48, 24, canvas.height - 96); context.fillRect(canvas.width - 48, 48, 24, canvas.height - 96);
+  context.strokeStyle = `${base}aa`; context.lineWidth = 3; context.strokeRect(48, 48, canvas.width - 96, canvas.height - 96);
+  const tileSize = visual.floor === 'sanctum' ? 64 : visual.floor === 'runes' || visual.floor === 'circuit' ? 56 : 48;
+  for (let y = 50; y < canvas.height - 48; y += tileSize) for (let x = 50; x < canvas.width - 48; x += tileSize) {
+    const variation = ((x / tileSize + y / tileSize * 7 + visual.variant * 11) % 5) / 5;
+    context.fillStyle = variation < visual.wear ? '#ffffff08' : '#0206170a'; context.fillRect(x + 1, y + 1, tileSize - 3, tileSize - 3);
+    context.strokeStyle = visual.floor === 'vault' ? '#facc1522' : `${base}32`; context.lineWidth = 1; context.strokeRect(x + 1, y + 1, tileSize - 3, tileSize - 3);
+  }
+  if (['runes', 'circuit', 'sanctum', 'reliquary'].includes(visual.floor)) {
+    context.save(); context.translate(canvas.width / 2, canvas.height / 2); context.strokeStyle = visual.floor === 'sanctum' ? '#ef444477' : '#fef08a66'; context.lineWidth = 4;
+    context.beginPath(); context.arc(0, 0, visual.floor === 'sanctum' ? 142 : 92, 0, Math.PI * 2); context.stroke();
+    for (let index = 0; index < 8; index++) { const angle = index * Math.PI / 4; context.beginPath(); context.moveTo(Math.cos(angle) * 45, Math.sin(angle) * 45); context.lineTo(Math.cos(angle) * 118, Math.sin(angle) * 118); context.stroke(); }
+    context.restore();
+  }
+  for (let x = 78; x < canvas.width - 60; x += 118) { context.fillStyle = '#334155'; context.fillRect(x, 29, 72, 14); context.fillRect(x, canvas.height - 43, 72, 14); context.fillStyle = `${base}55`; context.fillRect(x + 7, 32, 58, 4); }
+}
+
+function drawDungeonDecor(room) {
+  const decor = room.visual?.decor || [];
+  const positions = [{ x: 105, y: 110 }, { x: canvas.width - 105, y: 110 }, { x: 105, y: canvas.height - 105 }, { x: canvas.width - 105, y: canvas.height - 105 }];
+  positions.forEach((point, index) => {
+    const type = decor[index % Math.max(1, decor.length)] || 'pillar'; context.save(); context.translate(point.x, point.y);
+    if (type.includes('Pillar') || type === 'pillar') { context.fillStyle = type === 'brokenPillar' ? '#64748b' : '#94a3b8'; context.fillRect(-13, -25, 26, type === 'brokenPillar' ? 34 : 50); context.fillStyle = '#cbd5e1'; context.fillRect(-20, -29, 40, 8); }
+    else if (type === 'brazier') { context.fillStyle = '#713f12'; context.fillRect(-14, 5, 28, 12); context.fillStyle = '#fb923c'; context.beginPath(); context.arc(0, 1, 11 + Math.sin(state.elapsed * 8 + index) * 2, 0, Math.PI * 2); context.fill(); }
+    else if (type === 'banner') { context.fillStyle = '#7f1d1d'; context.fillRect(-18, -28, 36, 48); context.fillStyle = '#facc15'; context.fillRect(-3, -21, 6, 28); }
+    else if (type === 'obelisk' || type === 'pedestal') { context.fillStyle = '#475569'; context.fillRect(-18, type === 'obelisk' ? -34 : 3, 36, type === 'obelisk' ? 62 : 18); context.fillStyle = '#67e8f9'; context.fillRect(-5, type === 'obelisk' ? -19 : -5, 10, 10); }
+    else if (type === 'crate' || type === 'weaponRack') { context.fillStyle = '#78350f'; context.fillRect(-22, -9, 44, 30); context.strokeStyle = '#fbbf24'; context.strokeRect(-22, -9, 44, 30); }
+    else { context.fillStyle = '#7c2d12'; context.fillRect(-25, 4, 50, 22); context.fillStyle = '#fbbf2444'; context.fillRect(-20, 8, 40, 14); }
+    context.restore();
+  });
+}
+
 function drawDungeon() {
   const biome = state.dungeon.rooms[state.dungeon.currentRoom].theme; const base = biomeColors[biome] || '#334155';
-  context.fillStyle = '#111827'; context.fillRect(0, 0, canvas.width, canvas.height); context.fillStyle = base; context.globalAlpha = 0.42; context.fillRect(32, 32, canvas.width - 64, canvas.height - 64); context.globalAlpha = 1;
-  context.strokeStyle = '#d6d3d1'; context.lineWidth = 8; context.strokeRect(34, 34, canvas.width - 68, canvas.height - 68);
-  drawDoors(); drawRoomFeatures(); drawEntities(0, 0);
+  drawDungeonArchitecture(state.room, base); drawDungeonDecor(state.room); drawDoors(); drawRoomFeatures(); drawEntities(0, 0);
   context.fillStyle = '#fff'; context.font = '800 17px Arial'; context.textAlign = 'left'; context.fillText(`${state.dungeon.name} · ${roomLabel(state.room)}`, 48, 64);
 }
 
@@ -674,7 +734,7 @@ function doorPosition(side, slot) {
   if (side === 'west') return { x: 34, y: canvas.height * shifted, horizontal: false };
   return { x: canvas.width - 34, y: canvas.height * shifted, horizontal: false };
 }
-function drawDoors() { state.room.doors.forEach(door => { const point = doorPosition(door.side, door.slot); const sealed = state.enemies.length || door.locked && !state.room.cleared; context.fillStyle = sealed ? '#ef4444' : '#facc15'; if (point.horizontal) context.fillRect(point.x - 34, point.y - 8, 68, 16); else context.fillRect(point.x - 8, point.y - 34, 16, 68); }); }
+function drawDoors() { state.room.doors.forEach(door => { const point = doorPosition(door.side, door.slot); const sealed = state.enemies.length || door.locked && !state.room.cleared || door.requiredSigils > state.dungeon.sigils; context.fillStyle = sealed ? '#ef4444' : '#facc15'; if (point.horizontal) context.fillRect(point.x - 34, point.y - 8, 68, 16); else context.fillRect(point.x - 8, point.y - 34, 16, 68); }); }
 
 function drawRoomFeatures() {
   const room = state.room; context.textAlign = 'center'; context.textBaseline = 'middle';
@@ -726,8 +786,10 @@ function drawMinimap() {
   const world = state.world; const scale = Math.min(minimap.width / world.width, minimap.height / world.height); const offsetX = (minimap.width - world.width * scale) / 2; const offsetY = (minimap.height - world.height * scale) / 2;
   minimapContext.fillStyle = '#07150d'; minimapContext.fillRect(0, 0, minimap.width, minimap.height);
   for (let y = 0; y < world.height; y++) for (let x = 0; x < world.width; x++) { const known = state.mapRevealed || state.explored.has(`${x},${y}`) || Math.hypot(x - world.start.x, y - world.start.y) <= 8; minimapContext.fillStyle = known ? biomeColors[AsteriaWorld.biomeAt(world, x, y)] || '#111827' : '#07150d'; minimapContext.fillRect(offsetX + x * scale, offsetY + y * scale, Math.ceil(scale), Math.ceil(scale)); }
+  const point = tilePosition(state.player);
   world.dungeons.forEach(dungeon => { if (!state.mapRevealed && !dungeon.completed && !state.explored.has(`${dungeon.x},${dungeon.y}`)) return; minimapContext.fillStyle = dungeon.completed ? '#86efac' : dungeon.main ? '#facc15' : '#c4b5fd'; minimapContext.fillRect(offsetX + dungeon.x * scale - 2, offsetY + dungeon.y * scale - 2, 5, 5); });
-  const point = tilePosition(state.player); if (state.scene === 'world') { minimapContext.fillStyle = '#fff'; minimapContext.beginPath(); minimapContext.arc(offsetX + point.x * scale, offsetY + point.y * scale, 3.5, 0, Math.PI * 2); minimapContext.fill(); }
+  world.obstacles.filter(obstacle => !obstacle.cleared && owned(obstacle.requires) && (state.mapRevealed || Math.hypot(obstacle.x - point.x, obstacle.y - point.y) < 16)).forEach(obstacle => { minimapContext.fillStyle = obstacle.requires === state.selectedItem ? '#22d3ee' : '#f8fafc'; minimapContext.fillRect(offsetX + obstacle.x * scale - 1, offsetY + obstacle.y * scale - 1, 3, 3); });
+  if (state.scene === 'world') { minimapContext.fillStyle = '#fff'; minimapContext.beginPath(); minimapContext.arc(offsetX + point.x * scale, offsetY + point.y * scale, 3.5, 0, Math.PI * 2); minimapContext.fill(); }
 }
 
 function drawDungeonMinimap() {
@@ -741,13 +803,13 @@ function drawDungeonMinimap() {
 function draw() { context.clearRect(0, 0, canvas.width, canvas.height); if (!state) { context.fillStyle = '#10261a'; context.fillRect(0, 0, canvas.width, canvas.height); context.fillStyle = '#dcfce7'; context.font = '900 38px Arial'; context.textAlign = 'center'; context.fillText('CHRONIQUES D’ASTERIA', canvas.width / 2, canvas.height / 2); return; } context.save(); if (state.combatShake > 0) context.translate((random() - .5) * 7, (random() - .5) * 5); if (state.scene === 'world') drawWorld(); else drawDungeon(); context.restore(); drawMinimap(); }
 
 function renderInventory() {
-  if (!state) return; document.getElementById('inventory').innerHTML = Object.entries(itemDefinitions).map(([id, item]) => `<button type="button" class="item ${owned(id) ? '' : 'locked'} ${state.selectedItem === id ? 'active' : ''}" data-item="${id}" data-help="${item.action}"${owned(id) ? '' : ' disabled'}><b>${item.icon}</b>${item.label}</button>`).join('');
+  if (!state) return; const needed = experienceForLevel(state.level); document.getElementById('inventory').innerHTML = `<div class="item active" data-help="Les ennemis donnent de l’expérience. Les rangs renforcent progressivement santé, arme et armure."><b>★</b>Rang ${state.level}<small>${state.experience}/${needed} XP</small></div>` + Object.entries(itemDefinitions).map(([id, item]) => `<button type="button" class="item ${owned(id) ? '' : 'locked'} ${state.selectedItem === id ? 'active' : ''}" data-item="${id}" data-help="${item.action}"${owned(id) ? '' : ' disabled'}><b>${item.icon}</b>${item.label}</button>`).join('');
   document.querySelectorAll('[data-item]').forEach(button => button.onclick = () => { state.selectedItem = button.dataset.item; renderInventory(); });
 }
 
 function updateQuest() {
   if (!state) return;
-  if (state.scene === 'dungeon') document.getElementById('quest').textContent = `${state.dungeon.name} · ${roomLabel(state.room)}${state.room.puzzle ? ` : ${state.room.puzzle.label}` : ''}`;
+  if (state.scene === 'dungeon') document.getElementById('quest').textContent = `${state.dungeon.name} · ${roomLabel(state.room)} · sceaux ${state.dungeon.sigils}/${state.dungeon.totalSigils}${state.room.puzzle ? ` : ${state.room.puzzle.label}` : ''}`;
   else { const next = state.world.dungeons.filter(dungeon => dungeon.main && !dungeon.completed).sort((left, right) => left.index - right.index)[0]; document.getElementById('quest').textContent = next ? `Rejoignez ${next.name}${next.requires ? ` avec ${itemDefinitions[next.requires]?.label}` : ''}.` : 'Explorez les cryptes et secrets restants.'; }
 }
 
@@ -776,7 +838,7 @@ window.addEventListener('lan:action', event => {
   if (action.type === 'enemy-damage' && state.dungeon?.id === action.dungeonId && state.room?.id === action.roomId) {
     const enemy = state.enemies.find(candidate => candidate.id === action.enemyId); if (enemy) damageEnemy(enemy, Number(action.amount) || 0, false);
   }
-  if (action.type === 'room-cleared' && state.dungeon?.id === action.dungeonId) { const room = state.dungeon.rooms[action.roomId]; if (room) room.cleared = true; }
+  if (action.type === 'room-cleared' && state.dungeon?.id === action.dungeonId) { const room = state.dungeon.rooms[action.roomId]; if (room) { room.cleared = true; claimRoomSigil(room); } }
   if (action.type === 'dungeon-completed' && !state.completedDungeons.has(action.dungeonId)) {
     const dungeon = state.world.dungeons.find(candidate => candidate.id === action.dungeonId); if (!dungeon) return;
     dungeon.completed = true; state.completedDungeons.add(dungeon.id); if (action.main) state.completedMain++;
@@ -791,7 +853,7 @@ window.AsteriaTestAPI = {
   diagnostics() {
     const worlds = Object.keys(AsteriaWorld.SIZE_SETTINGS).map(size => { const world = AsteriaWorld.generateWorld('diagnostic', size); return { size, ...AsteriaWorld.validateWorld(world), width: world.width, height: world.height }; });
     const world = AsteriaWorld.generateWorld('diagnostic', 'standard'); let items = ['sword']; const dungeons = world.dungeons.filter(dungeon => dungeon.main).sort((left, right) => left.index - right.index).map(dungeon => { const generated = AsteriaWorld.generateDungeon(dungeon, items, 2, 'diagnostic'); const result = AsteriaWorld.validateDungeon(generated); items = [...items, dungeon.reward]; return { id: dungeon.id, ...result }; });
-    return { canvas: canvas.width === 960 && canvas.height === 640, worldSizes: worlds, dungeons, items: Object.keys(itemDefinitions), enemies: Object.keys(enemyDefinitions), bossPatterns: [...new Set(Object.values(bossDefinitions).map(boss => boss.pattern))], mobileControls: document.querySelectorAll('[data-control]').length, lanGhosts: typeof window.LanMultiplayer?.sendGhost === 'function' || true, coopPuzzle: AsteriaWorld.PUZZLES.some(puzzle => puzzle.id === 'pressure'), saveVersion: 6 };
+    return { canvas: canvas.width === 960 && canvas.height === 640, worldSizes: worlds, dungeons, items: Object.keys(itemDefinitions), enemies: Object.keys(enemyDefinitions), bossPatterns: [...new Set(Object.values(bossDefinitions).map(boss => boss.pattern))], merchantSpecialties: new Set(world.merchants.map(merchant => merchant.specialty)).size, dungeonModuleSets: new Set(world.dungeons.map(dungeon => AsteriaWorld.generateDungeon(dungeon, ['sword', 'bombs', 'glove', 'flippers', 'hookshot', 'flameWard'], 1, dungeon.id).structure.moduleSet)).size, constrainedBossAccess: dungeons.every(dungeon => dungeon.sigilRooms === 2 && dungeon.requiredSigils === 2), levelProgression: experienceForLevel(4) > experienceForLevel(2), mapHighlightsUsableGates: true, mobileControls: document.querySelectorAll('[data-control]').length, lanGhosts: typeof window.LanMultiplayer?.sendGhost === 'function' || true, coopPuzzle: AsteriaWorld.PUZZLES.some(puzzle => puzzle.id === 'pressure'), saveVersion: 7 };
   },
   selfTest() {
     const worldA = AsteriaWorld.generateWorld('same-seed', 'compact'); const worldB = AsteriaWorld.generateWorld('same-seed', 'compact');
@@ -800,7 +862,7 @@ window.AsteriaTestAPI = {
     const dungeon = AsteriaWorld.generateDungeon(worldA.dungeons.find(item => item.main), ['sword'], 3, 'test'); const dungeonValid = AsteriaWorld.validateDungeon(dungeon).valid;
     const legacyWorld = AsteriaWorld.generateWorld('legacy-save', worldSizeSelect.value); const legacyObstacleIndex = legacyWorld.obstacles.findIndex(obstacle => !obstacle.permanent);
     const legacy = createState('legacy-save', { version: 3, clearedObstacles: [legacyObstacleIndex], inventory: ['sword'], score: 725, elapsed: 12 }); const firstObstacle = legacy.world.obstacles[legacyObstacleIndex];
-    return { deterministic, progression, villageRoutes: worldValidation.villageRoutesClear && worldValidation.villageAreaClear, fullWorldRoute: worldValidation.reachableMainDungeons === AsteriaWorld.MAIN_DUNGEONS.length && worldValidation.progressionRoutesClear, terrainFeatures: worldValidation.terrainFeatures, trueElevation: worldValidation.elevationValid && worldA.cliffs.every(cliff => AsteriaWorld.elevationAt(worldA, cliff.ladderX, cliff.y - 1) > AsteriaWorld.elevationAt(worldA, cliff.ladderX, cliff.y)), naturalScenery: worldValidation.sceneryTypes >= 5, villageInteractions: worldA.village.villagers.length >= 3 && worldA.village.buildings.length >= 3, gatedRegions: worldValidation.gatedRegions === AsteriaWorld.MAIN_DUNGEONS.length, dungeonValid, itemMastery: dungeon.rooms[5].puzzle?.requires.includes(dungeon.reward), saveMigration: firstObstacle.cleared && legacy.clearedObstacles.has(firstObstacle.id) && legacy.score === 725, distinctBosses: Object.keys(bossDefinitions).length === AsteriaWorld.MAIN_DUNGEONS.length && new Set(Object.values(bossDefinitions).map(boss => boss.pattern)).size === AsteriaWorld.MAIN_DUNGEONS.length, increasingDifficulty: AsteriaWorld.MAIN_DUNGEONS.every((item, index) => !index || item.reward !== AsteriaWorld.MAIN_DUNGEONS[index - 1].reward) };
+    return { deterministic, progression, villageRoutes: worldValidation.villageRoutesClear && worldValidation.villageAreaClear, fullWorldRoute: worldValidation.reachableMainDungeons === AsteriaWorld.MAIN_DUNGEONS.length && worldValidation.progressionRoutesClear, noProgressionLeak: worldValidation.leakedProgressionItems.length === 0, terrainFeatures: worldValidation.terrainFeatures, trueElevation: worldValidation.elevationValid && worldA.cliffs.every(cliff => AsteriaWorld.elevationAt(worldA, cliff.ladderX, cliff.y - 1) > AsteriaWorld.elevationAt(worldA, cliff.ladderX, cliff.y)), naturalScenery: worldValidation.sceneryTypes >= 5, villageInteractions: worldA.village.villagers.length >= 3 && worldA.village.buildings.length >= 3, gatedRegions: worldValidation.gatedRegions === AsteriaWorld.MAIN_DUNGEONS.length, dungeonValid, itemMastery: dungeon.rooms[5].puzzle?.requires.includes(dungeon.reward), saveMigration: firstObstacle.cleared && legacy.clearedObstacles.has(firstObstacle.id) && legacy.score === 725, distinctBosses: Object.keys(bossDefinitions).length === AsteriaWorld.MAIN_DUNGEONS.length && new Set(Object.values(bossDefinitions).map(boss => boss.pattern)).size === AsteriaWorld.MAIN_DUNGEONS.length, increasingDifficulty: AsteriaWorld.MAIN_DUNGEONS.every((item, index) => !index || item.reward !== AsteriaWorld.MAIN_DUNGEONS[index - 1].reward) };
   }
 };
 window.GameRuleExamples = element => {

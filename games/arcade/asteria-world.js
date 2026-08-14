@@ -3,10 +3,10 @@
 (() => {
   const BIOMES = ['plains', 'forest', 'mountain', 'lake', 'beach', 'volcano', 'swamp', 'ruins'];
   const SIZE_SETTINGS = {
-    compact: { width: 48, height: 36, merchants: 3, secrets: 8 },
-    standard: { width: 72, height: 54, merchants: 5, secrets: 14 },
-    vast: { width: 96, height: 72, merchants: 7, secrets: 24 },
-    epic: { width: 128, height: 96, merchants: 10, secrets: 38 }
+    compact: { width: 48, height: 36, merchants: 2, secrets: 8 },
+    standard: { width: 72, height: 54, merchants: 3, secrets: 14 },
+    vast: { width: 96, height: 72, merchants: 4, secrets: 24 },
+    epic: { width: 128, height: 96, merchants: 5, secrets: 38 }
   };
   const MAIN_DUNGEONS = [
     { name: 'Sanctuaire Sylvestre', biome: 'forest', reward: 'bombs', requires: null, boss: 'gardienRonce' },
@@ -23,6 +23,20 @@
     hookshot: { type: 'chasm', label: 'gouffre' },
     flameWard: { type: 'lavaSeal', label: 'sceau de lave' }
   };
+  const PROGRESSION_ITEMS = new Set(MAIN_DUNGEONS.map(dungeon => dungeon.reward));
+  const ROOM_STYLES = {
+    entrance: { floor: 'threshold', decor: ['banner', 'brazier'], atmosphere: 'calm' },
+    encounter: { floor: 'arena', decor: ['pillar', 'weaponRack'], atmosphere: 'tense' },
+    puzzle: { floor: 'runes', decor: ['obelisk', 'brazier'], atmosphere: 'mystic' },
+    miniboss: { floor: 'arena', decor: ['brokenPillar', 'banner'], atmosphere: 'danger' },
+    item: { floor: 'reliquary', decor: ['pedestal', 'brazier'], atmosphere: 'sacred' },
+    itemPuzzle: { floor: 'circuit', decor: ['obelisk', 'pedestal'], atmosphere: 'mystic' },
+    boss: { floor: 'sanctum', decor: ['pillar', 'brazier', 'banner'], atmosphere: 'danger' },
+    treasure: { floor: 'vault', decor: ['crate', 'pedestal'], atmosphere: 'secret' },
+    merchant: { floor: 'camp', decor: ['rug', 'crate'], atmosphere: 'warm' },
+    coopPuzzle: { floor: 'runes', decor: ['obelisk', 'banner'], atmosphere: 'mystic' },
+    challenge: { floor: 'arena', decor: ['brokenPillar', 'weaponRack'], atmosphere: 'tense' }
+  };
   const PUZZLES = [
     { id: 'runes', label: 'Runes séquentielles', requires: [] },
     { id: 'pressure', label: 'Dalles de pression', requires: [] },
@@ -30,7 +44,17 @@
     { id: 'pushBlocks', label: 'Blocs mobiles', requires: ['glove'] },
     { id: 'waterRunes', label: 'Runes immergées', requires: ['flippers'] },
     { id: 'hookCrystals', label: 'Cristaux distants', requires: ['hookshot'] },
-    { id: 'lavaCircuit', label: 'Circuit volcanique', requires: ['flameWard'] }
+    { id: 'lavaCircuit', label: 'Circuit volcanique', requires: ['flameWard'] },
+    { id: 'crystalBeams', label: 'Rayons de cristal', requires: [] },
+    { id: 'statueRotation', label: 'Statues rotatives', requires: [] },
+    { id: 'shadowMirrors', label: 'Miroirs d’ombre', requires: ['hookshot'] }
+  ];
+  const MERCHANT_PROFILES = [
+    { specialty: 'herbalist', label: 'Herboriste de Clairval', biome: 'plains', requires: null, stock: ['potion', 'heartPiece', 'coinCache'] },
+    { specialty: 'demolition', label: 'Artificier forestier', biome: 'forest', requires: 'bombs', stock: ['bombBag', 'weaponRune', 'potion'] },
+    { specialty: 'armorer', label: 'Armurière des cimes', biome: 'mountain', requires: 'glove', stock: ['armorUpgrade', 'armorRune', 'heartPiece'] },
+    { specialty: 'navigator', label: 'Cartographe des marées', biome: 'beach', requires: 'flippers', stock: ['bow', 'heartContainer', 'coinCache'] },
+    { specialty: 'relic', label: 'Archiviste des ruines', biome: 'ruins', requires: 'hookshot', stock: ['weaponRune', 'armorRune', 'heartContainer'] }
   ];
 
   function fallbackHash(value) {
@@ -97,7 +121,10 @@
     const fallback = [];
     for (let y = 6; y < world.height - 6; y++) for (let x = 6; x < world.width - 6; x++) if (!['sea', 'lake'].includes(biomeAt(world, x, y)) && predicate({ x, y })) fallback.push({ x, y });
     const validFallback = shuffled(fallback, random);
-    return candidates.find(point => occupied.every(other => Math.hypot(point.x - other.x, point.y - other.y) >= minimumDistance)) || validFallback.find(point => occupied.every(other => Math.hypot(point.x - other.x, point.y - other.y) >= minimumDistance)) || candidates[0] || validFallback[0] || { x: 6, y: 6 };
+    const valid = point => occupied.every(other => Math.hypot(point.x - other.x, point.y - other.y) >= minimumDistance);
+    const preferred = candidates.find(valid) || validFallback.find(valid); if (preferred) return preferred;
+    const pool = [...candidates, ...validFallback];
+    return pool.sort((left, right) => Math.min(...occupied.map(point => Math.hypot(right.x - point.x, right.y - point.y))) - Math.min(...occupied.map(point => Math.hypot(left.x - point.x, left.y - point.y))))[0] || { x: 6, y: 6 };
   }
 
   function surroundDungeon(world, dungeon) {
@@ -148,13 +175,32 @@
     return [];
   }
 
+  function carveProgressionRoute(world, targetDungeon, inventory) {
+    const startKey = pointKey(world.start.x, world.start.y); const targetKey = pointKey(targetDungeon.x, targetDungeon.y);
+    const pending = [{ ...world.start }]; const previous = new Map([[startKey, null]]);
+    for (let cursor = 0; cursor < pending.length; cursor++) {
+      const current = pending[cursor]; const currentKey = pointKey(current.x, current.y); if (currentKey === targetKey) break;
+      for (const [offsetX, offsetY] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const x = current.x + offsetX; const y = current.y + offsetY; const key = pointKey(x, y);
+        if (previous.has(key) || x < 3 || y < 3 || x >= world.width - 3 || y >= world.height - 3) continue;
+        const boundaries = world.obstacles.filter(obstacle => !obstacle.cleared && obstacle.x === x && obstacle.y === y && obstacle.zoneBoundary);
+        if (boundaries.some(obstacle => obstacle.gateFor !== targetDungeon.id || obstacle.permanent || !inventory.has(obstacle.requires))) continue;
+        previous.set(key, currentKey); pending.push({ x, y });
+      }
+    }
+    if (!previous.has(targetKey)) return [];
+    const route = []; let key = targetKey;
+    while (key) { const [x, y] = key.split(',').map(Number); route.push({ x, y }); key = previous.get(key); }
+    return route.reverse();
+  }
+
   function guaranteeProgressionAccess(world) {
     const inventory = new Set(['sword']); const routes = [];
     const mainDungeons = world.dungeons.filter(dungeon => dungeon.main).sort((left, right) => left.index - right.index);
     for (const dungeon of mainDungeons) {
       let route = findProgressionRoute(world, dungeon, inventory);
       if (!route.length) {
-        const fallback = findSafeRoute(world, world.start, { x: dungeon.x, y: dungeon.y + 3 });
+        const fallback = carveProgressionRoute(world, dungeon, inventory);
         const protectedKeys = new Set(fallback.map(point => pointKey(point.x, point.y)));
         fallback.forEach(point => setBiome(world, point.x, point.y, 'plains'));
         world.obstacles = world.obstacles.filter(obstacle => obstacle.zoneBoundary || !protectedKeys.has(pointKey(obstacle.x, obstacle.y)));
@@ -305,13 +351,13 @@
       world.dungeons.push({ id: `bonus-${index + 1}`, name: `Crypte oubliée ${index + 1}`, biome, reward: bonusRewards[index % bonusRewards.length], requires, boss: 'gardienAncien', index, main: false, difficulty: 1 + index, ...location, completed: false });
     }
     for (let index = 0; index < settings.merchants; index++) {
-      const location = chooseLocation(world, ['plains', 'forest', 'beach'][index % 3], occupied, random, 5); occupied.push(location);
-      world.merchants.push({ ...location, id: `merchant-${index}`, stock: shuffled(['potion', 'bombBag', 'armorUpgrade', 'heartContainer', 'bow'], random).slice(0, 3) });
+      const profile = MERCHANT_PROFILES[index]; const location = chooseLocation(world, profile.biome, occupied, random, 7, point => index === 0 ? Math.hypot(point.x - world.start.x, point.y - world.start.y) < Math.min(world.width, world.height) * 0.32 : Math.hypot(point.x - world.start.x, point.y - world.start.y) > 10 + index * 2); occupied.push(location);
+      world.merchants.push({ ...location, id: `merchant-${profile.specialty}`, specialty: profile.specialty, label: profile.label, requires: profile.requires, importance: index, stock: [...profile.stock] });
     }
     for (let index = 0; index < settings.secrets; index++) {
       const biome = shuffled(['forest', 'mountain', 'beach', 'swamp', 'ruins'], random)[0];
       const location = chooseLocation(world, biome, occupied, random, 3); occupied.push(location);
-      world.chests.push({ ...location, id: `secret-${index}`, hidden: random() < 0.55, opened: false, reward: shuffled(['coins', 'potion', 'bombs', 'heartPiece'], random)[0] });
+      world.chests.push({ ...location, id: `secret-${index}`, hidden: random() < 0.55, opened: false, reward: shuffled(['coins', 'potion', 'heartPiece', 'weaponRune', 'armorRune'], random)[0], source: 'world-secret' });
     }
     const obstacleTypes = [
       { type: 'bush', requires: 'sword', label: 'buisson dense' }, { type: 'crackedRock', requires: 'bombs', label: 'rocher fissuré' },
@@ -330,14 +376,14 @@
     }
     guaranteeVillageAccess(world);
     guaranteeProgressionAccess(world);
-    generateCliffs(world, random);
+    generateCliffs(world, randomFor(`asteria-cliffs:${seed}:${size}`));
     generateScenery(world);
     return world;
   }
 
-  function connect(rooms, firstId, firstSide, secondId, secondSide, slot = 0, locked = false) {
-    rooms[firstId].doors.push({ side: firstSide, slot, to: secondId, locked });
-    rooms[secondId].doors.push({ side: secondSide, slot: -slot, to: firstId, locked });
+  function connect(rooms, firstId, firstSide, secondId, secondSide, slot = 0, locked = false, requiredSigils = 0) {
+    rooms[firstId].doors.push({ side: firstSide, slot, to: secondId, locked, requiredSigils });
+    rooms[secondId].doors.push({ side: secondSide, slot: -slot, to: firstId, locked, requiredSigils });
   }
 
   function choosePuzzle(availableItems, random, afterReward = null) {
@@ -354,21 +400,30 @@
   function generateDungeon(definition, availableItems = ['sword'], playerCount = 1, seed = 'dungeon') {
     const random = randomFor(`asteria-dungeon:${seed}:${definition.id}:${definition.difficulty}:${playerCount}`);
     const roomTypes = ['entrance', 'encounter', 'puzzle', 'miniboss', 'item', 'itemPuzzle', 'boss', 'treasure', 'merchant', playerCount > 1 ? 'coopPuzzle' : 'challenge'];
-    const rooms = roomTypes.map((type, id) => ({ id, type, doors: [], cleared: type === 'entrance' || type === 'merchant', visited: id === 0, puzzle: null, reward: null, enemyTier: definition.difficulty }));
+    const rooms = roomTypes.map((type, id) => ({
+      id, type, doors: [], cleared: type === 'entrance' || type === 'merchant', visited: id === 0,
+      puzzle: null, reward: null, enemyTier: definition.difficulty,
+      visual: { ...(ROOM_STYLES[type] || ROOM_STYLES.encounter), variant: Math.floor(random() * 4), wear: 0.2 + random() * 0.65 }
+    }));
     connect(rooms, 0, 'east', 1, 'west');
     connect(rooms, 1, 'east', 2, 'west', -1); connect(rooms, 1, 'east', 7, 'west', 1);
     connect(rooms, 1, 'north', 8, 'south'); connect(rooms, 2, 'east', 3, 'west');
     connect(rooms, 2, 'south', 9, 'north'); connect(rooms, 3, 'east', 4, 'west', 0, true);
     connect(rooms, 4, 'east', 5, 'west', -1); connect(rooms, 4, 'east', 7, 'west', 1);
-    connect(rooms, 5, 'east', 6, 'west', 0, true);
+    connect(rooms, 5, 'east', 6, 'west', 0, true, 2);
     rooms[2].puzzle = choosePuzzle(availableItems, random);
     rooms[4].reward = definition.reward;
     rooms[5].puzzle = choosePuzzle(availableItems, random, definition.reward);
     rooms[7].reward = shuffled(['coins', 'heartPiece', 'weaponRune', 'armorRune'], random)[0];
     rooms[9].puzzle = playerCount > 1 ? { id: 'coopPlates', label: `${playerCount} dalles simultanées`, requires: [] } : choosePuzzle(availableItems, random);
     rooms[6].boss = definition.boss;
-    rooms.forEach(room => { room.theme = definition.biome; room.seed = Math.floor(random() * 0xffffffff); });
-    return { id: definition.id, name: definition.name, reward: definition.reward, main: definition.main, difficulty: definition.difficulty, rooms, currentRoom: 0, completed: false, availableItems: [...availableItems], structure: { hubRoom: 1, firstPuzzle: 2, minibossRoom: 3, itemRoom: 4, masteryRoom: 5, bossRoom: 6, optionalRooms: [7, 8, 9], itemBacktracking: true } };
+    rooms[3].sigilReward = 1;
+    rooms[9].sigilReward = 1;
+    const moduleSets = ['crossroads', 'spiral', 'forked']; const moduleSet = moduleSets[Math.floor(random() * moduleSets.length)];
+    if (moduleSet === 'spiral') connect(rooms, 7, 'south', 9, 'west');
+    else if (moduleSet === 'forked') connect(rooms, 8, 'east', 7, 'north');
+    rooms.forEach(room => { room.theme = definition.biome; room.seed = Math.floor(random() * 0xffffffff); room.visual.geometry = ['square', 'octagon', 'split', 'sunken'][Math.floor(random() * 4)]; room.visual.height = 1 + Math.floor(random() * 3); });
+    return { id: definition.id, name: definition.name, reward: definition.reward, main: definition.main, difficulty: definition.difficulty, rooms, currentRoom: 0, completed: false, sigils: 0, totalSigils: 2, availableItems: [...availableItems], structure: { moduleSet, hubRoom: 1, firstPuzzle: 2, minibossRoom: 3, itemRoom: 4, masteryRoom: 5, bossRoom: 6, optionalRooms: [7, 8, 9], itemBacktracking: true, constrainedBossAccess: true } };
   }
 
   function reachableRooms(dungeon) {
@@ -397,7 +452,7 @@
     const villageRoutesClear = (world.villageRoads || []).every(point => !blocked.has(pointKey(point.x, point.y)) && !['sea', 'lake'].includes(biomeAt(world, point.x, point.y)));
     const guaranteedRoute = world.guaranteedRoute || [];
     const routeClear = guaranteedRoute.length > 1 && guaranteedRoute.every(point => !blocked.has(pointKey(point.x, point.y)) && !['sea', 'lake'].includes(biomeAt(world, point.x, point.y)));
-    const terrainFeatures = (world.cliffs?.length || 0) > 0 && (world.scenery?.length || 0) > 0;
+    const terrainFeatures = (world.scenery?.length || 0) > 0 && (world.size === 'compact' || (world.cliffs?.length || 0) > 0);
     const progressionInventory = new Set(['sword']);
     const reachableMainDungeons = main.filter(dungeon => {
       const reachable = findProgressionRoute(world, dungeon, progressionInventory).length > 0;
@@ -407,7 +462,10 @@
     const progressionRoutesClear = (world.progressionRoutes || []).length === main.length && world.progressionRoutes.every(route => route.tiles.length > 0);
     const elevationValid = (world.cliffs || []).every(cliff => elevationAt(world, cliff.ladderX, cliff.y - 1) === cliff.level && elevationAt(world, cliff.ladderX, cliff.y) === 0 && !world.obstacles.some(obstacle => !obstacle.cleared && obstacle.x === cliff.ladderX && obstacle.y === cliff.y));
     const sceneryTypes = new Set((world.scenery || []).map(item => item.type));
-    return { valid: progression && main.length === MAIN_DUNGEONS.length && gatedRegions === main.length && safeVillageExits === 4 && villageAreaClear && villageRoutesClear && terrainFeatures && elevationValid && reachableMainDungeons === main.length && progressionRoutesClear && world.village?.villagers.length >= 3 && BIOMES.every(biome => biomes.has(biome)), progression, gatedRegions, safeVillageExits, villageAreaClear, villageRoutesClear, terrainFeatures, elevationValid, sceneryTypes: sceneryTypes.size, reachableMainDungeons, progressionRoutesClear, safeVillageTiles, routeClear, routeLength: guaranteedRoute.length, cliffs: world.cliffs?.length || 0, scenery: world.scenery?.length || 0, dungeonCount: world.dungeons.length, mainDungeons: main.length, biomes: [...biomes], obstacles: world.obstacles.length, merchants: world.merchants.length, secrets: world.chests.length };
+    const leakedProgressionItems = world.chests.filter(chest => PROGRESSION_ITEMS.has(chest.reward)).map(chest => chest.id);
+    const merchantProgression = world.merchants.every((merchant, index) => merchant.stock.length === 3 && !merchant.stock.some(item => PROGRESSION_ITEMS.has(item)) && (!index || merchant.requires));
+    const merchantVariety = new Set(world.merchants.map(merchant => merchant.specialty)).size === world.merchants.length && world.merchants.every((merchant, index) => !world.merchants.slice(0, index).some(previous => previous.stock.join(',') === merchant.stock.join(',')));
+    return { valid: progression && main.length === MAIN_DUNGEONS.length && gatedRegions === main.length && safeVillageExits === 4 && villageAreaClear && villageRoutesClear && terrainFeatures && elevationValid && reachableMainDungeons === main.length && progressionRoutesClear && !leakedProgressionItems.length && merchantProgression && merchantVariety && world.village?.villagers.length >= 3 && BIOMES.every(biome => biomes.has(biome)), progression, gatedRegions, safeVillageExits, villageAreaClear, villageRoutesClear, terrainFeatures, elevationValid, sceneryTypes: sceneryTypes.size, reachableMainDungeons, progressionRoutesClear, leakedProgressionItems, merchantProgression, merchantVariety, safeVillageTiles, routeClear, routeLength: guaranteedRoute.length, cliffs: world.cliffs?.length || 0, scenery: world.scenery?.length || 0, dungeonCount: world.dungeons.length, mainDungeons: main.length, biomes: [...biomes], obstacles: world.obstacles.length, merchants: world.merchants.length, secrets: world.chests.length };
   }
 
   function validateDungeon(dungeon) {
@@ -415,8 +473,9 @@
     const accessiblePuzzles = dungeon.rooms.filter(room => room.puzzle).every(room => room.puzzle.requires.every(item => dungeon.availableItems.includes(item) || item === dungeon.reward));
     const multipleDoorSide = dungeon.rooms.some(room => room.doors.some((door, index) => room.doors.some((other, otherIndex) => index !== otherIndex && door.side === other.side && door.slot !== other.slot)));
     const itemLoop = dungeon.structure?.itemBacktracking && dungeon.rooms[dungeon.structure.itemRoom]?.reward === dungeon.reward && dungeon.rooms[dungeon.structure.masteryRoom]?.puzzle?.requires.includes(dungeon.reward);
-    return { valid: reachable.size === dungeon.rooms.length && accessiblePuzzles && multipleDoorSide && itemLoop, reachable: reachable.size, rooms: dungeon.rooms.length, accessiblePuzzles, multipleDoorSide, itemLoop, hasBoss: dungeon.rooms.some(room => room.type === 'boss'), hasItem: dungeon.rooms.some(room => room.type === 'item'), hasMiniboss: dungeon.rooms.some(room => room.type === 'miniboss') };
+    const sigilRooms = dungeon.rooms.filter(room => room.sigilReward).length; const requiredSigils = Math.max(0, ...dungeon.rooms.flatMap(room => room.doors.map(door => door.requiredSigils || 0)));
+    return { valid: reachable.size === dungeon.rooms.length && accessiblePuzzles && multipleDoorSide && itemLoop && sigilRooms === dungeon.totalSigils && requiredSigils === dungeon.totalSigils, reachable: reachable.size, rooms: dungeon.rooms.length, accessiblePuzzles, multipleDoorSide, itemLoop, sigilRooms, requiredSigils, hasBoss: dungeon.rooms.some(room => room.type === 'boss'), hasItem: dungeon.rooms.some(room => room.type === 'item'), hasMiniboss: dungeon.rooms.some(room => room.type === 'miniboss') };
   }
 
-  window.AsteriaWorld = { BIOMES, SIZE_SETTINGS, MAIN_DUNGEONS, GATES, PUZZLES, randomFor, biomeAt, elevationAt, tileIndex, generateWorld, generateDungeon, validateWorld, validateDungeon };
+  window.AsteriaWorld = { BIOMES, SIZE_SETTINGS, MAIN_DUNGEONS, GATES, PUZZLES, PROGRESSION_ITEMS, randomFor, biomeAt, elevationAt, tileIndex, generateWorld, generateDungeon, validateWorld, validateDungeon };
 })();
